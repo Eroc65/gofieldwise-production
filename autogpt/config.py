@@ -65,6 +65,17 @@ class Config:
     slack_default_channel: str = os.getenv("SLACK_DEFAULT_CHANNEL", "general")
 
     # ------------------------------------------------------------------ #
+    # Email  (email agent)
+    # ------------------------------------------------------------------ #
+    email_sendgrid_api_key: str = os.getenv("EMAIL_SENDGRID_API_KEY", "")
+    email_from_address: str = os.getenv("EMAIL_FROM_ADDRESS", "")
+    email_default_to: str = os.getenv("EMAIL_DEFAULT_TO", "")
+    email_smtp_host: str = os.getenv("EMAIL_SMTP_HOST", "")
+    email_smtp_port: int = int(os.getenv("EMAIL_SMTP_PORT", "587"))
+    email_smtp_user: str = os.getenv("EMAIL_SMTP_USER", "")
+    email_smtp_password: str = os.getenv("EMAIL_SMTP_PASSWORD", "")
+
+    # ------------------------------------------------------------------ #
     # Scheduler
     # ------------------------------------------------------------------ #
     scheduler_enabled: bool = os.getenv("SCHEDULER_ENABLED", "true").lower() == "true"
@@ -74,6 +85,7 @@ class Config:
     # ------------------------------------------------------------------ #
     web_port: int = int(os.getenv("WEB_PORT", "8000"))
     session_secret: str = os.getenv("SESSION_SECRET", "")
+    web_api_key: str = os.getenv("WEB_API_KEY", "")
 
     # ------------------------------------------------------------------ #
     # General

@@ -431,8 +431,10 @@ class TestWebApp(unittest.TestCase):
         client = self._make_client()
         with client.websocket_connect("/ws/test-ws-session") as ws:
             ws.send_text("Hello over WebSocket")
-            reply = ws.receive_text()
-        self.assertEqual(reply, "WS reply!")
+            raw = ws.receive_text()
+        data = json.loads(raw)
+        self.assertEqual(data["reply"], "WS reply!")
+        self.assertIn("agent", data)
 
     @patch("autogpt.orchestrator.openai")
     def test_websocket_session_reuse(self, mock_openai):
@@ -452,9 +454,9 @@ class TestWebApp(unittest.TestCase):
         client = self._make_client()
         with client.websocket_connect("/ws/shared-session") as ws:
             ws.send_text("Message one")
-            r1 = ws.receive_text()
+            r1 = json.loads(ws.receive_text())["reply"]
             ws.send_text("Message two")
-            r2 = ws.receive_text()
+            r2 = json.loads(ws.receive_text())["reply"]
 
         self.assertEqual(r1, "First")
         self.assertEqual(r2, "Second")
@@ -784,6 +786,393 @@ class TestWebAppNewEndpoints(unittest.TestCase):
         self.assertEqual(resp.status_code, 503)
 
 
+
+
+# ======================================================================
+# EmailAgent tests
+# ======================================================================
+
+class TestEmailAgent(unittest.TestCase):
+    def setUp(self):
+        self.cfg = _make_config()
+        self.cfg.email_sendgrid_api_key = "SG.test-key"
+        self.cfg.email_from_address = "noreply@test.com"
+        self.cfg.email_default_to = "founders@test.com"
+        self.cfg.email_smtp_host = ""
+        self.cfg.email_smtp_port = 587
+        self.cfg.email_smtp_user = ""
+        self.cfg.email_smtp_password = ""
+
+    @patch("autogpt.agents.email_agent.requests.post")
+    def test_send_email_via_sendgrid_success(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=202, text="")
+        from autogpt.agents.email_agent import EmailAgent
+        agent = EmailAgent(self.cfg)
+        result = agent.send_email("to@test.com", "Subject", "Body")
+        self.assertTrue(result["ok"])
+        mock_post.assert_called_once()
+        args, kwargs = mock_post.call_args
+        self.assertIn("sendgrid.com", args[0])
+
+    @patch("autogpt.agents.email_agent.requests.post")
+    def test_send_email_via_sendgrid_failure(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=403, text="Unauthorized")
+        from autogpt.agents.email_agent import EmailAgent
+        agent = EmailAgent(self.cfg)
+        result = agent.send_email("to@test.com", "Subject", "Body")
+        self.assertFalse(result["ok"])
+        self.assertIn("error", result)
+
+    @patch("autogpt.agents.email_agent.requests.post")
+    def test_send_email_to_multiple_recipients(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=202, text="")
+        from autogpt.agents.email_agent import EmailAgent
+        agent = EmailAgent(self.cfg)
+        result = agent.send_email(["a@test.com", "b@test.com"], "Hi", "Hello")
+        self.assertTrue(result["ok"])
+        payload = mock_post.call_args[1]["json"]
+        tos = payload["personalizations"][0]["to"]
+        self.assertEqual(len(tos), 2)
+
+    def test_send_email_raises_without_credentials(self):
+        self.cfg.email_sendgrid_api_key = ""
+        self.cfg.email_smtp_host = ""
+        from autogpt.agents.email_agent import EmailAgent
+        agent = EmailAgent(self.cfg)
+        with self.assertRaises(RuntimeError):
+            agent.send_email("to@test.com", "Subject", "Body")
+
+    @patch("autogpt.agents.email_agent.smtplib.SMTP")
+    def test_send_email_via_smtp(self, mock_smtp_cls):
+        self.cfg.email_sendgrid_api_key = ""
+        self.cfg.email_smtp_host = "smtp.example.com"
+        self.cfg.email_smtp_user = "user@example.com"
+        self.cfg.email_smtp_password = "pass"
+
+        mock_server = MagicMock()
+        mock_smtp_cls.return_value.__enter__ = lambda s: mock_server
+        mock_smtp_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+        from autogpt.agents.email_agent import EmailAgent
+        agent = EmailAgent(self.cfg)
+        result = agent.send_email("to@test.com", "Subject", "Body")
+        self.assertTrue(result["ok"])
+        mock_server.sendmail.assert_called_once()
+
+    @patch("autogpt.agents.email_agent.smtplib.SMTP")
+    def test_send_email_smtp_error_returns_not_ok(self, mock_smtp_cls):
+        self.cfg.email_sendgrid_api_key = ""
+        self.cfg.email_smtp_host = "smtp.example.com"
+        mock_smtp_cls.side_effect = OSError("Connection refused")
+        from autogpt.agents.email_agent import EmailAgent
+        agent = EmailAgent(self.cfg)
+        result = agent.send_email("to@test.com", "Subject", "Body")
+        self.assertFalse(result["ok"])
+        self.assertIn("error", result)
+
+    @patch("autogpt.agents.email_agent.requests.post")
+    @patch("autogpt.agents.email_agent.openai")
+    def test_compose_and_send(self, mock_openai, mock_post):
+        mock_post.return_value = MagicMock(status_code=202, text="")
+        composed = {"subject": "Launch!", "body": "We just launched our product."}
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content=json.dumps(composed)))]
+        )
+        from autogpt.agents.email_agent import EmailAgent
+        agent = EmailAgent(self.cfg)
+        result = agent.compose_and_send("announce our product launch")
+        self.assertTrue(result["ok"])
+
+    @patch("autogpt.agents.email_agent.requests.post")
+    def test_send_report(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=202, text="")
+        from autogpt.agents.email_agent import EmailAgent
+        agent = EmailAgent(self.cfg)
+        result = agent.send_report("Weekly Report", "This week we grew 10%.")
+        self.assertTrue(result["ok"])
+
+    def test_compose_and_send_raises_without_recipient(self):
+        self.cfg.email_default_to = ""
+        from autogpt.agents.email_agent import EmailAgent
+        agent = EmailAgent(self.cfg)
+        with self.assertRaises(RuntimeError):
+            agent.compose_and_send("some brief")
+
+    @patch("autogpt.agents.email_agent.requests.post")
+    @patch("autogpt.agents.email_agent.openai")
+    def test_compose_and_send_invalid_json_fallback(self, mock_openai, mock_post):
+        """When GPT returns non-JSON, compose_and_send uses raw text as body."""
+        mock_post.return_value = MagicMock(status_code=202, text="")
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="Just send this."))]
+        )
+        from autogpt.agents.email_agent import EmailAgent
+        agent = EmailAgent(self.cfg)
+        result = agent.compose_and_send("some brief")
+        self.assertTrue(result["ok"])
+
+
+# ======================================================================
+# AnalyticsAgent tests
+# ======================================================================
+
+class TestAnalyticsAgent(unittest.TestCase):
+    def setUp(self):
+        self.cfg = _make_config()
+        # Disable external service credentials so collect_metrics returns quickly
+        self.cfg.twitter_bearer_token = ""
+        self.cfg.meta_access_token = ""
+        self.cfg.meta_ad_account_id = ""
+        self.cfg.slack_webhook_url = ""
+        self.cfg.slack_bot_token = ""
+        self.cfg.email_sendgrid_api_key = ""
+        self.cfg.email_smtp_host = ""
+        self.cfg.email_default_to = ""
+
+    @patch("autogpt.agents.analytics_agent.openai")
+    def test_generate_report_returns_string(self, mock_openai):
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="This week was great."))]
+        )
+        from autogpt.agents.analytics_agent import AnalyticsAgent
+        agent = AnalyticsAgent(self.cfg)
+        report = agent.generate_report(metrics={"period_days": 7})
+        self.assertIsInstance(report, str)
+        self.assertEqual(report, "This week was great.")
+
+    @patch("autogpt.agents.analytics_agent.openai")
+    def test_generate_report_calls_collect_when_no_metrics(self, mock_openai):
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="Report text."))]
+        )
+        from autogpt.agents.analytics_agent import AnalyticsAgent
+        agent = AnalyticsAgent(self.cfg)
+        report = agent.generate_report()
+        self.assertIsInstance(report, str)
+
+    def test_collect_metrics_returns_dict_without_credentials(self):
+        from autogpt.agents.analytics_agent import AnalyticsAgent
+        agent = AnalyticsAgent(self.cfg)
+        metrics = agent.collect_metrics()
+        self.assertIn("period_days", metrics)
+        self.assertNotIn("twitter", metrics)
+        self.assertNotIn("meta_ads", metrics)
+
+    def test_deliver_report_skips_channels_when_unconfigured(self):
+        from autogpt.agents.analytics_agent import AnalyticsAgent
+        agent = AnalyticsAgent(self.cfg)
+        result = agent.deliver_report("Weekly report text.")
+        self.assertEqual(result["email"]["skipped"], True)
+        self.assertEqual(result["slack"]["skipped"], True)
+
+    @patch("autogpt.agents.analytics_agent.openai")
+    def test_run_returns_expected_keys(self, mock_openai):
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="Good week."))]
+        )
+        from autogpt.agents.analytics_agent import AnalyticsAgent
+        agent = AnalyticsAgent(self.cfg)
+        result = agent.run("Generate a weekly report")
+        self.assertIn("report", result)
+        self.assertIn("delivery", result)
+        self.assertIn("metrics", result)
+        self.assertIsInstance(result["report"], str)
+
+    @patch("autogpt.agents.analytics_agent.requests.get")
+    @patch("autogpt.agents.analytics_agent.openai")
+    def test_collect_meta_metrics(self, mock_openai, mock_get):
+        self.cfg.meta_access_token = "meta_token"
+        self.cfg.meta_ad_account_id = "12345"
+        mock_get.return_value = MagicMock(
+            ok=True,
+            json=lambda: {
+                "data": [{"spend": "100", "impressions": "5000", "clicks": "200", "ctr": "4.0"}]
+            },
+        )
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="Good."))]
+        )
+        from autogpt.agents.analytics_agent import AnalyticsAgent
+        agent = AnalyticsAgent(self.cfg)
+        metrics = agent.collect_metrics()
+        self.assertIn("meta_ads", metrics)
+        self.assertEqual(metrics["meta_ads"]["spend"], "100")
+
+    @patch("autogpt.agents.analytics_agent.openai")
+    @patch("autogpt.agents.email_agent.requests.post")
+    def test_deliver_report_via_email(self, mock_post, mock_openai):
+        self.cfg.email_sendgrid_api_key = "SG.test"
+        self.cfg.email_from_address = "noreply@test.com"
+        self.cfg.email_default_to = "founders@test.com"
+        mock_post.return_value = MagicMock(status_code=202, text="")
+        from autogpt.agents.analytics_agent import AnalyticsAgent
+        agent = AnalyticsAgent(self.cfg)
+        result = agent.deliver_report("Report body")
+        self.assertTrue(result["email"]["ok"])
+
+
+# ======================================================================
+# Orchestrator — email and analytics routing tests
+# ======================================================================
+
+class TestOrchestratorNewAgents(unittest.TestCase):
+    def setUp(self):
+        self.cfg = _make_config()
+        self.cfg.database_url = ""
+        self.cfg.slack_webhook_url = ""
+        self.cfg.slack_bot_token = ""
+
+    @patch("autogpt.orchestrator.openai")
+    def test_email_agent_routed(self, mock_openai):
+        routing = {"agent": "email", "task": "announce our launch", "direct_reply": ""}
+        mock_openai.chat.completions.create.side_effect = [
+            MagicMock(choices=[MagicMock(message=MagicMock(content=json.dumps(routing)))]),
+            MagicMock(choices=[MagicMock(message=MagicMock(content="Email sent."))]),
+        ]
+        from autogpt.orchestrator import Orchestrator
+        from autogpt.agents.email_agent import EmailAgent
+
+        with patch.object(EmailAgent, "compose_and_send", return_value={"ok": True}):
+            orc = Orchestrator(self.cfg)
+            orc.chat("Send an email about our launch")
+            self.assertEqual(orc.last_agent, "email")
+
+    @patch("autogpt.orchestrator.openai")
+    def test_analytics_agent_routed(self, mock_openai):
+        routing = {"agent": "analytics", "task": "generate weekly report", "direct_reply": ""}
+        mock_openai.chat.completions.create.side_effect = [
+            MagicMock(choices=[MagicMock(message=MagicMock(content=json.dumps(routing)))]),
+            MagicMock(choices=[MagicMock(message=MagicMock(content="Report generated."))]),
+        ]
+        from autogpt.orchestrator import Orchestrator
+        from autogpt.agents.analytics_agent import AnalyticsAgent
+
+        with patch.object(
+            AnalyticsAgent, "run",
+            return_value={"report": "Good week.", "delivery": {}, "metrics": {}}
+        ):
+            orc = Orchestrator(self.cfg)
+            orc.chat("Generate the weekly report")
+            self.assertEqual(orc.last_agent, "analytics")
+
+    @patch("autogpt.orchestrator.openai")
+    def test_last_agent_is_none_for_direct_reply(self, mock_openai):
+        routing = {"agent": "none", "task": "", "direct_reply": "Hello!"}
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content=json.dumps(routing)))]
+        )
+        from autogpt.orchestrator import Orchestrator
+        orc = Orchestrator(self.cfg)
+        orc.chat("Hi")
+        self.assertEqual(orc.last_agent, "none")
+
+
+# ======================================================================
+# Web app — API key middleware tests
+# ======================================================================
+
+class TestWebAppApiKeyMiddleware(unittest.TestCase):
+    def setUp(self):
+        self.cfg = _make_config()
+        self.cfg.database_url = ""
+        self.cfg.scheduler_enabled = False
+        self.cfg.web_api_key = "secret-key-123"
+
+    def _make_client(self):
+        try:
+            from fastapi.testclient import TestClient
+        except ImportError:
+            self.skipTest("fastapi not installed")
+        from autogpt.web.app import create_app
+        return TestClient(create_app(self.cfg))
+
+    def test_health_accessible_without_api_key(self):
+        client = self._make_client()
+        resp = client.get("/health")
+        self.assertEqual(resp.status_code, 200)
+
+    def test_index_accessible_without_api_key(self):
+        client = self._make_client()
+        resp = client.get("/")
+        self.assertEqual(resp.status_code, 200)
+
+    def test_sessions_blocked_without_api_key(self):
+        client = self._make_client()
+        resp = client.get("/sessions")
+        self.assertEqual(resp.status_code, 401)
+
+    def test_sessions_accessible_with_correct_api_key(self):
+        client = self._make_client()
+        resp = client.get("/sessions", headers={"X-API-Key": "secret-key-123"})
+        self.assertEqual(resp.status_code, 200)
+
+    def test_sessions_blocked_with_wrong_api_key(self):
+        client = self._make_client()
+        resp = client.get("/sessions", headers={"X-API-Key": "wrong-key"})
+        self.assertEqual(resp.status_code, 401)
+
+    @patch("autogpt.orchestrator.openai")
+    def test_chat_endpoint_blocked_without_api_key(self, mock_openai):
+        client = self._make_client()
+        resp = client.post("/chat", json={"session_id": "s1", "message": "hi"})
+        self.assertEqual(resp.status_code, 401)
+
+    @patch("autogpt.orchestrator.openai")
+    def test_chat_endpoint_accessible_with_api_key(self, mock_openai):
+        routing = {"agent": "none", "task": "", "direct_reply": "Hi!"}
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content=json.dumps(routing)))]
+        )
+        client = self._make_client()
+        resp = client.post(
+            "/chat",
+            json={"session_id": "s1", "message": "hi"},
+            headers={"X-API-Key": "secret-key-123"},
+        )
+        self.assertEqual(resp.status_code, 200)
+
+    def test_no_auth_when_api_key_not_configured(self):
+        self.cfg.web_api_key = ""
+        client = self._make_client()
+        resp = client.get("/sessions")
+        self.assertEqual(resp.status_code, 200)
+
+
+# ======================================================================
+# Web app — WebSocket JSON response tests
+# ======================================================================
+
+class TestWebAppWebSocketJson(unittest.TestCase):
+    def setUp(self):
+        self.cfg = _make_config()
+        self.cfg.database_url = ""
+        self.cfg.scheduler_enabled = False
+        self.cfg.web_api_key = ""
+
+    def _make_client(self):
+        try:
+            from fastapi.testclient import TestClient
+        except ImportError:
+            self.skipTest("fastapi not installed")
+        from autogpt.web.app import create_app
+        return TestClient(create_app(self.cfg))
+
+    @patch("autogpt.orchestrator.openai")
+    def test_websocket_reply_includes_agent_field(self, mock_openai):
+        routing = {"agent": "none", "task": "", "direct_reply": "Howdy!"}
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content=json.dumps(routing)))]
+        )
+        client = self._make_client()
+        with client.websocket_connect("/ws/json-test-session") as ws:
+            ws.send_text("Hello")
+            raw = ws.receive_text()
+        data = json.loads(raw)
+        self.assertIn("reply", data)
+        self.assertIn("agent", data)
+        self.assertEqual(data["reply"], "Howdy!")
+        self.assertEqual(data["agent"], "none")
+
+
 if __name__ == "__main__":
     unittest.main()
-

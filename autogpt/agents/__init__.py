@@ -5,6 +5,8 @@ from .browser_agent import BrowserAgent
 from .twitter_agent import TwitterAgent
 from .meta_ads_agent import MetaAdsAgent
 from .slack_agent import SlackAgent
+from .email_agent import EmailAgent
+from .analytics_agent import AnalyticsAgent
 
 __all__ = [
     "EngineeringAgent",
@@ -12,4 +14,6 @@ __all__ = [
     "TwitterAgent",
     "MetaAdsAgent",
     "SlackAgent",
+    "EmailAgent",
+    "AnalyticsAgent",
 ]

@@ -12,7 +12,7 @@
       background: #0f0f13;
       color: #e8e8f0;
       height: 100vh;
-      height: 100dvh; /* dynamic viewport height on supported browsers */
+      height: 100dvh;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -20,22 +20,52 @@
 
     header {
       width: 100%;
-      max-width: 760px;
+      max-width: 1040px;
       padding: 18px 24px 12px;
       border-bottom: 1px solid #2a2a3a;
+      display: flex;
+      align-items: center;
+      gap: 12px;
     }
     header h1 {
       font-size: 1.1rem;
       font-weight: 600;
       letter-spacing: -0.01em;
       color: #d0d0e8;
+      flex: 1;
     }
     header span { color: #6e6ef8; }
+    #jobs-toggle {
+      background: none;
+      border: 1px solid #35354a;
+      border-radius: 8px;
+      color: #9898c0;
+      cursor: pointer;
+      font-size: 0.78rem;
+      padding: 5px 10px;
+      transition: background 0.15s, color 0.15s;
+    }
+    #jobs-toggle:hover { background: #1e1e2e; color: #c8c8e8; }
+
+    /* ---- Main layout ---- */
+    #main {
+      display: flex;
+      width: 100%;
+      max-width: 1040px;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ---- Chat panel ---- */
+    #chat-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
 
     #chat-window {
       flex: 1;
-      width: 100%;
-      max-width: 760px;
       overflow-y: auto;
       padding: 24px 24px 8px;
       display: flex;
@@ -83,9 +113,18 @@
       border-bottom-left-radius: 4px;
     }
 
+    /* Agent badge shown under assistant bubbles */
+    .agent-badge {
+      align-self: flex-start;
+      font-size: 0.7rem;
+      color: #5050a0;
+      margin-top: -10px;
+      margin-left: 4px;
+      letter-spacing: 0.02em;
+    }
+
     #input-area {
       width: 100%;
-      max-width: 760px;
       padding: 16px 24px 28px;
       border-top: 1px solid #2a2a3a;
     }
@@ -135,31 +174,121 @@
     }
     #status-bar.connected { color: #44a060; }
     #status-bar.error     { color: #c04040; }
+
+    /* ---- Jobs sidebar ---- */
+    #jobs-sidebar {
+      width: 280px;
+      border-left: 1px solid #2a2a3a;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: width 0.25s ease;
+    }
+    #jobs-sidebar.collapsed { width: 0; border-left: none; }
+
+    #jobs-sidebar-header {
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid #2a2a3a;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #8888b8;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    #jobs-sidebar-header button {
+      background: none;
+      border: none;
+      color: #555580;
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+    }
+
+    #jobs-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .job-card {
+      background: #1e1e2e;
+      border: 1px solid #2e2e44;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 0.78rem;
+      color: #b0b0d0;
+    }
+    .job-card .job-task {
+      color: #d0d0f0;
+      margin-bottom: 4px;
+      font-weight: 500;
+    }
+    .job-card .job-meta { color: #555570; }
+
+    #jobs-empty {
+      color: #444460;
+      font-size: 0.8rem;
+      text-align: center;
+      margin-top: 24px;
+    }
+
+    #jobs-refresh {
+      margin: 8px 12px;
+      background: none;
+      border: 1px solid #35354a;
+      border-radius: 6px;
+      color: #7070a0;
+      cursor: pointer;
+      font-size: 0.75rem;
+      padding: 5px 10px;
+    }
+    #jobs-refresh:hover { background: #1e1e2e; color: #b0b0d0; }
   </style>
 </head>
 <body>
   <header>
     <h1>🚀 <span>Auto-GPT</span> Startup Operations</h1>
+    <button id="jobs-toggle" title="Toggle scheduled jobs panel">⏱ Jobs</button>
   </header>
 
-  <div id="chat-window">
-    <div class="bubble system">Session starting…</div>
-  </div>
+  <div id="main">
+    <!-- Chat panel -->
+    <div id="chat-panel">
+      <div id="chat-window">
+        <div class="bubble system">Session starting…</div>
+      </div>
 
-  <div id="input-area">
-    <div id="input-row">
-      <textarea id="message-input" rows="1"
-                placeholder="Ask me to build an app, tweet something, run a Meta ad…"></textarea>
-      <button id="send-btn" title="Send (Enter)">&#9658;</button>
+      <div id="input-area">
+        <div id="input-row">
+          <textarea id="message-input" rows="1"
+                    placeholder="Ask me to build an app, tweet something, run a Meta ad…"></textarea>
+          <button id="send-btn" title="Send (Enter)">&#9658;</button>
+        </div>
+        <div id="status-bar">Connecting…</div>
+      </div>
     </div>
-    <div id="status-bar">Connecting…</div>
+
+    <!-- Jobs sidebar -->
+    <div id="jobs-sidebar" class="collapsed">
+      <div id="jobs-sidebar-header">
+        <span>Scheduled Jobs</span>
+        <button id="jobs-close" title="Close">✕</button>
+      </div>
+      <button id="jobs-refresh">↻ Refresh</button>
+      <div id="jobs-list">
+        <div id="jobs-empty">No scheduled jobs.</div>
+      </div>
+    </div>
   </div>
 
   <script>
     // ------------------------------------------------------------------ //
     // Helpers
     // ------------------------------------------------------------------ //
-    // Generate a UUID v4 using the Web Crypto API for uniqueness and security.
     function generateId() {
       return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
         (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
@@ -176,10 +305,23 @@
     const input       = document.getElementById("message-input");
     const sendBtn     = document.getElementById("send-btn");
     const statusBar   = document.getElementById("status-bar");
+    const jobsSidebar = document.getElementById("jobs-sidebar");
+    const jobsList    = document.getElementById("jobs-list");
+    const jobsEmpty   = document.getElementById("jobs-empty");
 
     // ------------------------------------------------------------------ //
     // Chat window helpers
     // ------------------------------------------------------------------ //
+    const AGENT_LABELS = {
+      engineering : "🛠 engineering",
+      browser     : "🌐 browser",
+      twitter     : "🐦 twitter",
+      meta_ads    : "📣 meta ads",
+      slack       : "💬 slack",
+      email       : "✉️ email",
+      analytics   : "📊 analytics",
+    };
+
     function appendBubble(text, role) {
       const el = document.createElement("div");
       el.className = "bubble " + role;
@@ -189,9 +331,48 @@
       return el;
     }
 
+    function appendAssistantBubble(text, agent) {
+      appendBubble(text, "assistant");
+      if (agent && agent !== "none" && AGENT_LABELS[agent]) {
+        const badge = document.createElement("div");
+        badge.className = "agent-badge";
+        badge.textContent = AGENT_LABELS[agent];
+        chatWindow.appendChild(badge);
+      }
+      chatWindow.scrollTop = chatWindow.scrollHeight;
+    }
+
     function removeThinking() {
       const t = chatWindow.querySelector(".thinking");
       if (t) t.remove();
+    }
+
+    // ------------------------------------------------------------------ //
+    // Load prior history on connect
+    // ------------------------------------------------------------------ //
+    async function loadHistory() {
+      try {
+        const resp = await fetch(`/history/${sessionId}`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const messages = data.messages || [];
+        if (messages.length === 0) return;
+
+        // Remove the "Session starting…" placeholder
+        const placeholder = chatWindow.querySelector(".bubble.system");
+        if (placeholder) placeholder.remove();
+
+        for (const msg of messages) {
+          if (msg.role === "user") {
+            appendBubble(msg.content, "user");
+          } else if (msg.role === "assistant") {
+            appendAssistantBubble(msg.content, null);
+          }
+        }
+        appendBubble("— previous conversation restored —", "system");
+      } catch (_) {
+        // History load is best-effort; ignore errors.
+      }
     }
 
     // ------------------------------------------------------------------ //
@@ -210,11 +391,21 @@
         statusBar.textContent = "Connected · session " + sessionId.slice(0, 8) + "…";
         statusBar.className = "connected";
         sendBtn.disabled = false;
+        loadHistory();
       };
 
       ws.onmessage = (event) => {
         removeThinking();
-        appendBubble(event.data, "assistant");
+        let reply = event.data;
+        let agent = null;
+        try {
+          const parsed = JSON.parse(event.data);
+          reply = parsed.reply || event.data;
+          agent = parsed.agent || null;
+        } catch (_) {
+          // Plain-text fallback
+        }
+        appendAssistantBubble(reply, agent);
         sendBtn.disabled = false;
         input.focus();
       };
@@ -264,6 +455,50 @@
       input.style.height = "auto";
       input.style.height = Math.min(input.scrollHeight, 160) + "px";
     });
+
+    // ------------------------------------------------------------------ //
+    // Scheduled Jobs sidebar
+    // ------------------------------------------------------------------ //
+    async function loadJobs() {
+      try {
+        const resp = await fetch("/jobs");
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const jobs = data.jobs || [];
+        jobsList.innerHTML = "";
+        if (jobs.length === 0) {
+          jobsList.innerHTML = '<div id="jobs-empty">No scheduled jobs.</div>';
+          return;
+        }
+        for (const job of jobs) {
+          const card = document.createElement("div");
+          card.className = "job-card";
+          const task = document.createElement("div");
+          task.className = "job-task";
+          task.textContent = job.task || job.job_id;
+          const meta = document.createElement("div");
+          meta.className = "job-meta";
+          meta.textContent = `${job.trigger_type || ""} · ${job.job_id}`;
+          card.appendChild(task);
+          card.appendChild(meta);
+          jobsList.appendChild(card);
+        }
+      } catch (_) {
+        // Best-effort
+      }
+    }
+
+    document.getElementById("jobs-toggle").addEventListener("click", () => {
+      const collapsed = jobsSidebar.classList.toggle("collapsed");
+      if (!collapsed) loadJobs();
+    });
+
+    document.getElementById("jobs-close").addEventListener("click", () => {
+      jobsSidebar.classList.add("collapsed");
+    });
+
+    document.getElementById("jobs-refresh").addEventListener("click", loadJobs);
   </script>
 </body>
 </html>
+

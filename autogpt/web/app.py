@@ -5,13 +5,18 @@ Exposes the following endpoints:
 * ``GET /``                        — serves the single-page chat UI
 * ``GET /health``                  — JSON liveness probe
 * ``POST /chat``                   — REST chat (session_id + message → reply)
-* ``WS  /ws/{session_id}``         — WebSocket chat
+* ``WS  /ws/{session_id}``         — WebSocket chat (replies as JSON)
 * ``GET /sessions``                — list active in-memory sessions
 * ``GET /history/{session_id}``    — return conversation history for a session
 * ``DELETE /sessions/{session_id}``— clear (reset) a session's history
 * ``POST /jobs``                   — schedule a recurring task
 * ``GET /jobs``                    — list all scheduled jobs
 * ``DELETE /jobs/{job_id}``        — remove a scheduled job
+
+**Authentication** — when ``WEB_API_KEY`` is set in ``.env`` all endpoints
+except ``GET /``, ``GET /health``, and ``/static/*`` require the header
+``X-API-Key: <key>``.  WebSocket connections are exempt (they originate from
+the same-origin UI page).
 
 Usage (programmatic)::
 
@@ -39,8 +44,8 @@ from autogpt.orchestrator import Orchestrator
 from autogpt.utils.logger import get_logger
 
 try:
-    from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-    from fastapi.responses import HTMLResponse, JSONResponse
+    from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+    from fastapi.responses import HTMLResponse, JSONResponse, Response
     from fastapi.staticfiles import StaticFiles
     from pydantic import BaseModel
 
@@ -95,6 +100,36 @@ def create_app(config: Config) -> Any:
     # Scheduler instance (started in lifespan when enabled).
     _scheduler: Any = None
 
+    # ------------------------------------------------------------------ #
+    # API key middleware (opt-in: only active when WEB_API_KEY is set)
+    # ------------------------------------------------------------------ #
+
+    _UNPROTECTED_PREFIXES = ("/", "/health", "/static")
+
+    async def _check_api_key(request: Request) -> Response | None:
+        """Return a 401 Response when the request lacks a valid API key.
+
+        Returns ``None`` when access is allowed so the middleware can call
+        through to the next handler.
+        """
+        if not config.web_api_key:
+            return None  # auth disabled
+
+        path = request.url.path
+        # Allow exact root "/" and anything under unprotected prefixes.
+        for prefix in _UNPROTECTED_PREFIXES:
+            if path == prefix or path.startswith(prefix + "/"):
+                return None
+
+        provided = request.headers.get("X-API-Key", "")
+        if provided == config.web_api_key:
+            return None
+
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Missing or invalid X-API-Key header."},
+        )
+
     def _get_orchestrator(session_id: str) -> Orchestrator:
         if session_id not in _sessions:
             _sessions[session_id] = Orchestrator(config, session_id=session_id)
@@ -126,9 +161,16 @@ def create_app(config: Config) -> Any:
     app = FastAPI(
         title="Auto-GPT Startup Operations Platform",
         description="AI-powered cofounder chat interface.",
-        version="0.2.0",
+        version="0.3.0",
         lifespan=lifespan,
     )
+
+    @app.middleware("http")
+    async def api_key_middleware(request: Request, call_next: Any) -> Response:
+        denial = await _check_api_key(request)
+        if denial is not None:
+            return denial
+        return await call_next(request)
 
     # ------------------------------------------------------------------ #
     # Static files (index.html lives in autogpt/web/static/)
@@ -248,9 +290,9 @@ def create_app(config: Config) -> Any:
     async def websocket_chat(websocket: WebSocket, session_id: str) -> None:
         """Stream chat messages over a WebSocket connection.
 
-        The client sends plain text messages; the server replies with plain
-        text.  This keeps the protocol dead-simple and compatible with the
-        built-in browser ``WebSocket`` API.
+        The client sends plain text messages; the server replies with a JSON
+        object ``{"reply": "…", "agent": "…"}`` so the frontend can display
+        an agent badge alongside each assistant bubble.
         """
         await websocket.accept()
         log.info("WebSocket connected  session=%s", session_id)
@@ -262,8 +304,11 @@ def create_app(config: Config) -> Any:
                 if not message.strip():
                     continue
                 log.info("WS  session=%s  msg=%s", session_id, message[:60])
+                import json as _json
                 reply = orc.chat(message)
-                await websocket.send_text(reply)
+                await websocket.send_text(
+                    _json.dumps({"reply": reply, "agent": orc.last_agent})
+                )
         except WebSocketDisconnect:
             log.info("WebSocket disconnected  session=%s", session_id)
 

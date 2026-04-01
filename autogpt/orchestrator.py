@@ -35,6 +35,8 @@ from autogpt.agents.browser_agent import BrowserAgent
 from autogpt.agents.twitter_agent import TwitterAgent
 from autogpt.agents.meta_ads_agent import MetaAdsAgent
 from autogpt.agents.slack_agent import SlackAgent
+from autogpt.agents.email_agent import EmailAgent
+from autogpt.agents.analytics_agent import AnalyticsAgent
 from autogpt.utils.logger import get_logger
 
 _ROUTER_SYSTEM_PROMPT = """\
@@ -46,11 +48,13 @@ specialized agents:
   - twitter      : manages the company Twitter/X account
   - meta_ads     : creates and manages Meta (Facebook/Instagram) ad campaigns
   - slack        : sends messages and notifications to a Slack workspace
+  - email        : sends transactional and marketing emails
+  - analytics    : collects metrics and generates weekly operations reports
   - none         : answer directly from your own knowledge (no agent needed)
 
 When the user sends a message, reply with a JSON object:
 {
-  "agent": "<engineering|browser|twitter|meta_ads|slack|none>",
+  "agent": "<engineering|browser|twitter|meta_ads|slack|email|analytics|none>",
   "task": "<the exact sub-task to pass to the chosen agent, rephrased if needed>",
   "direct_reply": "<non-empty only when agent is 'none'; your direct answer>"
 }
@@ -91,6 +95,11 @@ class Orchestrator:
         self._twitter: TwitterAgent | None = None
         self._meta: MetaAdsAgent | None = None
         self._slack: SlackAgent | None = None
+        self._email: EmailAgent | None = None
+        self._analytics: AnalyticsAgent | None = None
+
+        # Name of the last agent invoked — exposed for callers (e.g. web UI).
+        self.last_agent: str = "none"
 
         # Conversation history sent with every OpenAI call for context.
         # Loaded from Postgres if a DATABASE_URL is configured.
@@ -127,8 +136,10 @@ class Orchestrator:
         self._log.info("Routing to agent: %s", agent_name)
 
         if agent_name == "none" or not task:
+            self.last_agent = "none"
             reply = direct_reply or "I'm not sure how to help with that."
         else:
+            self.last_agent = agent_name
             result = self._dispatch(agent_name, task)
             reply = self._summarise(agent_name, task, result)
             # Optional Slack notification when a real agent completes a task.
@@ -186,6 +197,10 @@ class Orchestrator:
                 return {"ad_copy": copy, "status": "copy_generated"}
             if agent_name == "slack":
                 return self._get_slack().compose_and_send(task)
+            if agent_name == "email":
+                return self._get_email().compose_and_send(task)
+            if agent_name == "analytics":
+                return self._get_analytics().run(task)
         except Exception as exc:
             self._log.error("Agent '%s' raised an error: %s", agent_name, exc)
             return {"error": str(exc)}
@@ -305,4 +320,14 @@ class Orchestrator:
         if self._slack is None:
             self._slack = SlackAgent(self._cfg)
         return self._slack
+
+    def _get_email(self) -> EmailAgent:
+        if self._email is None:
+            self._email = EmailAgent(self._cfg)
+        return self._email
+
+    def _get_analytics(self) -> AnalyticsAgent:
+        if self._analytics is None:
+            self._analytics = AnalyticsAgent(self._cfg)
+        return self._analytics
 
