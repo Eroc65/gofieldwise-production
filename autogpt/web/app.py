@@ -1,11 +1,17 @@
 """FastAPI + WebSocket chat backend.
 
-Exposes two endpoints:
+Exposes the following endpoints:
 
-* ``GET /``          — serves the single-page chat UI (``static/index.html``)
-* ``GET /health``    — JSON liveness probe
-* ``POST /chat``     — REST JSON endpoint (session_id + message → reply)
-* ``WS  /ws/{session_id}`` — WebSocket endpoint (text frames in, text frames out)
+* ``GET /``                        — serves the single-page chat UI
+* ``GET /health``                  — JSON liveness probe
+* ``POST /chat``                   — REST chat (session_id + message → reply)
+* ``WS  /ws/{session_id}``         — WebSocket chat
+* ``GET /sessions``                — list active in-memory sessions
+* ``GET /history/{session_id}``    — return conversation history for a session
+* ``DELETE /sessions/{session_id}``— clear (reset) a session's history
+* ``POST /jobs``                   — schedule a recurring task
+* ``GET /jobs``                    — list all scheduled jobs
+* ``DELETE /jobs/{job_id}``        — remove a scheduled job
 
 Usage (programmatic)::
 
@@ -24,6 +30,7 @@ Usage (CLI via ``autogpt --web``)::
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +53,15 @@ try:
     class ChatResponse(BaseModel):
         session_id: str
         reply: str
+
+    class JobRequest(BaseModel):
+        task: str
+        trigger_type: str
+        trigger_params: dict[str, Any] = {}
+        job_id: str | None = None
+
+    class JobResponse(BaseModel):
+        job_id: str
 
 except ImportError:  # pragma: no cover
     _FASTAPI_AVAILABLE = False
@@ -76,15 +92,42 @@ def create_app(config: Config) -> Any:
     # One Orchestrator per session, keyed by session_id.
     _sessions: dict[str, Orchestrator] = {}
 
+    # Scheduler instance (started in lifespan when enabled).
+    _scheduler: Any = None
+
     def _get_orchestrator(session_id: str) -> Orchestrator:
         if session_id not in _sessions:
             _sessions[session_id] = Orchestrator(config, session_id=session_id)
         return _sessions[session_id]
 
+    # ------------------------------------------------------------------ #
+    # Lifespan — start/stop the background scheduler
+    # ------------------------------------------------------------------ #
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):  # type: ignore[type-arg]
+        nonlocal _scheduler
+        if config.scheduler_enabled:
+            try:
+                from autogpt.scheduler import TaskScheduler
+                _scheduler = TaskScheduler(config)
+                _scheduler.start()
+                log.info("Background task scheduler started.")
+            except Exception as exc:
+                log.warning("Could not start scheduler: %s", exc)
+        yield
+        if _scheduler is not None:
+            try:
+                _scheduler.shutdown(wait=False)
+                log.info("Background task scheduler stopped.")
+            except Exception:
+                pass
+
     app = FastAPI(
         title="Auto-GPT Startup Operations Platform",
         description="AI-powered cofounder chat interface.",
-        version="0.1.0",
+        version="0.2.0",
+        lifespan=lifespan,
     )
 
     # ------------------------------------------------------------------ #
@@ -116,6 +159,88 @@ def create_app(config: Config) -> Any:
         return ChatResponse(session_id=req.session_id, reply=reply)
 
     # ------------------------------------------------------------------ #
+    # Session management endpoints
+    # ------------------------------------------------------------------ #
+
+    @app.get("/sessions")
+    async def list_sessions() -> JSONResponse:
+        """List all active in-memory sessions."""
+        return JSONResponse(
+            {
+                "sessions": [
+                    {"session_id": sid, "history_length": len(orc._history)}
+                    for sid, orc in _sessions.items()
+                ]
+            }
+        )
+
+    @app.get("/history/{session_id}")
+    async def get_history(session_id: str) -> JSONResponse:
+        """Return the conversation history for a session.
+
+        Creates a new (empty) session if the ID is not yet known.
+        """
+        orc = _get_orchestrator(session_id)
+        # Exclude the system prompt from the public response.
+        messages = [m for m in orc._history if m.get("role") != "system"]
+        return JSONResponse({"session_id": session_id, "messages": messages})
+
+    @app.delete("/sessions/{session_id}")
+    async def reset_session(session_id: str) -> JSONResponse:
+        """Clear the conversation history for a session (keeps the system prompt)."""
+        orc = _get_orchestrator(session_id)
+        orc.reset()
+        log.info("Session %s reset via DELETE /sessions.", session_id)
+        return JSONResponse({"session_id": session_id, "status": "reset"})
+
+    # ------------------------------------------------------------------ #
+    # Scheduler endpoints
+    # ------------------------------------------------------------------ #
+
+    @app.post("/jobs", response_model=JobResponse)
+    async def create_job(req: JobRequest) -> JobResponse:
+        """Schedule a new recurring task.
+
+        Example body::
+
+            {
+              "task": "Post a morning motivation tweet",
+              "trigger_type": "cron",
+              "trigger_params": {"hour": 9, "minute": 0}
+            }
+        """
+        if _scheduler is None:
+            return JSONResponse(  # type: ignore[return-value]
+                status_code=503,
+                content={"detail": "Scheduler is not running."},
+            )
+        job_id = _scheduler.add_job(
+            task=req.task,
+            trigger_type=req.trigger_type,
+            trigger_params=req.trigger_params,
+            job_id=req.job_id,
+        )
+        return JobResponse(job_id=job_id)
+
+    @app.get("/jobs")
+    async def list_jobs() -> JSONResponse:
+        """Return all scheduled jobs."""
+        if _scheduler is None:
+            return JSONResponse({"jobs": []})
+        return JSONResponse({"jobs": _scheduler.list_jobs()})
+
+    @app.delete("/jobs/{job_id}")
+    async def delete_job(job_id: str) -> JSONResponse:
+        """Remove a scheduled job."""
+        if _scheduler is None:
+            return JSONResponse(  # type: ignore[return-value]
+                status_code=503,
+                content={"detail": "Scheduler is not running."},
+            )
+        _scheduler.remove_job(job_id)
+        return JSONResponse({"job_id": job_id, "status": "removed"})
+
+    # ------------------------------------------------------------------ #
     # WebSocket endpoint
     # ------------------------------------------------------------------ #
 
@@ -143,3 +268,4 @@ def create_app(config: Config) -> Any:
             log.info("WebSocket disconnected  session=%s", session_id)
 
     return app
+

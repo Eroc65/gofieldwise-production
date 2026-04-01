@@ -34,6 +34,7 @@ from autogpt.agents.engineering_agent import EngineeringAgent
 from autogpt.agents.browser_agent import BrowserAgent
 from autogpt.agents.twitter_agent import TwitterAgent
 from autogpt.agents.meta_ads_agent import MetaAdsAgent
+from autogpt.agents.slack_agent import SlackAgent
 from autogpt.utils.logger import get_logger
 
 _ROUTER_SYSTEM_PROMPT = """\
@@ -44,11 +45,12 @@ specialized agents:
   - browser      : automates browser tasks (scraping, form filling, etc.)
   - twitter      : manages the company Twitter/X account
   - meta_ads     : creates and manages Meta (Facebook/Instagram) ad campaigns
+  - slack        : sends messages and notifications to a Slack workspace
   - none         : answer directly from your own knowledge (no agent needed)
 
 When the user sends a message, reply with a JSON object:
 {
-  "agent": "<engineering|browser|twitter|meta_ads|none>",
+  "agent": "<engineering|browser|twitter|meta_ads|slack|none>",
   "task": "<the exact sub-task to pass to the chosen agent, rephrased if needed>",
   "direct_reply": "<non-empty only when agent is 'none'; your direct answer>"
 }
@@ -88,6 +90,7 @@ class Orchestrator:
         self._browser: BrowserAgent | None = None
         self._twitter: TwitterAgent | None = None
         self._meta: MetaAdsAgent | None = None
+        self._slack: SlackAgent | None = None
 
         # Conversation history sent with every OpenAI call for context.
         # Loaded from Postgres if a DATABASE_URL is configured.
@@ -128,6 +131,9 @@ class Orchestrator:
         else:
             result = self._dispatch(agent_name, task)
             reply = self._summarise(agent_name, task, result)
+            # Optional Slack notification when a real agent completes a task.
+            if agent_name != "slack":
+                self._get_slack().notify_task_result(agent_name, task, reply)
 
         self._history.append({"role": "assistant", "content": reply})
         self._log.info("Assistant: %s", reply[:120])
@@ -170,10 +176,16 @@ class Orchestrator:
                     return {"tweets": self._get_twitter().search(task)}
                 if any(kw in task.lower() for kw in ("timeline", "feed")):
                     return {"tweets": self._get_twitter().get_timeline()}
+                if any(kw in task.lower() for kw in ("like",)):
+                    return self._get_twitter().like(task.split()[-1])
+                if any(kw in task.lower() for kw in ("retweet",)):
+                    return self._get_twitter().retweet(task.split()[-1])
                 return self._get_twitter().compose_and_post(task)
             if agent_name == "meta_ads":
                 copy = self._get_meta().generate_ad_copy(task)
                 return {"ad_copy": copy, "status": "copy_generated"}
+            if agent_name == "slack":
+                return self._get_slack().compose_and_send(task)
         except Exception as exc:
             self._log.error("Agent '%s' raised an error: %s", agent_name, exc)
             return {"error": str(exc)}
@@ -288,4 +300,9 @@ class Orchestrator:
         if self._meta is None:
             self._meta = MetaAdsAgent(self._cfg)
         return self._meta
+
+    def _get_slack(self) -> SlackAgent:
+        if self._slack is None:
+            self._slack = SlackAgent(self._cfg)
+        return self._slack
 

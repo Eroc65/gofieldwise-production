@@ -17,6 +17,7 @@ setup(
         "database": ["psycopg2-binary>=2.9.9"],
         "browser": ["playwright>=1.42.0"],
         "web": ["fastapi>=0.111.0", "uvicorn[standard]>=0.29.0", "websockets>=12.0"],
+        "scheduler": ["apscheduler>=3.10.4"],
         "all": [
             "tweepy>=4.14.0",
             "facebook-sdk>=3.1.0",
@@ -25,6 +26,7 @@ setup(
             "fastapi>=0.111.0",
             "uvicorn[standard]>=0.29.0",
             "websockets>=12.0",
+            "apscheduler>=3.10.4",
         ],
     },
     entry_points={

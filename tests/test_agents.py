@@ -460,6 +460,330 @@ class TestWebApp(unittest.TestCase):
         self.assertEqual(r2, "Second")
 
 
+# ======================================================================
+# SlackAgent tests
+# ======================================================================
+
+class TestSlackAgent(unittest.TestCase):
+    def setUp(self):
+        self.cfg = _make_config()
+        self.cfg.slack_webhook_url = "https://hooks.slack.com/test"
+        self.cfg.slack_bot_token = "xoxb-test"
+        self.cfg.slack_default_channel = "general"
+
+    @patch("autogpt.agents.slack_agent.requests.post")
+    def test_send_notification_success(self, mock_post):
+        mock_post.return_value = MagicMock(ok=True, status_code=200, text="ok")
+        from autogpt.agents.slack_agent import SlackAgent
+        agent = SlackAgent(self.cfg)
+        result = agent.send_notification("Hello Slack!")
+        self.assertTrue(result["ok"])
+        mock_post.assert_called_once_with(
+            "https://hooks.slack.com/test",
+            json={"text": "Hello Slack!"},
+            timeout=15,
+        )
+
+    @patch("autogpt.agents.slack_agent.requests.post")
+    def test_send_notification_failure(self, mock_post):
+        mock_post.return_value = MagicMock(ok=False, status_code=400, text="invalid_payload")
+        from autogpt.agents.slack_agent import SlackAgent
+        agent = SlackAgent(self.cfg)
+        result = agent.send_notification("Boom")
+        self.assertFalse(result["ok"])
+        self.assertIn("error", result)
+
+    def test_send_notification_raises_without_webhook(self):
+        self.cfg.slack_webhook_url = ""
+        self.cfg.slack_bot_token = ""
+        from autogpt.agents.slack_agent import SlackAgent
+        agent = SlackAgent(self.cfg)
+        with self.assertRaises(RuntimeError):
+            agent.send_notification("test")
+
+    @patch("autogpt.agents.slack_agent.requests.post")
+    def test_post_message_uses_api_when_bot_token_set(self, mock_post):
+        mock_post.return_value = MagicMock(
+            ok=True, status_code=200,
+            json=lambda: {"ok": True, "ts": "12345.6789"},
+        )
+        mock_post.return_value.raise_for_status = MagicMock()
+        from autogpt.agents.slack_agent import SlackAgent
+        agent = SlackAgent(self.cfg)
+        result = agent.post_message("Hello channel!", channel="engineering")
+        self.assertTrue(result["ok"])
+        args, kwargs = mock_post.call_args
+        self.assertIn("chat.postMessage", args[0])
+
+    @patch("autogpt.agents.slack_agent.requests.post")
+    def test_post_message_falls_back_to_webhook(self, mock_post):
+        """With no bot token but a webhook URL, falls back to the webhook."""
+        self.cfg.slack_bot_token = ""
+        mock_post.return_value = MagicMock(ok=True, status_code=200, text="ok")
+        from autogpt.agents.slack_agent import SlackAgent
+        agent = SlackAgent(self.cfg)
+        result = agent.post_message("Fallback message")
+        self.assertTrue(result["ok"])
+        # Should have called the webhook URL
+        mock_post.assert_called_once()
+        self.assertIn("hooks.slack.com", mock_post.call_args[0][0])
+
+    @patch("autogpt.agents.slack_agent.openai")
+    @patch("autogpt.agents.slack_agent.requests.post")
+    def test_compose_and_send(self, mock_post, mock_openai):
+        mock_post.return_value = MagicMock(
+            ok=True, status_code=200,
+            json=lambda: {"ok": True},
+        )
+        mock_post.return_value.raise_for_status = MagicMock()
+        mock_choice = MagicMock()
+        mock_choice.choices = [MagicMock(message=MagicMock(content="We just launched 🚀"))]
+        mock_openai.chat.completions.create.return_value = mock_choice
+
+        from autogpt.agents.slack_agent import SlackAgent
+        agent = SlackAgent(self.cfg)
+        result = agent.compose_and_send("announce our product launch")
+        self.assertIn("ok", result)
+
+    @patch("autogpt.agents.slack_agent.requests.post")
+    def test_notify_task_result_noop_when_unconfigured(self, mock_post):
+        self.cfg.slack_webhook_url = ""
+        self.cfg.slack_bot_token = ""
+        from autogpt.agents.slack_agent import SlackAgent
+        agent = SlackAgent(self.cfg)
+        result = agent.notify_task_result("engineering", "build an app", "Done!")
+        self.assertFalse(result.get("ok"))
+        mock_post.assert_not_called()
+
+
+# ======================================================================
+# Orchestrator Slack integration tests
+# ======================================================================
+
+class TestOrchestratorSlackIntegration(unittest.TestCase):
+    def setUp(self):
+        self.cfg = _make_config()
+        self.cfg.database_url = ""  # disable DB
+        self.cfg.slack_webhook_url = ""
+        self.cfg.slack_bot_token = ""
+
+    @patch("autogpt.orchestrator.openai")
+    def test_slack_agent_routed_correctly(self, mock_openai):
+        routing = {"agent": "slack", "task": "announce our launch", "direct_reply": ""}
+        slack_reply = {"agent": "none", "task": "", "direct_reply": "Message sent!"}
+        mock_openai.chat.completions.create.side_effect = [
+            MagicMock(choices=[MagicMock(message=MagicMock(content=json.dumps(routing)))]),
+            # summarise call
+            MagicMock(choices=[MagicMock(message=MagicMock(content="Slack message sent."))]),
+        ]
+
+        from autogpt.orchestrator import Orchestrator
+        from autogpt.agents.slack_agent import SlackAgent
+
+        with patch.object(SlackAgent, "compose_and_send", return_value={"ok": True}) as mock_send:
+            orc = Orchestrator(self.cfg)
+            reply = orc.chat("Send a Slack message about our launch")
+            mock_send.assert_called_once()
+
+
+# ======================================================================
+# TaskScheduler tests
+# ======================================================================
+
+class TestTaskScheduler(unittest.TestCase):
+    def setUp(self):
+        self.cfg = _make_config()
+        self.cfg.database_url = ""  # no real DB in tests
+        self.cfg.scheduler_enabled = True
+
+    def _make_scheduler(self):
+        try:
+            from autogpt.scheduler import TaskScheduler
+        except ImportError:
+            self.skipTest("apscheduler not installed")
+        return TaskScheduler(self.cfg)
+
+    def test_scheduler_starts_and_stops(self):
+        sched = self._make_scheduler()
+        sched.start()
+        self.assertTrue(sched.running)
+        sched.shutdown(wait=False)
+        self.assertFalse(sched.running)
+
+    def test_add_and_list_job_interval(self):
+        sched = self._make_scheduler()
+        sched.start()
+        try:
+            jid = sched.add_job(
+                task="Check ad performance",
+                trigger_type="interval",
+                trigger_params={"hours": 24},
+            )
+            self.assertIsNotNone(jid)
+            jobs = sched.list_jobs()
+            job_ids = [j["job_id"] for j in jobs]
+            self.assertIn(jid, job_ids)
+        finally:
+            sched.shutdown(wait=False)
+
+    def test_remove_job(self):
+        sched = self._make_scheduler()
+        sched.start()
+        try:
+            jid = sched.add_job(
+                task="Tweet daily update",
+                trigger_type="cron",
+                trigger_params={"hour": 8},
+            )
+            sched.remove_job(jid)
+            jobs = sched.list_jobs()
+            job_ids = [j["job_id"] for j in jobs]
+            self.assertNotIn(jid, job_ids)
+        finally:
+            sched.shutdown(wait=False)
+
+    def test_add_job_with_explicit_id(self):
+        sched = self._make_scheduler()
+        sched.start()
+        try:
+            jid = sched.add_job(
+                task="Send weekly report",
+                trigger_type="cron",
+                trigger_params={"day_of_week": "mon", "hour": 9},
+                job_id="weekly-report",
+            )
+            self.assertEqual(jid, "weekly-report")
+        finally:
+            sched.shutdown(wait=False)
+
+    def test_unknown_trigger_raises(self):
+        sched = self._make_scheduler()
+        sched.start()
+        try:
+            with self.assertRaises(ValueError):
+                sched.add_job(
+                    task="Bad trigger",
+                    trigger_type="unknown",
+                    trigger_params={},
+                )
+        finally:
+            sched.shutdown(wait=False)
+
+    @patch("autogpt.scheduler.TaskScheduler._persist_job")
+    @patch("autogpt.scheduler.TaskScheduler._delete_job")
+    def test_db_methods_called_when_database_url_set(self, mock_delete, mock_persist):
+        self.cfg.database_url = "postgresql://u:p@h/db"
+        sched = self._make_scheduler()
+        sched._init_jobs_table = MagicMock()
+        sched._reload_jobs = MagicMock()
+        sched.start()
+        try:
+            jid = sched.add_job(
+                task="persist test",
+                trigger_type="interval",
+                trigger_params={"minutes": 30},
+            )
+            mock_persist.assert_called_once()
+            sched.remove_job(jid)
+            mock_delete.assert_called_once_with(jid)
+        finally:
+            sched.shutdown(wait=False)
+
+
+# ======================================================================
+# Web app — new endpoints tests
+# ======================================================================
+
+class TestWebAppNewEndpoints(unittest.TestCase):
+    def setUp(self):
+        self.cfg = _make_config()
+        self.cfg.database_url = ""
+        self.cfg.scheduler_enabled = False  # disable scheduler in tests
+
+    def _make_client(self):
+        try:
+            from fastapi.testclient import TestClient
+        except ImportError:
+            self.skipTest("fastapi not installed")
+        from autogpt.web.app import create_app
+        return TestClient(create_app(self.cfg))
+
+    def test_list_sessions_empty(self):
+        client = self._make_client()
+        resp = client.get("/sessions")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("sessions", resp.json())
+
+    @patch("autogpt.orchestrator.openai")
+    def test_list_sessions_after_chat(self, mock_openai):
+        routing = {"agent": "none", "task": "", "direct_reply": "Hi!"}
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content=json.dumps(routing)))]
+        )
+        client = self._make_client()
+        client.post("/chat", json={"session_id": "sess-A", "message": "hello"})
+        resp = client.get("/sessions")
+        sessions = resp.json()["sessions"]
+        self.assertTrue(any(s["session_id"] == "sess-A" for s in sessions))
+
+    @patch("autogpt.orchestrator.openai")
+    def test_get_history(self, mock_openai):
+        routing = {"agent": "none", "task": "", "direct_reply": "Done!"}
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content=json.dumps(routing)))]
+        )
+        client = self._make_client()
+        client.post("/chat", json={"session_id": "hist-sess", "message": "Do something"})
+        resp = client.get("/history/hist-sess")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["session_id"], "hist-sess")
+        # Should have user + assistant turns (no system)
+        roles = [m["role"] for m in data["messages"]]
+        self.assertIn("user", roles)
+        self.assertIn("assistant", roles)
+        self.assertNotIn("system", roles)
+
+    @patch("autogpt.orchestrator.openai")
+    def test_reset_session(self, mock_openai):
+        routing = {"agent": "none", "task": "", "direct_reply": "Ok!"}
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content=json.dumps(routing)))]
+        )
+        client = self._make_client()
+        client.post("/chat", json={"session_id": "reset-sess", "message": "hello"})
+        resp = client.delete("/sessions/reset-sess")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["status"], "reset")
+        # History should be empty after reset
+        hist_resp = client.get("/history/reset-sess")
+        self.assertEqual(len(hist_resp.json()["messages"]), 0)
+
+    def test_list_jobs_when_scheduler_disabled(self):
+        """GET /jobs returns empty list when scheduler is off."""
+        client = self._make_client()
+        resp = client.get("/jobs")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), {"jobs": []})
+
+    def test_create_job_when_scheduler_disabled_returns_503(self):
+        client = self._make_client()
+        resp = client.post(
+            "/jobs",
+            json={
+                "task": "test task",
+                "trigger_type": "interval",
+                "trigger_params": {"hours": 1},
+            },
+        )
+        self.assertEqual(resp.status_code, 503)
+
+    def test_delete_job_when_scheduler_disabled_returns_503(self):
+        client = self._make_client()
+        resp = client.delete("/jobs/fake-job-id")
+        self.assertEqual(resp.status_code, 503)
+
+
 if __name__ == "__main__":
     unittest.main()
 

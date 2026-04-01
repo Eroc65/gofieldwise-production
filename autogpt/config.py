@@ -58,6 +58,18 @@ class Config:
     meta_ad_account_id: str = os.getenv("META_AD_ACCOUNT_ID", "")
 
     # ------------------------------------------------------------------ #
+    # Slack
+    # ------------------------------------------------------------------ #
+    slack_webhook_url: str = os.getenv("SLACK_WEBHOOK_URL", "")
+    slack_bot_token: str = os.getenv("SLACK_BOT_TOKEN", "")
+    slack_default_channel: str = os.getenv("SLACK_DEFAULT_CHANNEL", "general")
+
+    # ------------------------------------------------------------------ #
+    # Scheduler
+    # ------------------------------------------------------------------ #
+    scheduler_enabled: bool = os.getenv("SCHEDULER_ENABLED", "true").lower() == "true"
+
+    # ------------------------------------------------------------------ #
     # Web UI
     # ------------------------------------------------------------------ #
     web_port: int = int(os.getenv("WEB_PORT", "8000"))
