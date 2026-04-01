@@ -7,6 +7,8 @@ from .meta_ads_agent import MetaAdsAgent
 from .slack_agent import SlackAgent
 from .email_agent import EmailAgent
 from .analytics_agent import AnalyticsAgent
+from .customer_support_agent import CustomerSupportAgent
+from .content_agent import ContentAgent
 
 __all__ = [
     "EngineeringAgent",
@@ -16,4 +18,6 @@ __all__ = [
     "SlackAgent",
     "EmailAgent",
     "AnalyticsAgent",
+    "CustomerSupportAgent",
+    "ContentAgent",
 ]

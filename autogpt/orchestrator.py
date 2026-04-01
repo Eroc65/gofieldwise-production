@@ -37,24 +37,28 @@ from autogpt.agents.meta_ads_agent import MetaAdsAgent
 from autogpt.agents.slack_agent import SlackAgent
 from autogpt.agents.email_agent import EmailAgent
 from autogpt.agents.analytics_agent import AnalyticsAgent
+from autogpt.agents.customer_support_agent import CustomerSupportAgent
+from autogpt.agents.content_agent import ContentAgent
 from autogpt.utils.logger import get_logger
 
 _ROUTER_SYSTEM_PROMPT = """\
 You are the AI cofounder and operator of a startup.  You coordinate a team of
 specialized agents:
 
-  - engineering  : builds & deploys web apps (GitHub + Render + Postgres)
-  - browser      : automates browser tasks (scraping, form filling, etc.)
-  - twitter      : manages the company Twitter/X account
-  - meta_ads     : creates and manages Meta (Facebook/Instagram) ad campaigns
-  - slack        : sends messages and notifications to a Slack workspace
-  - email        : sends transactional and marketing emails
-  - analytics    : collects metrics and generates weekly operations reports
-  - none         : answer directly from your own knowledge (no agent needed)
+  - engineering       : builds & deploys web apps (GitHub + Render + Postgres)
+  - browser           : automates browser tasks (scraping, form filling, etc.)
+  - twitter           : manages the company Twitter/X account
+  - meta_ads          : creates and manages Meta (Facebook/Instagram) ad campaigns
+  - slack             : sends messages and notifications to a Slack workspace
+  - email             : sends transactional and marketing emails
+  - analytics         : collects metrics and generates weekly operations reports
+  - customer_support  : answers customer questions using a knowledge base, logs tickets
+  - content           : writes blog posts, landing pages, social content, email campaigns
+  - none              : answer directly from your own knowledge (no agent needed)
 
 When the user sends a message, reply with a JSON object:
 {
-  "agent": "<engineering|browser|twitter|meta_ads|slack|email|analytics|none>",
+  "agent": "<engineering|browser|twitter|meta_ads|slack|email|analytics|customer_support|content|none>",
   "task": "<the exact sub-task to pass to the chosen agent, rephrased if needed>",
   "direct_reply": "<non-empty only when agent is 'none'; your direct answer>"
 }
@@ -97,6 +101,8 @@ class Orchestrator:
         self._slack: SlackAgent | None = None
         self._email: EmailAgent | None = None
         self._analytics: AnalyticsAgent | None = None
+        self._customer_support: CustomerSupportAgent | None = None
+        self._content: ContentAgent | None = None
 
         # Name of the last agent invoked — exposed for callers (e.g. web UI).
         self.last_agent: str = "none"
@@ -201,6 +207,10 @@ class Orchestrator:
                 return self._get_email().compose_and_send(task)
             if agent_name == "analytics":
                 return self._get_analytics().run(task)
+            if agent_name == "customer_support":
+                return self._get_customer_support().run(task)
+            if agent_name == "content":
+                return self._get_content().run(task)
         except Exception as exc:
             self._log.error("Agent '%s' raised an error: %s", agent_name, exc)
             return {"error": str(exc)}
@@ -330,4 +340,14 @@ class Orchestrator:
         if self._analytics is None:
             self._analytics = AnalyticsAgent(self._cfg)
         return self._analytics
+
+    def _get_customer_support(self) -> CustomerSupportAgent:
+        if self._customer_support is None:
+            self._customer_support = CustomerSupportAgent(self._cfg)
+        return self._customer_support
+
+    def _get_content(self) -> ContentAgent:
+        if self._content is None:
+            self._content = ContentAgent(self._cfg)
+        return self._content
 

@@ -1174,5 +1174,362 @@ class TestWebAppWebSocketJson(unittest.TestCase):
         self.assertEqual(data["agent"], "none")
 
 
+
+
+# ======================================================================
+# CustomerSupportAgent tests
+# ======================================================================
+
+class TestCustomerSupportAgent(unittest.TestCase):
+    def setUp(self):
+        self.cfg = _make_config()
+        self.cfg.database_url = ""  # in-memory mode for all tests
+        self.cfg.slack_webhook_url = ""
+        self.cfg.slack_bot_token = ""
+        self.cfg.email_sendgrid_api_key = ""
+        self.cfg.email_smtp_host = ""
+        self.cfg.email_default_to = ""
+
+    def _make_agent(self):
+        from autogpt.agents.customer_support_agent import CustomerSupportAgent
+        return CustomerSupportAgent(self.cfg)
+
+    def test_add_article_in_memory(self):
+        agent = self._make_agent()
+        result = agent.add_article("How to reset password", "Go to settings and click reset.")
+        self.assertIn("id", result)
+        self.assertEqual(result["title"], "How to reset password")
+        self.assertIn("created", result["status"])
+
+    def test_list_articles_empty(self):
+        agent = self._make_agent()
+        articles = agent.list_articles()
+        self.assertEqual(articles, [])
+
+    def test_list_articles_after_add(self):
+        agent = self._make_agent()
+        agent.add_article("Billing FAQ", "We accept Visa and Mastercard.")
+        agent.add_article("Refund Policy", "We offer 30-day refunds.")
+        articles = agent.list_articles()
+        self.assertEqual(len(articles), 2)
+
+    def test_search_kb_finds_matching_article(self):
+        agent = self._make_agent()
+        agent.add_article("Password Reset", "Click Forgot Password on the login page.")
+        agent.add_article("Billing", "We charge monthly on the 1st.")
+        results = agent.search_kb("password")
+        self.assertTrue(any("Password" in r["title"] for r in results))
+
+    def test_search_kb_returns_empty_for_no_match(self):
+        agent = self._make_agent()
+        agent.add_article("Billing", "Monthly billing cycle.")
+        results = agent.search_kb("refund policy for enterprise customers")
+        self.assertIsInstance(results, list)
+
+    @patch("autogpt.agents.customer_support_agent.openai")
+    def test_answer_returns_expected_keys(self, mock_openai):
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="You can reset your password in settings."))]
+        )
+        agent = self._make_agent()
+        agent.add_article("Password Reset", "Click Forgot Password.")
+        result = agent.answer("How do I reset my password?")
+        self.assertIn("answer", result)
+        self.assertIn("ticket_id", result)
+        self.assertIn("kb_articles_used", result)
+        self.assertIn("escalation_needed", result)
+        self.assertIsInstance(result["ticket_id"], int)
+
+    @patch("autogpt.agents.customer_support_agent.openai")
+    def test_answer_logs_ticket_in_memory(self, mock_openai):
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="Here is the answer."))]
+        )
+        agent = self._make_agent()
+        result = agent.answer("What is your refund policy?")
+        self.assertGreater(result["ticket_id"], 0)
+        self.assertEqual(len(agent._mem_tickets), 1)
+
+    @patch("autogpt.agents.customer_support_agent.openai")
+    def test_escalation_needed_detection(self, mock_openai):
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(
+                content="I don't have enough information to answer this. Please contact support."
+            ))]
+        )
+        agent = self._make_agent()
+        result = agent.answer("What is the meaning of life?")
+        self.assertTrue(result["escalation_needed"])
+
+    @patch("autogpt.agents.customer_support_agent.openai")
+    def test_escalation_not_needed_for_clear_answer(self, mock_openai):
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="You can reset your password in Account Settings."))]
+        )
+        agent = self._make_agent()
+        agent.add_article("Password", "Account Settings → Security → Reset Password.")
+        result = agent.answer("How do I reset my password?")
+        self.assertFalse(result["escalation_needed"])
+
+    @patch("autogpt.agents.customer_support_agent.openai")
+    def test_escalate_returns_skipped_when_unconfigured(self, mock_openai):
+        agent = self._make_agent()
+        # Manually create a ticket
+        agent._mem_tickets.append({
+            "id": 1, "question": "Can I get a refund?",
+            "answer": "Unclear.", "status": "open"
+        })
+        result = agent.escalate(1)
+        self.assertEqual(result["slack"]["skipped"], True)
+        self.assertEqual(result["email"]["skipped"], True)
+
+    @patch("autogpt.agents.customer_support_agent.openai")
+    def test_escalate_unknown_ticket(self, mock_openai):
+        agent = self._make_agent()
+        result = agent.escalate(999)
+        self.assertIn("error", result)
+
+    @patch("autogpt.agents.customer_support_agent.openai")
+    def test_run_routes_to_answer(self, mock_openai):
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="Here is the answer."))]
+        )
+        agent = self._make_agent()
+        result = agent.run("How do I upgrade my plan?")
+        self.assertIn("answer", result)
+
+    def test_run_routes_to_add_article(self):
+        agent = self._make_agent()
+        result = agent.run("Add article: Pricing\nWe offer monthly and annual plans.")
+        self.assertIn("id", result)
+
+    def test_run_routes_to_list_articles(self):
+        agent = self._make_agent()
+        agent.add_article("FAQ", "Frequently asked questions.")
+        result = agent.run("List articles in the knowledge base")
+        self.assertIn("articles", result)
+        self.assertIn("count", result)
+
+    @patch("autogpt.agents.customer_support_agent.openai")
+    def test_build_context_no_articles(self, mock_openai):
+        from autogpt.agents.customer_support_agent import CustomerSupportAgent
+        ctx = CustomerSupportAgent._build_context([])
+        self.assertIn("No relevant", ctx)
+
+    @patch("autogpt.agents.customer_support_agent.openai")
+    def test_build_context_formats_articles(self, mock_openai):
+        from autogpt.agents.customer_support_agent import CustomerSupportAgent
+        articles = [
+            {"title": "Returns", "content": "30-day return policy."},
+            {"title": "Shipping", "content": "Free over $50."},
+        ]
+        ctx = CustomerSupportAgent._build_context(articles)
+        self.assertIn("Returns", ctx)
+        self.assertIn("Shipping", ctx)
+
+
+# ======================================================================
+# ContentAgent tests
+# ======================================================================
+
+class TestContentAgent(unittest.TestCase):
+    def setUp(self):
+        self.cfg = _make_config()
+
+    def _make_agent(self):
+        from autogpt.agents.content_agent import ContentAgent
+        return ContentAgent(self.cfg)
+
+    def _mock_gpt(self, mock_openai, content: dict):
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content=json.dumps(content)))]
+        )
+
+    @patch("autogpt.agents.content_agent.openai")
+    def test_write_blog_post_returns_expected_keys(self, mock_openai):
+        blog = {
+            "title": "10 Tips for Startup Growth",
+            "meta_description": "Discover proven growth tips.",
+            "introduction": "Growth is hard.",
+            "sections": [{"heading": "Tip 1", "body": "Start small."}],
+            "conclusion": "Take action today.",
+        }
+        self._mock_gpt(mock_openai, blog)
+        agent = self._make_agent()
+        result = agent.write_blog_post("Tips for early-stage startup growth")
+        self.assertIn("title", result)
+        self.assertIn("sections", result)
+        self.assertIn("conclusion", result)
+        self.assertEqual(result["title"], "10 Tips for Startup Growth")
+
+    @patch("autogpt.agents.content_agent.openai")
+    def test_write_blog_post_invalid_json_fallback(self, mock_openai):
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="Here is a blog post about growth."))]
+        )
+        agent = self._make_agent()
+        result = agent.write_blog_post("Growth strategies")
+        self.assertIn("body", result)  # fallback key
+
+    @patch("autogpt.agents.content_agent.openai")
+    def test_write_landing_page_returns_expected_keys(self, mock_openai):
+        lp = {
+            "headline": "Launch Faster with AI",
+            "subheadline": "Automate your startup operations.",
+            "value_proposition": "Save 10 hours a week.",
+            "features": [{"title": "Automation", "description": "Set it and forget it."}],
+            "social_proof": "Loved by 500+ founders.",
+            "cta_primary": "Get Started Free",
+            "cta_secondary": "Watch Demo",
+        }
+        self._mock_gpt(mock_openai, lp)
+        agent = self._make_agent()
+        result = agent.write_landing_page("AI-powered startup operations platform")
+        self.assertEqual(result["headline"], "Launch Faster with AI")
+        self.assertIn("features", result)
+        self.assertIn("cta_primary", result)
+
+    @patch("autogpt.agents.content_agent.openai")
+    def test_write_social_content_twitter(self, mock_openai):
+        post = {
+            "post": "We just launched 🚀 Try it free today!",
+            "hashtags": ["#startup", "#AI"],
+            "notes": "Post on weekday morning.",
+        }
+        self._mock_gpt(mock_openai, post)
+        agent = self._make_agent()
+        result = agent.write_social_content("We launched our product!", platform="twitter")
+        self.assertEqual(result["platform"], "twitter")
+        self.assertIn("post", result)
+        self.assertIn("hashtags", result)
+
+    @patch("autogpt.agents.content_agent.openai")
+    def test_write_social_content_linkedin(self, mock_openai):
+        post = {"post": "Excited to share...", "hashtags": ["#product"], "notes": ""}
+        self._mock_gpt(mock_openai, post)
+        agent = self._make_agent()
+        result = agent.write_social_content("Product launch announcement", platform="linkedin")
+        self.assertEqual(result["platform"], "linkedin")
+
+    @patch("autogpt.agents.content_agent.openai")
+    def test_write_social_content_unknown_platform_defaults_to_twitter(self, mock_openai):
+        post = {"post": "Hello!", "hashtags": [], "notes": ""}
+        self._mock_gpt(mock_openai, post)
+        agent = self._make_agent()
+        result = agent.write_social_content("Hello world", platform="tiktok")
+        self.assertEqual(result["platform"], "twitter")
+
+    @patch("autogpt.agents.content_agent.openai")
+    def test_write_email_campaign_returns_expected_keys(self, mock_openai):
+        campaign = {
+            "subject": "You're invited to try our new feature",
+            "preview_text": "Save time with automation.",
+            "body": "Hi there, we just launched a new feature...",
+        }
+        self._mock_gpt(mock_openai, campaign)
+        agent = self._make_agent()
+        result = agent.write_email_campaign("Launch announcement for existing users")
+        self.assertIn("subject", result)
+        self.assertIn("preview_text", result)
+        self.assertIn("body", result)
+
+    @patch("autogpt.agents.content_agent.openai")
+    def test_run_routes_to_blog_post_by_default(self, mock_openai):
+        blog = {"title": "Blog", "sections": [], "conclusion": "Done."}
+        self._mock_gpt(mock_openai, blog)
+        agent = self._make_agent()
+        result = agent.run("Write an article about productivity for founders")
+        self.assertIn("title", result)
+
+    @patch("autogpt.agents.content_agent.openai")
+    def test_run_routes_to_landing_page(self, mock_openai):
+        lp = {"headline": "Build Fast", "features": [], "cta_primary": "Try Now"}
+        self._mock_gpt(mock_openai, lp)
+        agent = self._make_agent()
+        result = agent.run("Write landing page copy for our SaaS product")
+        self.assertIn("headline", result)
+
+    @patch("autogpt.agents.content_agent.openai")
+    def test_run_routes_to_linkedin(self, mock_openai):
+        post = {"post": "Excited!", "hashtags": [], "notes": ""}
+        self._mock_gpt(mock_openai, post)
+        agent = self._make_agent()
+        result = agent.run("Write a LinkedIn post about our funding round")
+        self.assertEqual(result["platform"], "linkedin")
+
+    @patch("autogpt.agents.content_agent.openai")
+    def test_run_routes_to_email_campaign(self, mock_openai):
+        campaign = {"subject": "Big news", "preview_text": "Read on.", "body": "We did it!"}
+        self._mock_gpt(mock_openai, campaign)
+        agent = self._make_agent()
+        result = agent.run("Draft a newsletter for our latest product update")
+        self.assertIn("subject", result)
+
+    @patch("autogpt.agents.content_agent.openai")
+    def test_run_routes_to_instagram(self, mock_openai):
+        post = {"post": "Check it out!", "hashtags": ["#ai"], "notes": ""}
+        self._mock_gpt(mock_openai, post)
+        agent = self._make_agent()
+        result = agent.run("Write an Instagram caption for our product launch")
+        self.assertEqual(result["platform"], "instagram")
+
+
+# ======================================================================
+# Orchestrator — customer_support and content routing tests
+# ======================================================================
+
+class TestOrchestratorContentAndSupport(unittest.TestCase):
+    def setUp(self):
+        self.cfg = _make_config()
+        self.cfg.database_url = ""
+        self.cfg.slack_webhook_url = ""
+        self.cfg.slack_bot_token = ""
+
+    @patch("autogpt.orchestrator.openai")
+    def test_customer_support_routed(self, mock_openai):
+        routing = {
+            "agent": "customer_support",
+            "task": "How do I reset my password?",
+            "direct_reply": "",
+        }
+        mock_openai.chat.completions.create.side_effect = [
+            MagicMock(choices=[MagicMock(message=MagicMock(content=json.dumps(routing)))]),
+            MagicMock(choices=[MagicMock(message=MagicMock(content="Ticket logged."))]),
+        ]
+        from autogpt.orchestrator import Orchestrator
+        from autogpt.agents.customer_support_agent import CustomerSupportAgent
+
+        with patch.object(
+            CustomerSupportAgent, "run",
+            return_value={"answer": "Check settings.", "ticket_id": 1,
+                          "kb_articles_used": 0, "escalation_needed": False}
+        ):
+            orc = Orchestrator(self.cfg)
+            orc.chat("How do I reset my password?")
+            self.assertEqual(orc.last_agent, "customer_support")
+
+    @patch("autogpt.orchestrator.openai")
+    def test_content_agent_routed(self, mock_openai):
+        routing = {
+            "agent": "content",
+            "task": "Write a blog post about productivity",
+            "direct_reply": "",
+        }
+        mock_openai.chat.completions.create.side_effect = [
+            MagicMock(choices=[MagicMock(message=MagicMock(content=json.dumps(routing)))]),
+            MagicMock(choices=[MagicMock(message=MagicMock(content="Blog post created."))]),
+        ]
+        from autogpt.orchestrator import Orchestrator
+        from autogpt.agents.content_agent import ContentAgent
+
+        with patch.object(
+            ContentAgent, "run",
+            return_value={"title": "Productivity Tips", "sections": [], "conclusion": "Go!"}
+        ):
+            orc = Orchestrator(self.cfg)
+            orc.chat("Write a blog post about productivity")
+            self.assertEqual(orc.last_agent, "content")
+
+
 if __name__ == "__main__":
     unittest.main()
