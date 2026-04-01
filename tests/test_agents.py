@@ -2667,5 +2667,436 @@ class TestStripeAgent(unittest.TestCase):
         self.assertIn("url", result)
 
 
+class TestOrchestratorHubSpotShopify(unittest.TestCase):
+    def setUp(self):
+        self.cfg = _make_config()
+        self.cfg.database_url = ""
+
+    def _make_routing(self, agent_name: str, task: str) -> str:
+        return json.dumps({"agent": agent_name, "task": task, "direct_reply": ""})
+
+    def _side_effects(self, routing_json: str) -> list:
+        return [
+            MagicMock(choices=[MagicMock(message=MagicMock(content=routing_json))]),
+            MagicMock(choices=[MagicMock(message=MagicMock(content="Done."))]),
+        ]
+
+    @patch("autogpt.orchestrator.openai")
+    def test_hubspot_routed(self, mock_openai):
+        mock_openai.chat.completions.create.side_effect = self._side_effects(
+            self._make_routing("hubspot", "Show me the sales pipeline")
+        )
+        from autogpt.orchestrator import Orchestrator
+        from autogpt.agents.hubspot_agent import HubSpotAgent
+        with patch.object(HubSpotAgent, "run", return_value={"stages": [], "totals": {"open_deals": 0, "open_value": 0.0}}):
+            orc = Orchestrator(self.cfg)
+            orc.chat("Show me the HubSpot sales pipeline")
+            self.assertEqual(orc.last_agent, "hubspot")
+
+    @patch("autogpt.orchestrator.openai")
+    def test_shopify_routed(self, mock_openai):
+        mock_openai.chat.completions.create.side_effect = self._side_effects(
+            self._make_routing("shopify", "List Shopify products")
+        )
+        from autogpt.orchestrator import Orchestrator
+        from autogpt.agents.shopify_agent import ShopifyAgent
+        with patch.object(ShopifyAgent, "run", return_value={"products": [], "count": 0}):
+            orc = Orchestrator(self.cfg)
+            orc.chat("List all products in our Shopify store")
+            self.assertEqual(orc.last_agent, "shopify")
+
+
+class TestHubSpotAgent(unittest.TestCase):
+    def setUp(self):
+        self.cfg = _make_config()
+        self.cfg.hubspot_api_key = "test-hs-key"
+
+    def _make_agent(self):
+        from autogpt.agents.hubspot_agent import HubSpotAgent
+        return HubSpotAgent(self.cfg)
+
+    def test_extract_email(self):
+        from autogpt.agents.hubspot_agent import HubSpotAgent
+        self.assertEqual(HubSpotAgent._extract_email("Contact john@example.com now"), "john@example.com")
+        self.assertEqual(HubSpotAgent._extract_email("no email here"), "")
+
+    def test_extract_after(self):
+        from autogpt.agents.hubspot_agent import HubSpotAgent
+        result = HubSpotAgent._extract_after("create deal Acme Corp renewal", ("create deal",))
+        self.assertEqual(result, "Acme Corp renewal")
+
+    def test_run_no_key_raises(self):
+        self.cfg.hubspot_api_key = ""
+        agent = self._make_agent()
+        with self.assertRaises(ValueError):
+            agent.list_contacts()
+
+    @patch("autogpt.agents.hubspot_agent.requests")
+    def test_list_contacts(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {
+                "results": [
+                    {"id": "1", "properties": {"email": "a@b.com", "firstname": "Alice", "lastname": "Smith", "company": "Acme"}}
+                ]
+            },
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        contacts = agent.list_contacts()
+        self.assertEqual(len(contacts), 1)
+        self.assertEqual(contacts[0]["email"], "a@b.com")
+        self.assertEqual(contacts[0]["name"], "Alice Smith")
+
+    @patch("autogpt.agents.hubspot_agent.requests")
+    def test_create_contact(self, mock_requests):
+        mock_requests.post.return_value = MagicMock(
+            json=lambda: {"id": "42", "properties": {"email": "new@test.com"}},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.create_contact(email="new@test.com", firstname="Bob")
+        self.assertEqual(result["id"], "42")
+
+    @patch("autogpt.agents.hubspot_agent.requests")
+    def test_get_contact_found(self, mock_requests):
+        mock_requests.post.return_value = MagicMock(
+            json=lambda: {
+                "results": [{"id": "7", "properties": {"email": "bob@test.com", "firstname": "Bob", "lastname": "", "phone": "", "company": ""}}]
+            },
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.get_contact("bob@test.com")
+        self.assertEqual(result["id"], "7")
+
+    @patch("autogpt.agents.hubspot_agent.requests")
+    def test_get_contact_not_found(self, mock_requests):
+        mock_requests.post.return_value = MagicMock(
+            json=lambda: {"results": []},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.get_contact("missing@test.com")
+        self.assertIn("error", result)
+
+    @patch("autogpt.agents.hubspot_agent.requests")
+    def test_create_deal(self, mock_requests):
+        mock_requests.post.return_value = MagicMock(
+            json=lambda: {"id": "99", "properties": {"dealname": "Big Deal", "dealstage": "appointmentscheduled"}},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.create_deal(name="Big Deal", amount=5000.0)
+        self.assertEqual(result["id"], "99")
+
+    @patch("autogpt.agents.hubspot_agent.requests")
+    def test_list_deals(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {
+                "results": [
+                    {"id": "10", "properties": {"dealname": "Deal A", "amount": "1000", "dealstage": "qualifiedtobuy", "closedate": "", "hubspot_owner_id": ""}}
+                ]
+            },
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        deals = agent.list_deals()
+        self.assertEqual(len(deals), 1)
+        self.assertEqual(deals[0]["name"], "Deal A")
+
+    @patch("autogpt.agents.hubspot_agent.requests")
+    def test_update_deal_stage(self, mock_requests):
+        mock_requests.patch.return_value = MagicMock(
+            json=lambda: {"id": "10", "properties": {"dealstage": "closedwon"}},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.update_deal_stage("10", "closedwon")
+        self.assertEqual(result["id"], "10")
+
+    @patch("autogpt.agents.hubspot_agent.requests")
+    def test_log_note(self, mock_requests):
+        mock_requests.post.return_value = MagicMock(
+            json=lambda: {"id": "note-1"},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.log_note(body="Called the client", contact_id="1")
+        self.assertEqual(result["id"], "note-1")
+
+    @patch("autogpt.agents.hubspot_agent.requests")
+    def test_get_pipeline_summary(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {
+                "results": [
+                    {"id": "1", "properties": {"dealname": "D1", "amount": "500", "dealstage": "qualifiedtobuy", "closedate": "", "hubspot_owner_id": ""}},
+                    {"id": "2", "properties": {"dealname": "D2", "amount": "1500", "dealstage": "closedwon", "closedate": "", "hubspot_owner_id": ""}},
+                ]
+            },
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        summary = agent.get_pipeline_summary()
+        self.assertIn("stages", summary)
+        self.assertIn("totals", summary)
+        self.assertEqual(summary["totals"]["open_deals"], 2)
+        self.assertAlmostEqual(summary["totals"]["open_value"], 2000.0)
+
+    @patch("autogpt.agents.hubspot_agent.requests")
+    def test_run_list_contacts(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"results": []},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.run("list contacts")
+        self.assertIn("contacts", result)
+
+    @patch("autogpt.agents.hubspot_agent.requests")
+    def test_run_list_deals(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"results": []},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.run("show deals")
+        self.assertIn("deals", result)
+
+    @patch("autogpt.agents.hubspot_agent.requests")
+    def test_run_pipeline(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"results": []},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.run("show me the pipeline")
+        self.assertIn("stages", result)
+
+    def test_run_create_contact_no_email(self):
+        agent = self._make_agent()
+        result = agent.run("create contact for someone")
+        self.assertIn("error", result)
+
+    @patch("autogpt.agents.hubspot_agent.requests")
+    def test_run_create_contact_with_email(self, mock_requests):
+        mock_requests.post.return_value = MagicMock(
+            json=lambda: {"id": "55", "properties": {"email": "x@y.com"}},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.run("create contact x@y.com")
+        self.assertIn("id", result)
+
+    def test_run_log_note_no_body(self):
+        agent = self._make_agent()
+        result = agent.run("add note")
+        self.assertIn("error", result)
+
+    @patch("autogpt.agents.hubspot_agent.requests")
+    def test_run_log_note_with_body(self, mock_requests):
+        mock_requests.post.return_value = MagicMock(
+            json=lambda: {"id": "n1"},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.run("log note: Client called back")
+        self.assertIn("id", result)
+
+
+class TestShopifyAgent(unittest.TestCase):
+    def setUp(self):
+        self.cfg = _make_config()
+        self.cfg.shopify_store_domain = "test-store.myshopify.com"
+        self.cfg.shopify_access_token = "test-shopify-token"
+        self.cfg.shopify_currency = "USD"
+
+    def _make_agent(self):
+        from autogpt.agents.shopify_agent import ShopifyAgent
+        return ShopifyAgent(self.cfg)
+
+    def test_run_no_credentials_raises(self):
+        self.cfg.shopify_store_domain = ""
+        agent = self._make_agent()
+        with self.assertRaises(ValueError):
+            agent.list_products()
+
+    @patch("autogpt.agents.shopify_agent.requests")
+    def test_list_products(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {
+                "products": [
+                    {"id": 1, "title": "Widget", "status": "active", "vendor": "Acme", "product_type": "gadget", "variants": [{"inventory_quantity": 10}]}
+                ]
+            },
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        products = agent.list_products()
+        self.assertEqual(len(products), 1)
+        self.assertEqual(products[0]["title"], "Widget")
+        self.assertEqual(products[0]["inventory_quantity"], 10)
+
+    @patch("autogpt.agents.shopify_agent.requests")
+    def test_get_low_inventory(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {
+                "products": [
+                    {"id": 1, "title": "Low Stock Item", "status": "active", "vendor": "V", "product_type": "t", "variants": [{"inventory_quantity": 2}]},
+                    {"id": 2, "title": "Plenty Item", "status": "active", "vendor": "V", "product_type": "t", "variants": [{"inventory_quantity": 50}]},
+                ]
+            },
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        low = agent.get_low_inventory(threshold=5)
+        self.assertEqual(len(low), 1)
+        self.assertEqual(low[0]["title"], "Low Stock Item")
+
+    @patch("autogpt.agents.shopify_agent.requests")
+    def test_list_orders(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {
+                "orders": [
+                    {"id": 100, "name": "#1001", "email": "c@d.com", "total_price": "49.99", "currency": "USD",
+                     "financial_status": "paid", "fulfillment_status": None, "created_at": "2024-01-01", "line_items": [{}]}
+                ]
+            },
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        orders = agent.list_orders()
+        self.assertEqual(len(orders), 1)
+        self.assertEqual(orders[0]["total_price"], "49.99")
+
+    @patch("autogpt.agents.shopify_agent.requests")
+    def test_get_revenue_summary(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {
+                "orders": [
+                    {"id": 1, "name": "#1001", "email": "a@b.com", "total_price": "100.00", "currency": "USD",
+                     "financial_status": "paid", "fulfillment_status": None, "created_at": "2024-01-01", "line_items": []},
+                    {"id": 2, "name": "#1002", "email": "c@d.com", "total_price": "200.00", "currency": "USD",
+                     "financial_status": "paid", "fulfillment_status": None, "created_at": "2024-01-02", "line_items": []},
+                ]
+            },
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        summary = agent.get_revenue_summary(limit=10)
+        self.assertEqual(summary["order_count"], 2)
+        self.assertAlmostEqual(summary["total_revenue"], 300.0)
+        self.assertAlmostEqual(summary["average_order_value"], 150.0)
+
+    @patch("autogpt.agents.shopify_agent.requests")
+    def test_get_revenue_summary_empty(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"orders": []},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        summary = agent.get_revenue_summary()
+        self.assertEqual(summary["order_count"], 0)
+        self.assertEqual(summary["total_revenue"], 0.0)
+
+    @patch("autogpt.agents.shopify_agent.requests")
+    def test_list_customers(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {
+                "customers": [
+                    {"id": 1, "email": "e@f.com", "first_name": "Eve", "last_name": "Jones", "orders_count": 3, "total_spent": "150.00"}
+                ]
+            },
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        customers = agent.list_customers()
+        self.assertEqual(len(customers), 1)
+        self.assertEqual(customers[0]["email"], "e@f.com")
+
+    @patch("autogpt.agents.shopify_agent.requests")
+    def test_create_discount_code(self, mock_requests):
+        mock_requests.post.side_effect = [
+            MagicMock(
+                json=lambda: {"price_rule": {"id": 101}},
+                raise_for_status=lambda: None,
+            ),
+            MagicMock(
+                json=lambda: {"discount_code": {"id": 999, "code": "LAUNCH20"}},
+                raise_for_status=lambda: None,
+            ),
+        ]
+        agent = self._make_agent()
+        result = agent.create_discount_code(code="LAUNCH20", percent_off=20.0)
+        self.assertEqual(result["code"], "LAUNCH20")
+        self.assertEqual(result["price_rule_id"], 101)
+        self.assertEqual(result["discount_code_id"], 999)
+
+    @patch("autogpt.agents.shopify_agent.requests")
+    def test_run_routes_low_stock(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"products": []},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.run("Show low stock items")
+        self.assertIn("low_stock_items", result)
+
+    @patch("autogpt.agents.shopify_agent.requests")
+    def test_run_routes_list_products(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"products": []},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.run("list products")
+        self.assertIn("products", result)
+
+    @patch("autogpt.agents.shopify_agent.requests")
+    def test_run_routes_list_orders(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"orders": []},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.run("show recent orders")
+        self.assertIn("orders", result)
+
+    @patch("autogpt.agents.shopify_agent.requests")
+    def test_run_routes_revenue(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"orders": []},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.run("What is our revenue this month?")
+        self.assertIn("total_revenue", result)
+
+    @patch("autogpt.agents.shopify_agent.requests")
+    def test_run_routes_customers(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"customers": []},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.run("list customers")
+        self.assertIn("customers", result)
+
+    @patch("autogpt.agents.shopify_agent.requests")
+    def test_run_routes_discount(self, mock_requests):
+        mock_requests.post.side_effect = [
+            MagicMock(json=lambda: {"price_rule": {"id": 1}}, raise_for_status=lambda: None),
+            MagicMock(json=lambda: {"discount_code": {"id": 2, "code": "PROMO10"}}, raise_for_status=lambda: None),
+        ]
+        agent = self._make_agent()
+        result = agent.run("Create a discount code PROMO10")
+        self.assertIn("code", result)
+
+    def test_base_url(self):
+        agent = self._make_agent()
+        url = agent._base_url()
+        self.assertIn("test-store.myshopify.com", url)
+        self.assertIn("2024-01", url)
+
+
 if __name__ == "__main__":
     unittest.main()

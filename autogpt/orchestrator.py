@@ -46,6 +46,8 @@ from autogpt.agents.yelp_agent import YelpAgent
 from autogpt.agents.pinterest_agent import PinterestAgent
 from autogpt.agents.linkedin_agent import LinkedInAgent
 from autogpt.agents.stripe_agent import StripeAgent
+from autogpt.agents.hubspot_agent import HubSpotAgent
+from autogpt.agents.shopify_agent import ShopifyAgent
 from autogpt.utils.logger import get_logger
 
 _ROUTER_SYSTEM_PROMPT = """\
@@ -68,11 +70,13 @@ specialized agents:
   - pinterest         : creates pins and manages Pinterest boards
   - linkedin          : posts updates, searches people/companies, retrieves company page stats
   - stripe            : retrieves revenue metrics (MRR, charges), lists customers/subscriptions, creates payment links
+  - hubspot           : manages CRM contacts and deals, logs notes, summarises sales pipeline
+  - shopify           : lists products, checks inventory, retrieves orders and revenue, creates discount codes
   - none              : answer directly from your own knowledge (no agent needed)
 
 When the user sends a message, reply with a JSON object:
 {
-  "agent": "<engineering|browser|twitter|meta_ads|slack|email|analytics|customer_support|content|telegram|youtube|google|yelp|pinterest|linkedin|stripe|none>",
+  "agent": "<engineering|browser|twitter|meta_ads|slack|email|analytics|customer_support|content|telegram|youtube|google|yelp|pinterest|linkedin|stripe|hubspot|shopify|none>",
   "task": "<the exact sub-task to pass to the chosen agent, rephrased if needed>",
   "direct_reply": "<non-empty only when agent is 'none'; your direct answer>"
 }
@@ -124,6 +128,8 @@ class Orchestrator:
         self._pinterest: PinterestAgent | None = None
         self._linkedin: LinkedInAgent | None = None
         self._stripe: StripeAgent | None = None
+        self._hubspot: HubSpotAgent | None = None
+        self._shopify: ShopifyAgent | None = None
 
         # Name of the last agent invoked — exposed for callers (e.g. web UI).
         self.last_agent: str = "none"
@@ -246,6 +252,10 @@ class Orchestrator:
                 return self._get_linkedin().run(task)
             if agent_name == "stripe":
                 return self._get_stripe().run(task)
+            if agent_name == "hubspot":
+                return self._get_hubspot().run(task)
+            if agent_name == "shopify":
+                return self._get_shopify().run(task)
         except Exception as exc:
             self._log.error("Agent '%s' raised an error: %s", agent_name, exc)
             return {"error": str(exc)}
@@ -420,4 +430,14 @@ class Orchestrator:
         if self._stripe is None:
             self._stripe = StripeAgent(self._cfg)
         return self._stripe
+
+    def _get_hubspot(self) -> HubSpotAgent:
+        if self._hubspot is None:
+            self._hubspot = HubSpotAgent(self._cfg)
+        return self._hubspot
+
+    def _get_shopify(self) -> ShopifyAgent:
+        if self._shopify is None:
+            self._shopify = ShopifyAgent(self._cfg)
+        return self._shopify
 

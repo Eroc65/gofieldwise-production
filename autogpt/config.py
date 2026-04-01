@@ -118,6 +118,19 @@ class Config:
     stripe_default_currency: str = os.getenv("STRIPE_DEFAULT_CURRENCY", "usd")
 
     # ------------------------------------------------------------------ #
+    # HubSpot
+    # ------------------------------------------------------------------ #
+    hubspot_api_key: str = os.getenv("HUBSPOT_API_KEY", "")
+    hubspot_default_pipeline_id: str = os.getenv("HUBSPOT_DEFAULT_PIPELINE_ID", "")
+
+    # ------------------------------------------------------------------ #
+    # Shopify
+    # ------------------------------------------------------------------ #
+    shopify_store_domain: str = os.getenv("SHOPIFY_STORE_DOMAIN", "")
+    shopify_access_token: str = os.getenv("SHOPIFY_ACCESS_TOKEN", "")
+    shopify_currency: str = os.getenv("SHOPIFY_CURRENCY", "USD")
+
+    # ------------------------------------------------------------------ #
     # Scheduler
     # ------------------------------------------------------------------ #
     scheduler_enabled: bool = os.getenv("SCHEDULER_ENABLED", "true").lower() == "true"
