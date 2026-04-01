@@ -14,6 +14,8 @@ from .youtube_agent import YouTubeAgent
 from .google_agent import GoogleAgent
 from .yelp_agent import YelpAgent
 from .pinterest_agent import PinterestAgent
+from .linkedin_agent import LinkedInAgent
+from .stripe_agent import StripeAgent
 
 __all__ = [
     "EngineeringAgent",
@@ -30,4 +32,6 @@ __all__ = [
     "GoogleAgent",
     "YelpAgent",
     "PinterestAgent",
+    "LinkedInAgent",
+    "StripeAgent",
 ]

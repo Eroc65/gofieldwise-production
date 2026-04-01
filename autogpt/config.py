@@ -105,6 +105,19 @@ class Config:
     pinterest_default_board_id: str = os.getenv("PINTEREST_DEFAULT_BOARD_ID", "")
 
     # ------------------------------------------------------------------ #
+    # LinkedIn
+    # ------------------------------------------------------------------ #
+    linkedin_access_token: str = os.getenv("LINKEDIN_ACCESS_TOKEN", "")
+    linkedin_person_urn: str = os.getenv("LINKEDIN_PERSON_URN", "")
+    linkedin_org_id: str = os.getenv("LINKEDIN_ORG_ID", "")
+
+    # ------------------------------------------------------------------ #
+    # Stripe
+    # ------------------------------------------------------------------ #
+    stripe_secret_key: str = os.getenv("STRIPE_SECRET_KEY", "")
+    stripe_default_currency: str = os.getenv("STRIPE_DEFAULT_CURRENCY", "usd")
+
+    # ------------------------------------------------------------------ #
     # Scheduler
     # ------------------------------------------------------------------ #
     scheduler_enabled: bool = os.getenv("SCHEDULER_ENABLED", "true").lower() == "true"

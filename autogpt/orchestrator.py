@@ -44,6 +44,8 @@ from autogpt.agents.youtube_agent import YouTubeAgent
 from autogpt.agents.google_agent import GoogleAgent
 from autogpt.agents.yelp_agent import YelpAgent
 from autogpt.agents.pinterest_agent import PinterestAgent
+from autogpt.agents.linkedin_agent import LinkedInAgent
+from autogpt.agents.stripe_agent import StripeAgent
 from autogpt.utils.logger import get_logger
 
 _ROUTER_SYSTEM_PROMPT = """\
@@ -64,11 +66,13 @@ specialized agents:
   - google            : runs Google web searches and summarises results
   - yelp              : searches local businesses and reads Yelp reviews
   - pinterest         : creates pins and manages Pinterest boards
+  - linkedin          : posts updates, searches people/companies, retrieves company page stats
+  - stripe            : retrieves revenue metrics (MRR, charges), lists customers/subscriptions, creates payment links
   - none              : answer directly from your own knowledge (no agent needed)
 
 When the user sends a message, reply with a JSON object:
 {
-  "agent": "<engineering|browser|twitter|meta_ads|slack|email|analytics|customer_support|content|telegram|youtube|google|yelp|pinterest|none>",
+  "agent": "<engineering|browser|twitter|meta_ads|slack|email|analytics|customer_support|content|telegram|youtube|google|yelp|pinterest|linkedin|stripe|none>",
   "task": "<the exact sub-task to pass to the chosen agent, rephrased if needed>",
   "direct_reply": "<non-empty only when agent is 'none'; your direct answer>"
 }
@@ -118,6 +122,8 @@ class Orchestrator:
         self._google: GoogleAgent | None = None
         self._yelp: YelpAgent | None = None
         self._pinterest: PinterestAgent | None = None
+        self._linkedin: LinkedInAgent | None = None
+        self._stripe: StripeAgent | None = None
 
         # Name of the last agent invoked — exposed for callers (e.g. web UI).
         self.last_agent: str = "none"
@@ -236,6 +242,10 @@ class Orchestrator:
                 return self._get_yelp().run(task)
             if agent_name == "pinterest":
                 return self._get_pinterest().run(task)
+            if agent_name == "linkedin":
+                return self._get_linkedin().run(task)
+            if agent_name == "stripe":
+                return self._get_stripe().run(task)
         except Exception as exc:
             self._log.error("Agent '%s' raised an error: %s", agent_name, exc)
             return {"error": str(exc)}
@@ -400,4 +410,14 @@ class Orchestrator:
         if self._pinterest is None:
             self._pinterest = PinterestAgent(self._cfg)
         return self._pinterest
+
+    def _get_linkedin(self) -> LinkedInAgent:
+        if self._linkedin is None:
+            self._linkedin = LinkedInAgent(self._cfg)
+        return self._linkedin
+
+    def _get_stripe(self) -> StripeAgent:
+        if self._stripe is None:
+            self._stripe = StripeAgent(self._cfg)
+        return self._stripe
 

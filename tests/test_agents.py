@@ -2307,6 +2307,365 @@ class TestOrchestratorNewChannelAgents(unittest.TestCase):
             orc.chat("List my Pinterest boards")
             self.assertEqual(orc.last_agent, "pinterest")
 
+    @patch("autogpt.orchestrator.openai")
+    def test_linkedin_routed(self, mock_openai):
+        mock_openai.chat.completions.create.side_effect = self._side_effects(
+            self._make_routing("linkedin", "Post a LinkedIn update about our launch")
+        )
+        from autogpt.orchestrator import Orchestrator
+        from autogpt.agents.linkedin_agent import LinkedInAgent
+        with patch.object(LinkedInAgent, "run", return_value={"post_id": "urn:li:ugcPost:123", "text": "We launched!"}):
+            orc = Orchestrator(self.cfg)
+            orc.chat("Post a LinkedIn update about our product launch")
+            self.assertEqual(orc.last_agent, "linkedin")
+
+    @patch("autogpt.orchestrator.openai")
+    def test_stripe_routed(self, mock_openai):
+        mock_openai.chat.completions.create.side_effect = self._side_effects(
+            self._make_routing("stripe", "Show me MRR")
+        )
+        from autogpt.orchestrator import Orchestrator
+        from autogpt.agents.stripe_agent import StripeAgent
+        with patch.object(StripeAgent, "run", return_value={"mrr_cents": 100000, "mrr_formatted": "$1,000.00"}):
+            orc = Orchestrator(self.cfg)
+            orc.chat("What is our current MRR?")
+            self.assertEqual(orc.last_agent, "stripe")
+
+
+class TestLinkedInAgent(unittest.TestCase):
+    def setUp(self):
+        self.cfg = _make_config()
+        self.cfg.linkedin_access_token = "test-token"
+        self.cfg.linkedin_person_urn = "urn:li:person:ABC123"
+        self.cfg.linkedin_org_id = "99887766"
+
+    def _make_agent(self):
+        from autogpt.agents.linkedin_agent import LinkedInAgent
+        return LinkedInAgent(self.cfg)
+
+    @patch("autogpt.agents.linkedin_agent.openai")
+    @patch("autogpt.agents.linkedin_agent.requests")
+    def test_post_update_returns_post_id(self, mock_requests, mock_openai):
+        mock_response = MagicMock()
+        mock_response.headers = {"x-restli-id": "urn:li:ugcPost:42"}
+        mock_response.raise_for_status = lambda: None
+        mock_requests.post.return_value = mock_response
+        agent = self._make_agent()
+        result = agent.post_update("Hello LinkedIn!")
+        self.assertEqual(result["post_id"], "urn:li:ugcPost:42")
+        self.assertEqual(result["author"], "urn:li:person:ABC123")
+
+    @patch("autogpt.agents.linkedin_agent.openai")
+    @patch("autogpt.agents.linkedin_agent.requests")
+    def test_post_update_as_organization(self, mock_requests, mock_openai):
+        mock_response = MagicMock()
+        mock_response.headers = {"x-restli-id": "urn:li:ugcPost:99"}
+        mock_response.raise_for_status = lambda: None
+        mock_requests.post.return_value = mock_response
+        agent = self._make_agent()
+        result = agent.post_update("Company update!", as_organization=True)
+        self.assertEqual(result["author"], "urn:li:organization:99887766")
+
+    def test_post_update_raises_without_token(self):
+        self.cfg.linkedin_access_token = ""
+        agent = self._make_agent()
+        with self.assertRaises(ValueError):
+            agent.post_update("Hello!")
+
+    def test_resolve_author_raises_without_urn_or_org(self):
+        self.cfg.linkedin_person_urn = ""
+        self.cfg.linkedin_org_id = ""
+        agent = self._make_agent()
+        with self.assertRaises(ValueError):
+            agent._resolve_author(False)
+
+    @patch("autogpt.agents.linkedin_agent.openai")
+    @patch("autogpt.agents.linkedin_agent.requests")
+    def test_compose_and_post_calls_gpt_then_posts(self, mock_requests, mock_openai):
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="Great LinkedIn post!"))]
+        )
+        mock_post_response = MagicMock()
+        mock_post_response.headers = {"x-restli-id": "urn:li:ugcPost:77"}
+        mock_post_response.raise_for_status = lambda: None
+        mock_requests.post.return_value = mock_post_response
+        agent = self._make_agent()
+        result = agent.compose_and_post("Talk about our new feature")
+        self.assertEqual(result["text"], "Great LinkedIn post!")
+        self.assertEqual(result["post_id"], "urn:li:ugcPost:77")
+
+    @patch("autogpt.agents.linkedin_agent.requests")
+    def test_search_people_returns_list(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {
+                "elements": [
+                    {
+                        "id": "p1",
+                        "firstName": {"localized": {"en_US": "Alice"}},
+                        "lastName": {"localized": {"en_US": "Smith"}},
+                        "headline": {"localized": {"en_US": "Startup CTO"}},
+                    }
+                ]
+            },
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        people = agent.search_people("startup CTO")
+        self.assertEqual(len(people), 1)
+        self.assertEqual(people[0]["first_name"], "Alice")
+        self.assertEqual(people[0]["urn"], "urn:li:person:p1")
+
+    @patch("autogpt.agents.linkedin_agent.requests")
+    def test_get_company_stats_returns_dict(self, mock_requests):
+        # First GET → follower count, second GET → share count
+        mock_requests.get.side_effect = [
+            MagicMock(ok=True, json=lambda: {"firstDegreeSize": 500}),
+            MagicMock(ok=True, json=lambda: {"paging": {"total": 80}}),
+        ]
+        agent = self._make_agent()
+        stats = agent.get_company_stats()
+        self.assertEqual(stats["follower_count"], 500)
+        self.assertEqual(stats["share_count"], 80)
+        self.assertEqual(stats["org_id"], "99887766")
+
+    def test_get_company_stats_raises_without_org_id(self):
+        self.cfg.linkedin_org_id = ""
+        agent = self._make_agent()
+        with self.assertRaises(ValueError):
+            agent.get_company_stats()
+
+    @patch("autogpt.agents.linkedin_agent.openai")
+    @patch("autogpt.agents.linkedin_agent.requests")
+    def test_run_routes_search_people(self, mock_requests, mock_openai):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"elements": []},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.run("search people startup founders")
+        self.assertIn("people", result)
+
+    @patch("autogpt.agents.linkedin_agent.requests")
+    def test_run_routes_company_stats(self, mock_requests):
+        mock_requests.get.side_effect = [
+            MagicMock(ok=True, json=lambda: {"firstDegreeSize": 200}),
+            MagicMock(ok=True, json=lambda: {"paging": {"total": 10}}),
+        ]
+        agent = self._make_agent()
+        result = agent.run("show company stats")
+        self.assertIn("follower_count", result)
+
+    @patch("autogpt.agents.linkedin_agent.openai")
+    @patch("autogpt.agents.linkedin_agent.requests")
+    def test_run_default_composes_and_posts(self, mock_requests, mock_openai):
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="Great post text"))]
+        )
+        mock_requests.post.return_value = MagicMock(
+            headers={"x-restli-id": "urn:li:ugcPost:55"},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.run("Write about our funding round")
+        self.assertIn("post_id", result)
+
+
+class TestStripeAgent(unittest.TestCase):
+    def setUp(self):
+        self.cfg = _make_config()
+        self.cfg.stripe_secret_key = "sk_test_abc123"
+        self.cfg.stripe_default_currency = "usd"
+
+    def _make_agent(self):
+        from autogpt.agents.stripe_agent import StripeAgent
+        return StripeAgent(self.cfg)
+
+    @patch("autogpt.agents.stripe_agent.requests")
+    def test_get_mrr_sums_subscriptions(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {
+                "data": [
+                    {
+                        "id": "sub_1",
+                        "status": "active",
+                        "items": {
+                            "data": [
+                                {"plan": {"amount": 5000, "currency": "usd", "interval": "month"}, "quantity": 2}
+                            ]
+                        },
+                    }
+                ],
+                "has_more": False,
+            },
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.get_mrr()
+        self.assertEqual(result["mrr_cents"], 10000)
+        self.assertEqual(result["mrr_formatted"], "$100.00")
+        self.assertEqual(result["active_subscription_count"], 1)
+
+    @patch("autogpt.agents.stripe_agent.requests")
+    def test_get_mrr_normalises_annual_to_monthly(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {
+                "data": [
+                    {
+                        "id": "sub_2",
+                        "status": "active",
+                        "items": {
+                            "data": [
+                                {"plan": {"amount": 12000, "currency": "usd", "interval": "year"}, "quantity": 1}
+                            ]
+                        },
+                    }
+                ],
+                "has_more": False,
+            },
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.get_mrr()
+        self.assertEqual(result["mrr_cents"], 1000)  # 12000 / 12
+
+    def test_get_mrr_raises_without_key(self):
+        self.cfg.stripe_secret_key = ""
+        agent = self._make_agent()
+        with self.assertRaises(ValueError):
+            agent.get_mrr()
+
+    @patch("autogpt.agents.stripe_agent.requests")
+    def test_get_recent_revenue_sums_paid_charges(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {
+                "data": [
+                    {"id": "ch_1", "paid": True, "refunded": False, "amount": 2000, "currency": "usd", "customer": "cus_1", "description": "Plan", "created": 1700000000},
+                    {"id": "ch_2", "paid": False, "refunded": False, "amount": 3000, "currency": "usd", "customer": "cus_2", "description": "", "created": 1700000001},
+                ]
+            },
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.get_recent_revenue()
+        self.assertEqual(result["total_cents"], 2000)
+        self.assertEqual(result["charge_count"], 1)
+
+    @patch("autogpt.agents.stripe_agent.requests")
+    def test_get_past_due_customers(self, mock_requests):
+        sub_resp = MagicMock(
+            json=lambda: {
+                "data": [{"id": "sub_pd", "customer": "cus_99", "status": "past_due", "current_period_end": 1700000000}],
+                "has_more": False,
+            },
+            raise_for_status=lambda: None,
+        )
+        cust_resp = MagicMock(
+            json=lambda: {"id": "cus_99", "email": "late@example.com"},
+            raise_for_status=lambda: None,
+        )
+        mock_requests.get.side_effect = [sub_resp, cust_resp]
+        agent = self._make_agent()
+        result = agent.get_past_due_customers()
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["email"], "late@example.com")
+        self.assertEqual(result[0]["status"], "past_due")
+
+    @patch("autogpt.agents.stripe_agent.requests")
+    def test_list_customers_returns_list(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {
+                "data": [
+                    {"id": "cus_1", "email": "a@b.com", "name": "Alice", "created": 1700000000, "currency": "usd"}
+                ]
+            },
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        customers = agent.list_customers()
+        self.assertEqual(len(customers), 1)
+        self.assertEqual(customers[0]["email"], "a@b.com")
+
+    @patch("autogpt.agents.stripe_agent.requests")
+    def test_create_payment_link(self, mock_requests):
+        mock_requests.post.return_value = MagicMock(
+            json=lambda: {"id": "plink_abc", "url": "https://buy.stripe.com/test", "active": True},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.create_payment_link("price_1ABCDEFxyz")
+        self.assertEqual(result["url"], "https://buy.stripe.com/test")
+        self.assertEqual(result["id"], "plink_abc")
+
+    @patch("autogpt.agents.stripe_agent.openai")
+    @patch("autogpt.agents.stripe_agent.requests")
+    def test_generate_revenue_report(self, mock_requests, mock_openai):
+        # MRR call, recent revenue call, past_due call, customer email call
+        sub_page = MagicMock(
+            json=lambda: {"data": [], "has_more": False},
+            raise_for_status=lambda: None,
+        )
+        charges_resp = MagicMock(
+            json=lambda: {"data": []},
+            raise_for_status=lambda: None,
+        )
+        mock_requests.get.side_effect = [sub_page, charges_resp, sub_page]
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="Revenue looks good."))]
+        )
+        agent = self._make_agent()
+        result = agent.generate_revenue_report()
+        self.assertEqual(result["report"], "Revenue looks good.")
+        self.assertIn("metrics", result)
+
+    def test_format_amount_usd(self):
+        from autogpt.agents.stripe_agent import StripeAgent
+        self.assertEqual(StripeAgent._format_amount(150000, "usd"), "$1,500.00")
+
+    def test_format_amount_eur(self):
+        from autogpt.agents.stripe_agent import StripeAgent
+        self.assertEqual(StripeAgent._format_amount(99900, "eur"), "€999.00")
+
+    def test_format_amount_unknown_currency(self):
+        from autogpt.agents.stripe_agent import StripeAgent
+        result = StripeAgent._format_amount(5000, "jpy")
+        self.assertIn("JPY", result)
+
+    @patch("autogpt.agents.stripe_agent.requests")
+    def test_run_routes_mrr(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"data": [], "has_more": False},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.run("What is our MRR?")
+        self.assertIn("mrr_cents", result)
+
+    @patch("autogpt.agents.stripe_agent.requests")
+    def test_run_routes_past_due(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"data": [], "has_more": False},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.run("List past due customers")
+        self.assertIn("past_due_customers", result)
+
+    @patch("autogpt.agents.stripe_agent.requests")
+    def test_run_payment_link_without_price_id_returns_error(self, mock_requests):
+        agent = self._make_agent()
+        result = agent.run("Create a payment link")
+        self.assertIn("error", result)
+
+    @patch("autogpt.agents.stripe_agent.requests")
+    def test_run_payment_link_with_price_id(self, mock_requests):
+        mock_requests.post.return_value = MagicMock(
+            json=lambda: {"id": "plink_1", "url": "https://buy.stripe.com/x", "active": True},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.run("Create a payment link for price_1TestABC")
+        self.assertIn("url", result)
+
 
 if __name__ == "__main__":
     unittest.main()
