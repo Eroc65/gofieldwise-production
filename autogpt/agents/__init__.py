@@ -9,6 +9,11 @@ from .email_agent import EmailAgent
 from .analytics_agent import AnalyticsAgent
 from .customer_support_agent import CustomerSupportAgent
 from .content_agent import ContentAgent
+from .telegram_agent import TelegramAgent
+from .youtube_agent import YouTubeAgent
+from .google_agent import GoogleAgent
+from .yelp_agent import YelpAgent
+from .pinterest_agent import PinterestAgent
 
 __all__ = [
     "EngineeringAgent",
@@ -20,4 +25,9 @@ __all__ = [
     "AnalyticsAgent",
     "CustomerSupportAgent",
     "ContentAgent",
+    "TelegramAgent",
+    "YouTubeAgent",
+    "GoogleAgent",
+    "YelpAgent",
+    "PinterestAgent",
 ]

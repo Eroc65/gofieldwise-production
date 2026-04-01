@@ -39,6 +39,11 @@ from autogpt.agents.email_agent import EmailAgent
 from autogpt.agents.analytics_agent import AnalyticsAgent
 from autogpt.agents.customer_support_agent import CustomerSupportAgent
 from autogpt.agents.content_agent import ContentAgent
+from autogpt.agents.telegram_agent import TelegramAgent
+from autogpt.agents.youtube_agent import YouTubeAgent
+from autogpt.agents.google_agent import GoogleAgent
+from autogpt.agents.yelp_agent import YelpAgent
+from autogpt.agents.pinterest_agent import PinterestAgent
 from autogpt.utils.logger import get_logger
 
 _ROUTER_SYSTEM_PROMPT = """\
@@ -54,11 +59,16 @@ specialized agents:
   - analytics         : collects metrics and generates weekly operations reports
   - customer_support  : answers customer questions using a knowledge base, logs tickets
   - content           : writes blog posts, landing pages, social content, email campaigns
+  - telegram          : sends/broadcasts messages via a Telegram bot
+  - youtube           : searches YouTube videos and retrieves channel/video statistics
+  - google            : runs Google web searches and summarises results
+  - yelp              : searches local businesses and reads Yelp reviews
+  - pinterest         : creates pins and manages Pinterest boards
   - none              : answer directly from your own knowledge (no agent needed)
 
 When the user sends a message, reply with a JSON object:
 {
-  "agent": "<engineering|browser|twitter|meta_ads|slack|email|analytics|customer_support|content|none>",
+  "agent": "<engineering|browser|twitter|meta_ads|slack|email|analytics|customer_support|content|telegram|youtube|google|yelp|pinterest|none>",
   "task": "<the exact sub-task to pass to the chosen agent, rephrased if needed>",
   "direct_reply": "<non-empty only when agent is 'none'; your direct answer>"
 }
@@ -103,6 +113,11 @@ class Orchestrator:
         self._analytics: AnalyticsAgent | None = None
         self._customer_support: CustomerSupportAgent | None = None
         self._content: ContentAgent | None = None
+        self._telegram: TelegramAgent | None = None
+        self._youtube: YouTubeAgent | None = None
+        self._google: GoogleAgent | None = None
+        self._yelp: YelpAgent | None = None
+        self._pinterest: PinterestAgent | None = None
 
         # Name of the last agent invoked — exposed for callers (e.g. web UI).
         self.last_agent: str = "none"
@@ -211,6 +226,16 @@ class Orchestrator:
                 return self._get_customer_support().run(task)
             if agent_name == "content":
                 return self._get_content().run(task)
+            if agent_name == "telegram":
+                return self._get_telegram().run(task)
+            if agent_name == "youtube":
+                return self._get_youtube().run(task)
+            if agent_name == "google":
+                return self._get_google().run(task)
+            if agent_name == "yelp":
+                return self._get_yelp().run(task)
+            if agent_name == "pinterest":
+                return self._get_pinterest().run(task)
         except Exception as exc:
             self._log.error("Agent '%s' raised an error: %s", agent_name, exc)
             return {"error": str(exc)}
@@ -350,4 +375,29 @@ class Orchestrator:
         if self._content is None:
             self._content = ContentAgent(self._cfg)
         return self._content
+
+    def _get_telegram(self) -> TelegramAgent:
+        if self._telegram is None:
+            self._telegram = TelegramAgent(self._cfg)
+        return self._telegram
+
+    def _get_youtube(self) -> YouTubeAgent:
+        if self._youtube is None:
+            self._youtube = YouTubeAgent(self._cfg)
+        return self._youtube
+
+    def _get_google(self) -> GoogleAgent:
+        if self._google is None:
+            self._google = GoogleAgent(self._cfg)
+        return self._google
+
+    def _get_yelp(self) -> YelpAgent:
+        if self._yelp is None:
+            self._yelp = YelpAgent(self._cfg)
+        return self._yelp
+
+    def _get_pinterest(self) -> PinterestAgent:
+        if self._pinterest is None:
+            self._pinterest = PinterestAgent(self._cfg)
+        return self._pinterest
 

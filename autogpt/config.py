@@ -76,6 +76,35 @@ class Config:
     email_smtp_password: str = os.getenv("EMAIL_SMTP_PASSWORD", "")
 
     # ------------------------------------------------------------------ #
+    # Telegram
+    # ------------------------------------------------------------------ #
+    telegram_bot_token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    telegram_default_chat_id: str = os.getenv("TELEGRAM_DEFAULT_CHAT_ID", "")
+
+    # ------------------------------------------------------------------ #
+    # YouTube
+    # ------------------------------------------------------------------ #
+    youtube_api_key: str = os.getenv("YOUTUBE_API_KEY", "")
+    youtube_channel_id: str = os.getenv("YOUTUBE_CHANNEL_ID", "")
+
+    # ------------------------------------------------------------------ #
+    # Google Custom Search
+    # ------------------------------------------------------------------ #
+    google_api_key: str = os.getenv("GOOGLE_API_KEY", "")
+    google_search_engine_id: str = os.getenv("GOOGLE_SEARCH_ENGINE_ID", "")
+
+    # ------------------------------------------------------------------ #
+    # Yelp
+    # ------------------------------------------------------------------ #
+    yelp_api_key: str = os.getenv("YELP_API_KEY", "")
+
+    # ------------------------------------------------------------------ #
+    # Pinterest
+    # ------------------------------------------------------------------ #
+    pinterest_access_token: str = os.getenv("PINTEREST_ACCESS_TOKEN", "")
+    pinterest_default_board_id: str = os.getenv("PINTEREST_DEFAULT_BOARD_ID", "")
+
+    # ------------------------------------------------------------------ #
     # Scheduler
     # ------------------------------------------------------------------ #
     scheduler_enabled: bool = os.getenv("SCHEDULER_ENABLED", "true").lower() == "true"

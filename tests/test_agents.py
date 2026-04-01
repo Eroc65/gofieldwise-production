@@ -29,6 +29,15 @@ def _make_config(**overrides) -> Config:
     cfg.twitter_access_secret = overrides.get("twitter_access_secret", "access_secret")
     cfg.meta_access_token = overrides.get("meta_access_token", "meta_token")
     cfg.meta_ad_account_id = overrides.get("meta_ad_account_id", "12345")
+    cfg.telegram_bot_token = overrides.get("telegram_bot_token", "tg_test_token")
+    cfg.telegram_default_chat_id = overrides.get("telegram_default_chat_id", "-100123456")
+    cfg.youtube_api_key = overrides.get("youtube_api_key", "yt_api_key")
+    cfg.youtube_channel_id = overrides.get("youtube_channel_id", "UCtest123")
+    cfg.google_api_key = overrides.get("google_api_key", "google_test_key")
+    cfg.google_search_engine_id = overrides.get("google_search_engine_id", "test_cx")
+    cfg.yelp_api_key = overrides.get("yelp_api_key", "yelp_test_key")
+    cfg.pinterest_access_token = overrides.get("pinterest_access_token", "pin_test_token")
+    cfg.pinterest_default_board_id = overrides.get("pinterest_default_board_id", "board123")
     cfg.verbose = False
     return cfg
 
@@ -1529,6 +1538,774 @@ class TestOrchestratorContentAndSupport(unittest.TestCase):
             orc = Orchestrator(self.cfg)
             orc.chat("Write a blog post about productivity")
             self.assertEqual(orc.last_agent, "content")
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+# ======================================================================
+# TelegramAgent tests
+# ======================================================================
+
+class TestTelegramAgent(unittest.TestCase):
+    def setUp(self):
+        self.cfg = _make_config()
+
+    def _make_agent(self):
+        from autogpt.agents.telegram_agent import TelegramAgent
+        return TelegramAgent(self.cfg)
+
+    @patch("autogpt.agents.telegram_agent.requests")
+    def test_send_message_calls_api(self, mock_requests):
+        mock_requests.post.return_value = MagicMock(
+            json=lambda: {"ok": True, "result": {"message_id": 42}},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.send_message("Hello, Telegram!")
+        mock_requests.post.assert_called_once()
+        call_kwargs = mock_requests.post.call_args
+        self.assertIn("sendMessage", call_kwargs[0][0])
+        self.assertEqual(result["ok"], True)
+
+    @patch("autogpt.agents.telegram_agent.requests")
+    def test_send_message_uses_default_chat_id(self, mock_requests):
+        mock_requests.post.return_value = MagicMock(
+            json=lambda: {"ok": True, "result": {"message_id": 7}},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        agent.send_message("Broadcast!")
+        payload = mock_requests.post.call_args[1]["json"]
+        self.assertEqual(payload["chat_id"], self.cfg.telegram_default_chat_id)
+
+    def test_send_message_raises_without_chat_id(self):
+        self.cfg.telegram_default_chat_id = ""
+        agent = self._make_agent()
+        with self.assertRaises(ValueError):
+            agent.send_message("Hello!")
+
+    def test_send_message_raises_without_token(self):
+        self.cfg.telegram_bot_token = ""
+        agent = self._make_agent()
+        with self.assertRaises(ValueError):
+            agent.send_message("Hello!")
+
+    @patch("autogpt.agents.telegram_agent.requests")
+    @patch("autogpt.agents.telegram_agent.openai")
+    def test_compose_and_send(self, mock_openai, mock_requests):
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="🚀 We just launched!"))]
+        )
+        mock_requests.post.return_value = MagicMock(
+            json=lambda: {"ok": True, "result": {"message_id": 10}},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.compose_and_send("Announce our product launch")
+        self.assertIn("message", result)
+        self.assertEqual(result["message"], "🚀 We just launched!")
+        self.assertIn("api_response", result)
+
+    @patch("autogpt.agents.telegram_agent.requests")
+    def test_get_updates(self, mock_requests):
+        mock_requests.post.return_value = MagicMock(
+            json=lambda: {"ok": True, "result": [{"update_id": 1, "message": {"text": "hi"}}]},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        updates = agent.get_updates()
+        self.assertEqual(len(updates), 1)
+        self.assertEqual(updates[0]["update_id"], 1)
+
+    @patch("autogpt.agents.telegram_agent.requests")
+    def test_get_updates_clamps_limit(self, mock_requests):
+        mock_requests.post.return_value = MagicMock(
+            json=lambda: {"ok": True, "result": []},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        agent.get_updates(limit=200)
+        payload = mock_requests.post.call_args[1]["json"]
+        self.assertLessEqual(payload["limit"], 100)
+
+    @patch("autogpt.agents.telegram_agent.requests")
+    @patch("autogpt.agents.telegram_agent.openai")
+    def test_run_routes_to_get_updates(self, mock_openai, mock_requests):
+        mock_requests.post.return_value = MagicMock(
+            json=lambda: {"ok": True, "result": []},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.run("get updates from Telegram bot")
+        self.assertIn("updates", result)
+
+    @patch("autogpt.agents.telegram_agent.requests")
+    @patch("autogpt.agents.telegram_agent.openai")
+    def test_run_routes_to_compose_and_send(self, mock_openai, mock_requests):
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="New feature shipped!"))]
+        )
+        mock_requests.post.return_value = MagicMock(
+            json=lambda: {"ok": True, "result": {"message_id": 5}},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.run("Announce our new pricing page")
+        self.assertIn("message", result)
+
+
+# ======================================================================
+# YouTubeAgent tests
+# ======================================================================
+
+class TestYouTubeAgent(unittest.TestCase):
+    def setUp(self):
+        self.cfg = _make_config()
+
+    def _make_agent(self):
+        from autogpt.agents.youtube_agent import YouTubeAgent
+        return YouTubeAgent(self.cfg)
+
+    @patch("autogpt.agents.youtube_agent.requests")
+    def test_search_videos_returns_list(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {
+                "items": [
+                    {"id": {"videoId": "abc123"}, "snippet": {
+                        "title": "Test Video", "channelTitle": "TestChan",
+                        "publishedAt": "2025-01-01", "description": "Desc"
+                    }}
+                ]
+            },
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        results = agent.search_videos("startup growth")
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["id"], "abc123")
+        self.assertEqual(results[0]["title"], "Test Video")
+
+    @patch("autogpt.agents.youtube_agent.requests")
+    def test_search_videos_clamps_max_results(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"items": []},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        agent.search_videos("test", max_results=200)
+        params = mock_requests.get.call_args[1]["params"]
+        self.assertLessEqual(params["maxResults"], 50)
+
+    def test_search_videos_raises_without_api_key(self):
+        self.cfg.youtube_api_key = ""
+        agent = self._make_agent()
+        with self.assertRaises(ValueError):
+            agent.search_videos("test")
+
+    @patch("autogpt.agents.youtube_agent.requests")
+    def test_get_video_stats(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {
+                "items": [{
+                    "snippet": {"title": "My Video", "channelTitle": "Chan", "publishedAt": ""},
+                    "statistics": {"viewCount": "1000", "likeCount": "50", "commentCount": "10"}
+                }]
+            },
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        stats = agent.get_video_stats("abc123")
+        self.assertEqual(stats["view_count"], 1000)
+        self.assertEqual(stats["like_count"], 50)
+
+    @patch("autogpt.agents.youtube_agent.requests")
+    def test_get_video_stats_not_found(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"items": []},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.get_video_stats("unknown")
+        self.assertIn("error", result)
+
+    @patch("autogpt.agents.youtube_agent.requests")
+    def test_get_channel_stats(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {
+                "items": [{
+                    "snippet": {"title": "My Channel", "description": "A channel"},
+                    "statistics": {"subscriberCount": "5000", "videoCount": "200", "viewCount": "100000"}
+                }]
+            },
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        stats = agent.get_channel_stats()
+        self.assertEqual(stats["subscriber_count"], 5000)
+        self.assertEqual(stats["video_count"], 200)
+
+    def test_get_channel_stats_raises_without_channel_id(self):
+        self.cfg.youtube_channel_id = ""
+        agent = self._make_agent()
+        with self.assertRaises(ValueError):
+            agent.get_channel_stats()
+
+    @patch("autogpt.agents.youtube_agent.openai")
+    def test_summarise_calls_gpt(self, mock_openai):
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="Great channel metrics."))]
+        )
+        agent = self._make_agent()
+        summary = agent.summarise({"subscriber_count": 5000})
+        self.assertEqual(summary, "Great channel metrics.")
+
+    @patch("autogpt.agents.youtube_agent.openai")
+    @patch("autogpt.agents.youtube_agent.requests")
+    def test_run_channel_stats(self, mock_requests, mock_openai):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {
+                "items": [{
+                    "snippet": {"title": "Chan", "description": ""},
+                    "statistics": {"subscriberCount": "1000", "videoCount": "50", "viewCount": "9999"}
+                }]
+            },
+            raise_for_status=lambda: None,
+        )
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="Channel is growing."))]
+        )
+        agent = self._make_agent()
+        result = agent.run("show my channel stats")
+        self.assertIn("stats", result)
+        self.assertIn("summary", result)
+
+    @patch("autogpt.agents.youtube_agent.openai")
+    @patch("autogpt.agents.youtube_agent.requests")
+    def test_run_search_default(self, mock_requests, mock_openai):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"items": [{"id": {"videoId": "v1"}, "snippet": {
+                "title": "T", "channelTitle": "C", "publishedAt": "", "description": ""
+            }}]},
+            raise_for_status=lambda: None,
+        )
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="Found 1 video."))]
+        )
+        agent = self._make_agent()
+        result = agent.run("search for Python tutorials")
+        self.assertIn("videos", result)
+        self.assertIn("summary", result)
+
+
+# ======================================================================
+# GoogleAgent tests
+# ======================================================================
+
+class TestGoogleAgent(unittest.TestCase):
+    def setUp(self):
+        self.cfg = _make_config()
+
+    def _make_agent(self):
+        from autogpt.agents.google_agent import GoogleAgent
+        return GoogleAgent(self.cfg)
+
+    @patch("autogpt.agents.google_agent.requests")
+    @patch("autogpt.agents.google_agent.openai")
+    def test_search_returns_results(self, mock_openai, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {
+                "items": [
+                    {"title": "Result 1", "link": "https://example.com/1", "snippet": "Snippet 1"},
+                    {"title": "Result 2", "link": "https://example.com/2", "snippet": "Snippet 2"},
+                ]
+            },
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        results = agent.search("startup marketing")
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0]["title"], "Result 1")
+        self.assertEqual(results[0]["link"], "https://example.com/1")
+
+    @patch("autogpt.agents.google_agent.requests")
+    def test_search_clamps_num_results(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"items": []},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        agent.search("test", num_results=50)
+        params = mock_requests.get.call_args[1]["params"]
+        self.assertLessEqual(params["num"], 10)
+
+    def test_search_raises_without_api_key(self):
+        self.cfg.google_api_key = ""
+        agent = self._make_agent()
+        with self.assertRaises(ValueError):
+            agent.search("test")
+
+    def test_search_raises_without_engine_id(self):
+        self.cfg.google_search_engine_id = ""
+        agent = self._make_agent()
+        with self.assertRaises(ValueError):
+            agent.search("test")
+
+    @patch("autogpt.agents.google_agent.requests")
+    @patch("autogpt.agents.google_agent.openai")
+    def test_search_and_summarise_returns_summary(self, mock_openai, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"items": [{"title": "T", "link": "https://x.com", "snippet": "S"}]},
+            raise_for_status=lambda: None,
+        )
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="Key findings: ..."))]
+        )
+        agent = self._make_agent()
+        result = agent.search_and_summarise("AI trends 2025")
+        self.assertIn("results", result)
+        self.assertIn("summary", result)
+        self.assertEqual(result["summary"], "Key findings: ...")
+
+    @patch("autogpt.agents.google_agent.requests")
+    @patch("autogpt.agents.google_agent.openai")
+    def test_answer_question_returns_answer_and_sources(self, mock_openai, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"items": [{"title": "T", "link": "https://x.com", "snippet": "S"}]},
+            raise_for_status=lambda: None,
+        )
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="The answer is 42."))]
+        )
+        agent = self._make_agent()
+        result = agent.answer_question("What is the speed of light?")
+        self.assertIn("answer", result)
+        self.assertIn("sources", result)
+        self.assertEqual(result["answer"], "The answer is 42.")
+
+    @patch("autogpt.agents.google_agent.requests")
+    @patch("autogpt.agents.google_agent.openai")
+    def test_run_routes_to_answer_question(self, mock_openai, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"items": []},
+            raise_for_status=lambda: None,
+        )
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="Because gravity."))]
+        )
+        agent = self._make_agent()
+        result = agent.run("What is product-market fit?")
+        self.assertIn("answer", result)
+
+    @patch("autogpt.agents.google_agent.requests")
+    @patch("autogpt.agents.google_agent.openai")
+    def test_run_routes_to_search_and_summarise(self, mock_openai, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"items": [{"title": "T", "link": "https://x.com", "snippet": "S"}]},
+            raise_for_status=lambda: None,
+        )
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="Trends summary."))]
+        )
+        agent = self._make_agent()
+        result = agent.run("latest SaaS pricing trends")
+        self.assertIn("results", result)
+        self.assertIn("summary", result)
+
+    @patch("autogpt.agents.google_agent.requests")
+    def test_search_passes_date_restrict(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"items": []},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        agent.search("news", date_restrict="d7")
+        params = mock_requests.get.call_args[1]["params"]
+        self.assertEqual(params["dateRestrict"], "d7")
+
+    @patch("autogpt.agents.google_agent.requests")
+    def test_search_passes_site_filter(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"items": []},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        agent.search("blog posts", site_filter="techcrunch.com")
+        params = mock_requests.get.call_args[1]["params"]
+        self.assertIn("techcrunch.com", params["q"])
+
+
+# ======================================================================
+# YelpAgent tests
+# ======================================================================
+
+class TestYelpAgent(unittest.TestCase):
+    def setUp(self):
+        self.cfg = _make_config()
+
+    def _make_agent(self):
+        from autogpt.agents.yelp_agent import YelpAgent
+        return YelpAgent(self.cfg)
+
+    @patch("autogpt.agents.yelp_agent.requests")
+    def test_search_businesses_returns_list(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {
+                "businesses": [
+                    {
+                        "id": "biz1", "name": "Coffee House", "rating": 4.5,
+                        "review_count": 200, "location": {"display_address": ["123 Main St"]},
+                        "display_phone": "555-1234", "categories": [{"title": "Coffee"}],
+                        "url": "https://yelp.com/biz/1", "is_closed": False,
+                    }
+                ]
+            },
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        results = agent.search_businesses("coffee", "San Francisco, CA")
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["name"], "Coffee House")
+        self.assertEqual(results[0]["rating"], 4.5)
+
+    def test_search_businesses_raises_without_api_key(self):
+        self.cfg.yelp_api_key = ""
+        agent = self._make_agent()
+        with self.assertRaises(ValueError):
+            agent.search_businesses("coffee", "NYC")
+
+    @patch("autogpt.agents.yelp_agent.requests")
+    def test_get_business_returns_detail(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {
+                "id": "biz1", "name": "Pizza Place", "rating": 4.0,
+                "review_count": 80, "display_phone": "555-9999",
+                "location": {"display_address": ["456 Oak Ave"]},
+                "hours": [], "categories": [{"title": "Pizza"}],
+                "url": "https://yelp.com/biz/p", "photos": [],
+            },
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        detail = agent.get_business("biz1")
+        self.assertEqual(detail["name"], "Pizza Place")
+        self.assertEqual(detail["rating"], 4.0)
+
+    @patch("autogpt.agents.yelp_agent.requests")
+    def test_get_reviews_returns_list(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {
+                "reviews": [
+                    {
+                        "user": {"name": "Alice"},
+                        "rating": 5,
+                        "text": "Amazing!",
+                        "time_created": "2025-01-01",
+                        "url": "https://yelp.com/review/1",
+                    }
+                ]
+            },
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        reviews = agent.get_reviews("biz1")
+        self.assertEqual(len(reviews), 1)
+        self.assertEqual(reviews[0]["author"], "Alice")
+        self.assertEqual(reviews[0]["rating"], 5)
+
+    @patch("autogpt.agents.yelp_agent.openai")
+    @patch("autogpt.agents.yelp_agent.requests")
+    def test_summarise_reviews(self, mock_requests, mock_openai):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"reviews": [{"user": {"name": "Bob"}, "rating": 4,
+                                        "text": "Good place.", "time_created": "", "url": ""}]},
+            raise_for_status=lambda: None,
+        )
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="Overall positive with some concerns."))]
+        )
+        agent = self._make_agent()
+        result = agent.summarise_reviews("biz1")
+        self.assertIn("reviews", result)
+        self.assertIn("summary", result)
+        self.assertEqual(result["summary"], "Overall positive with some concerns.")
+
+    @patch("autogpt.agents.yelp_agent.openai")
+    @patch("autogpt.agents.yelp_agent.requests")
+    def test_competitor_analysis(self, mock_requests, mock_openai):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"businesses": []},
+            raise_for_status=lambda: None,
+        )
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="Market is fragmented."))]
+        )
+        agent = self._make_agent()
+        result = agent.competitor_analysis("yoga studio", "Austin, TX")
+        self.assertIn("businesses", result)
+        self.assertIn("analysis", result)
+
+    @patch("autogpt.agents.yelp_agent.requests")
+    def test_run_routes_to_search(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"businesses": []},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.run("find Italian restaurants in Boston")
+        self.assertIn("businesses", result)
+
+    @patch("autogpt.agents.yelp_agent.openai")
+    @patch("autogpt.agents.yelp_agent.requests")
+    def test_run_routes_to_competitor_analysis(self, mock_requests, mock_openai):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"businesses": []},
+            raise_for_status=lambda: None,
+        )
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="Analysis here."))]
+        )
+        agent = self._make_agent()
+        result = agent.run("competitive analysis for yoga studios in Austin")
+        self.assertIn("analysis", result)
+
+    @patch("autogpt.agents.yelp_agent.requests")
+    def test_get_reviews_sends_bearer_token(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"reviews": []},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        agent.get_reviews("biz1")
+        headers = mock_requests.get.call_args[1]["headers"]
+        self.assertIn("Bearer", headers["Authorization"])
+
+
+# ======================================================================
+# PinterestAgent tests
+# ======================================================================
+
+class TestPinterestAgent(unittest.TestCase):
+    def setUp(self):
+        self.cfg = _make_config()
+
+    def _make_agent(self):
+        from autogpt.agents.pinterest_agent import PinterestAgent
+        return PinterestAgent(self.cfg)
+
+    @patch("autogpt.agents.pinterest_agent.requests")
+    def test_list_boards_returns_list(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {
+                "items": [
+                    {"id": "b1", "name": "Recipes", "description": "Food", "privacy": "PUBLIC", "pin_count": 10}
+                ]
+            },
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        boards = agent.list_boards()
+        self.assertEqual(len(boards), 1)
+        self.assertEqual(boards[0]["name"], "Recipes")
+
+    def test_list_boards_raises_without_token(self):
+        self.cfg.pinterest_access_token = ""
+        agent = self._make_agent()
+        with self.assertRaises(ValueError):
+            agent.list_boards()
+
+    @patch("autogpt.agents.pinterest_agent.requests")
+    def test_create_board(self, mock_requests):
+        mock_requests.post.return_value = MagicMock(
+            json=lambda: {"id": "new_b", "name": "Tech Tips", "privacy": "PUBLIC"},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.create_board("Tech Tips", description="Tips for devs")
+        self.assertEqual(result["id"], "new_b")
+        payload = mock_requests.post.call_args[1]["json"]
+        self.assertEqual(payload["name"], "Tech Tips")
+
+    @patch("autogpt.agents.pinterest_agent.requests")
+    def test_create_pin(self, mock_requests):
+        mock_requests.post.return_value = MagicMock(
+            json=lambda: {"id": "pin1", "title": "My Pin"},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.create_pin(
+            board_id="b1",
+            title="My Pin",
+            description="A great pin",
+            image_url="https://example.com/img.jpg",
+            link="https://example.com",
+        )
+        self.assertEqual(result["id"], "pin1")
+        payload = mock_requests.post.call_args[1]["json"]
+        self.assertEqual(payload["board_id"], "b1")
+        self.assertEqual(payload["media_source"]["url"], "https://example.com/img.jpg")
+
+    @patch("autogpt.agents.pinterest_agent.openai")
+    @patch("autogpt.agents.pinterest_agent.requests")
+    def test_compose_and_pin(self, mock_requests, mock_openai):
+        mock_openai.chat.completions.create.side_effect = [
+            MagicMock(choices=[MagicMock(message=MagicMock(content="Amazing Recipe"))]),  # title
+            MagicMock(choices=[MagicMock(message=MagicMock(content="Try this delicious dish..."))]),  # desc
+        ]
+        mock_requests.post.return_value = MagicMock(
+            json=lambda: {"id": "pin2"},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.compose_and_pin(
+            brief="Share a healthy salad recipe",
+            board_id="b1",
+            image_url="https://example.com/salad.jpg",
+        )
+        self.assertIn("title", result)
+        self.assertIn("description", result)
+        self.assertIn("pin", result)
+        self.assertEqual(result["title"], "Amazing Recipe")
+
+    @patch("autogpt.agents.pinterest_agent.requests")
+    def test_list_pins(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {
+                "items": [{"id": "p1", "title": "Pin 1", "description": "Desc",
+                           "link": "https://x.com", "created_at": "2025-01-01"}]
+            },
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        pins = agent.list_pins("b1")
+        self.assertEqual(len(pins), 1)
+        self.assertEqual(pins[0]["title"], "Pin 1")
+
+    @patch("autogpt.agents.pinterest_agent.requests")
+    def test_run_routes_to_list_boards(self, mock_requests):
+        mock_requests.get.return_value = MagicMock(
+            json=lambda: {"items": []},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.run("show my boards on Pinterest")
+        self.assertIn("boards", result)
+
+    @patch("autogpt.agents.pinterest_agent.requests")
+    def test_run_routes_to_create_board(self, mock_requests):
+        mock_requests.post.return_value = MagicMock(
+            json=lambda: {"id": "b99", "name": "Travel"},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.run("create board Travel Inspiration")
+        self.assertIn("id", result)
+
+    @patch("autogpt.agents.pinterest_agent.openai")
+    @patch("autogpt.agents.pinterest_agent.requests")
+    def test_run_compose_and_pin_uses_default_board(self, mock_requests, mock_openai):
+        mock_openai.chat.completions.create.side_effect = [
+            MagicMock(choices=[MagicMock(message=MagicMock(content="Title"))]),
+            MagicMock(choices=[MagicMock(message=MagicMock(content="Description"))]),
+        ]
+        mock_requests.post.return_value = MagicMock(
+            json=lambda: {"id": "pinX"},
+            raise_for_status=lambda: None,
+        )
+        agent = self._make_agent()
+        result = agent.run("Pin our new product photo https://example.com/photo.jpg")
+        self.assertIn("pin", result)
+
+    def test_run_returns_error_without_board_id(self):
+        self.cfg.pinterest_default_board_id = ""
+        agent = self._make_agent()
+        result = agent.run("Create a pin for our new product https://example.com/img.jpg")
+        self.assertIn("error", result)
+
+    def test_run_returns_error_without_image_url(self):
+        agent = self._make_agent()
+        result = agent.run("Create a pin about our product launch")
+        self.assertIn("error", result)
+
+
+# ======================================================================
+# Orchestrator routing tests for the 5 new agents
+# ======================================================================
+
+class TestOrchestratorNewChannelAgents(unittest.TestCase):
+    def setUp(self):
+        self.cfg = _make_config()
+        self.cfg.database_url = ""
+
+    def _make_routing(self, agent_name: str, task: str) -> str:
+        return json.dumps({"agent": agent_name, "task": task, "direct_reply": ""})
+
+    def _side_effects(self, routing_json: str) -> list:
+        return [
+            MagicMock(choices=[MagicMock(message=MagicMock(content=routing_json))]),
+            MagicMock(choices=[MagicMock(message=MagicMock(content="Done."))]),
+        ]
+
+    @patch("autogpt.orchestrator.openai")
+    def test_telegram_routed(self, mock_openai):
+        mock_openai.chat.completions.create.side_effect = self._side_effects(
+            self._make_routing("telegram", "Announce product launch on Telegram")
+        )
+        from autogpt.orchestrator import Orchestrator
+        from autogpt.agents.telegram_agent import TelegramAgent
+        with patch.object(TelegramAgent, "run", return_value={"message": "Sent!", "api_response": {}}):
+            orc = Orchestrator(self.cfg)
+            orc.chat("Announce our launch on Telegram")
+            self.assertEqual(orc.last_agent, "telegram")
+
+    @patch("autogpt.orchestrator.openai")
+    def test_youtube_routed(self, mock_openai):
+        mock_openai.chat.completions.create.side_effect = self._side_effects(
+            self._make_routing("youtube", "Search for startup pitch videos")
+        )
+        from autogpt.orchestrator import Orchestrator
+        from autogpt.agents.youtube_agent import YouTubeAgent
+        with patch.object(YouTubeAgent, "run", return_value={"videos": [], "count": 0, "summary": ""}):
+            orc = Orchestrator(self.cfg)
+            orc.chat("Search YouTube for startup pitch videos")
+            self.assertEqual(orc.last_agent, "youtube")
+
+    @patch("autogpt.orchestrator.openai")
+    def test_google_routed(self, mock_openai):
+        mock_openai.chat.completions.create.side_effect = self._side_effects(
+            self._make_routing("google", "Research SaaS pricing models")
+        )
+        from autogpt.orchestrator import Orchestrator
+        from autogpt.agents.google_agent import GoogleAgent
+        with patch.object(GoogleAgent, "run", return_value={"results": [], "summary": ""}):
+            orc = Orchestrator(self.cfg)
+            orc.chat("Research SaaS pricing strategies on Google")
+            self.assertEqual(orc.last_agent, "google")
+
+    @patch("autogpt.orchestrator.openai")
+    def test_yelp_routed(self, mock_openai):
+        mock_openai.chat.completions.create.side_effect = self._side_effects(
+            self._make_routing("yelp", "Find coffee shops in Austin TX")
+        )
+        from autogpt.orchestrator import Orchestrator
+        from autogpt.agents.yelp_agent import YelpAgent
+        with patch.object(YelpAgent, "run", return_value={"businesses": []}):
+            orc = Orchestrator(self.cfg)
+            orc.chat("Find coffee shops in Austin on Yelp")
+            self.assertEqual(orc.last_agent, "yelp")
+
+    @patch("autogpt.orchestrator.openai")
+    def test_pinterest_routed(self, mock_openai):
+        mock_openai.chat.completions.create.side_effect = self._side_effects(
+            self._make_routing("pinterest", "List my Pinterest boards")
+        )
+        from autogpt.orchestrator import Orchestrator
+        from autogpt.agents.pinterest_agent import PinterestAgent
+        with patch.object(PinterestAgent, "run", return_value={"boards": [], "count": 0}):
+            orc = Orchestrator(self.cfg)
+            orc.chat("List my Pinterest boards")
+            self.assertEqual(orc.last_agent, "pinterest")
 
 
 if __name__ == "__main__":
