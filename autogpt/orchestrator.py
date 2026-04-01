@@ -5,6 +5,8 @@ This is the central coordination layer of the platform.  It:
 * Maintains a running conversation history so context is never lost.
 * Uses the OpenAI API to decide which agent(s) to invoke for each message.
 * Calls the appropriate agent and returns a human-readable summary.
+* Persists conversation history to Postgres (when ``DATABASE_URL`` is set)
+  so sessions survive restarts and can be shared across processes.
 * Exposes a ``chat(message)`` method for use from any interface (CLI, web, etc.).
 
 Example usage::
@@ -13,7 +15,7 @@ Example usage::
     from autogpt.orchestrator import Orchestrator
 
     cfg = Config()
-    orc = Orchestrator(cfg)
+    orc = Orchestrator(cfg, session_id="my-session")
     print(orc.chat("Build me a Flask app and deploy it to Render."))
     print(orc.chat("Tweet about our launch."))
 """
@@ -22,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from typing import Any
 
 import openai
@@ -53,18 +56,31 @@ When the user sends a message, reply with a JSON object:
 Output ONLY the JSON object — no prose, no markdown fences.
 """
 
+_CREATE_SESSIONS_TABLE = """\
+CREATE TABLE IF NOT EXISTS autogpt_sessions (
+    session_id  TEXT        PRIMARY KEY,
+    history     JSONB       NOT NULL DEFAULT '[]',
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)
+"""
+
 
 class Orchestrator:
     """Routes user messages to the right agent and maintains conversation state.
 
     Args:
         config: Application :class:`~autogpt.config.Config` instance.
+        session_id: Optional identifier for this conversation session.  When
+            *database_url* is configured, history is loaded from and persisted
+            to Postgres using this key.  A random UUID is generated when omitted.
     """
 
-    def __init__(self, config: Config) -> None:
+    def __init__(self, config: Config, session_id: str | None = None) -> None:
         self._cfg = config
         self._log: logging.Logger = get_logger(__name__, config.verbose)
         openai.api_key = config.openai_api_key
+
+        self.session_id: str = session_id or str(uuid.uuid4())
 
         # Lazy-initialise agents to avoid import errors when optional
         # dependencies (playwright, tweepy, etc.) are not installed.
@@ -74,9 +90,13 @@ class Orchestrator:
         self._meta: MetaAdsAgent | None = None
 
         # Conversation history sent with every OpenAI call for context.
+        # Loaded from Postgres if a DATABASE_URL is configured.
         self._history: list[dict[str, str]] = [
             {"role": "system", "content": _ROUTER_SYSTEM_PROMPT}
         ]
+        if config.database_url:
+            self._init_sessions_table()
+            self._load_history()
 
     # ------------------------------------------------------------------ #
     # Public interface
@@ -111,11 +131,13 @@ class Orchestrator:
 
         self._history.append({"role": "assistant", "content": reply})
         self._log.info("Assistant: %s", reply[:120])
+        self._save_history()
         return reply
 
     def reset(self) -> None:
         """Clear conversation history (keeps the system prompt)."""
         self._history = [self._history[0]]
+        self._save_history()
 
     # ------------------------------------------------------------------ #
     # Internal routing helpers
@@ -177,6 +199,73 @@ class Orchestrator:
         return (response.choices[0].message.content or "Done.").strip()
 
     # ------------------------------------------------------------------ #
+    # Session persistence helpers
+    # ------------------------------------------------------------------ #
+
+    def _get_db(self) -> "DatabaseTools | None":
+        """Return a *DatabaseTools* instance, or *None* when DB is not configured."""
+        if not self._cfg.database_url:
+            return None
+        from autogpt.tools.database_tools import DatabaseTools
+        return DatabaseTools(self._cfg.database_url, self._cfg.verbose)
+
+    def _init_sessions_table(self) -> None:
+        """Create the sessions table if it does not yet exist."""
+        db = self._get_db()
+        if db is None:
+            return
+        try:
+            db.execute_sql(_CREATE_SESSIONS_TABLE)
+            self._log.debug("Sessions table ready.")
+        except Exception as exc:
+            self._log.warning("Could not initialise sessions table: %s", exc)
+
+    def _load_history(self) -> None:
+        """Load conversation history from Postgres (no-op if DB not configured)."""
+        db = self._get_db()
+        if db is None:
+            return
+        try:
+            rows = db.query(
+                "SELECT history FROM autogpt_sessions WHERE session_id = %s",
+                (self.session_id,),
+            )
+            if rows:
+                stored: list[dict[str, str]] = rows[0]["history"]
+                if stored:
+                    # Preserve the in-memory system prompt; restore user/assistant turns.
+                    self._history = [self._history[0]] + [
+                        m for m in stored if m.get("role") != "system"
+                    ]
+                    self._log.info(
+                        "Loaded %d history messages for session %s.",
+                        len(self._history) - 1,
+                        self.session_id,
+                    )
+        except Exception as exc:
+            self._log.warning("Could not load session history: %s", exc)
+
+    def _save_history(self) -> None:
+        """Persist current conversation history to Postgres (no-op if DB not configured)."""
+        db = self._get_db()
+        if db is None:
+            return
+        try:
+            # Upsert: insert or update on conflict.
+            db.execute_sql(
+                """
+                INSERT INTO autogpt_sessions (session_id, history, updated_at)
+                VALUES (%s, %s::jsonb, NOW())
+                ON CONFLICT (session_id)
+                DO UPDATE SET history = EXCLUDED.history, updated_at = NOW()
+                """,
+                (self.session_id, json.dumps(self._history)),
+            )
+            self._log.debug("Session %s saved (%d messages).", self.session_id, len(self._history))
+        except Exception as exc:
+            self._log.warning("Could not save session history: %s", exc)
+
+    # ------------------------------------------------------------------ #
     # Lazy agent accessors
     # ------------------------------------------------------------------ #
 
@@ -199,3 +288,4 @@ class Orchestrator:
         if self._meta is None:
             self._meta = MetaAdsAgent(self._cfg)
         return self._meta
+

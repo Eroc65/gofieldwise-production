@@ -277,6 +277,189 @@ class TestOrchestrator(unittest.TestCase):
         self.assertEqual(len(orc._history), 1)
         self.assertEqual(orc._history[0]["role"], "system")
 
+    def test_session_id_auto_generated(self):
+        from autogpt.orchestrator import Orchestrator
+        orc = Orchestrator(self.cfg)
+        self.assertIsNotNone(orc.session_id)
+        self.assertTrue(len(orc.session_id) > 0)
+
+    def test_session_id_explicit(self):
+        from autogpt.orchestrator import Orchestrator
+        orc = Orchestrator(self.cfg, session_id="my-session-123")
+        self.assertEqual(orc.session_id, "my-session-123")
+
+
+# ======================================================================
+# Orchestrator session persistence tests
+# ======================================================================
+
+class TestOrchestratorSessionPersistence(unittest.TestCase):
+    """Verify Postgres session persistence using a mocked DatabaseTools."""
+
+    def setUp(self):
+        self.cfg = _make_config(database_url="postgresql://u:p@h/db")
+
+    @patch("autogpt.orchestrator.Orchestrator._save_history")
+    @patch("autogpt.orchestrator.Orchestrator._load_history")
+    @patch("autogpt.orchestrator.Orchestrator._init_sessions_table")
+    def test_db_methods_called_when_database_url_set(
+        self, mock_init, mock_load, mock_save
+    ):
+        from autogpt.orchestrator import Orchestrator
+        orc = Orchestrator(self.cfg, session_id="sess-1")
+        mock_init.assert_called_once()
+        mock_load.assert_called_once()
+
+    @patch("autogpt.orchestrator.Orchestrator._init_sessions_table")
+    @patch("autogpt.tools.database_tools.DatabaseTools.query")
+    @patch("autogpt.tools.database_tools.DatabaseTools._connect")
+    def test_load_history_restores_turns(self, mock_connect, mock_query, mock_init):
+        stored_history = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi there!"},
+        ]
+        mock_query.return_value = [{"history": stored_history}]
+
+        from autogpt.orchestrator import Orchestrator
+        orc = Orchestrator(self.cfg, session_id="sess-restore")
+        # system prompt + 2 restored turns
+        self.assertEqual(len(orc._history), 3)
+        self.assertEqual(orc._history[1]["role"], "user")
+        self.assertEqual(orc._history[2]["role"], "assistant")
+
+    @patch("autogpt.orchestrator.Orchestrator._init_sessions_table")
+    @patch("autogpt.tools.database_tools.DatabaseTools.query")
+    @patch("autogpt.tools.database_tools.DatabaseTools.execute_sql")
+    @patch("autogpt.orchestrator.openai")
+    def test_save_history_called_after_chat(
+        self, mock_openai, mock_exec, mock_query, mock_init
+    ):
+        mock_query.return_value = []  # no existing session
+        routing = {"agent": "none", "task": "", "direct_reply": "Done!"}
+        mock_choice = MagicMock()
+        mock_choice.choices = [MagicMock(message=MagicMock(content=json.dumps(routing)))]
+        mock_openai.chat.completions.create.return_value = mock_choice
+
+        from autogpt.orchestrator import Orchestrator
+        orc = Orchestrator(self.cfg, session_id="sess-save")
+        orc.chat("Hello")
+        # execute_sql should have been called at least once for the upsert
+        mock_exec.assert_called()
+
+    @patch("autogpt.orchestrator.Orchestrator._init_sessions_table")
+    @patch("autogpt.tools.database_tools.DatabaseTools.query")
+    @patch("autogpt.tools.database_tools.DatabaseTools.execute_sql")
+    def test_reset_saves_empty_history(self, mock_exec, mock_query, mock_init):
+        mock_query.return_value = []
+        from autogpt.orchestrator import Orchestrator
+        orc = Orchestrator(self.cfg, session_id="sess-reset")
+        orc.reset()
+        mock_exec.assert_called()
+
+    @patch("autogpt.orchestrator.Orchestrator._init_sessions_table")
+    @patch("autogpt.tools.database_tools.DatabaseTools.query")
+    def test_load_history_skips_system_rows(self, mock_query, mock_init):
+        """Stored system messages are not duplicated into history."""
+        stored = [
+            {"role": "system", "content": "old system prompt"},
+            {"role": "user", "content": "A question"},
+        ]
+        mock_query.return_value = [{"history": stored}]
+        from autogpt.orchestrator import Orchestrator
+        orc = Orchestrator(self.cfg, session_id="sess-sys")
+        # system (fresh) + user only; old system prompt dropped
+        user_msgs = [m for m in orc._history if m["role"] == "user"]
+        system_msgs = [m for m in orc._history if m["role"] == "system"]
+        self.assertEqual(len(user_msgs), 1)
+        self.assertEqual(len(system_msgs), 1)
+
+
+# ======================================================================
+# Web app tests
+# ======================================================================
+
+class TestWebApp(unittest.TestCase):
+    """Test the FastAPI web application endpoints."""
+
+    def setUp(self):
+        self.cfg = _make_config()
+
+    def _make_client(self):
+        try:
+            from fastapi.testclient import TestClient
+        except ImportError:
+            self.skipTest("fastapi not installed")
+        from autogpt.web.app import create_app
+        return TestClient(create_app(self.cfg))
+
+    def test_health_endpoint(self):
+        client = self._make_client()
+        resp = client.get("/health")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), {"status": "ok"})
+
+    def test_index_returns_html(self):
+        client = self._make_client()
+        resp = client.get("/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("Auto-GPT", resp.text)
+
+    @patch("autogpt.orchestrator.openai")
+    def test_post_chat_endpoint(self, mock_openai):
+        routing = {"agent": "none", "task": "", "direct_reply": "Hello from REST!"}
+        mock_choice = MagicMock()
+        mock_choice.choices = [MagicMock(message=MagicMock(content=json.dumps(routing)))]
+        mock_openai.chat.completions.create.return_value = mock_choice
+
+        client = self._make_client()
+        resp = client.post(
+            "/chat",
+            json={"session_id": "test-session", "message": "Hi"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["session_id"], "test-session")
+        self.assertEqual(data["reply"], "Hello from REST!")
+
+    @patch("autogpt.orchestrator.openai")
+    def test_websocket_chat(self, mock_openai):
+        routing = {"agent": "none", "task": "", "direct_reply": "WS reply!"}
+        mock_choice = MagicMock()
+        mock_choice.choices = [MagicMock(message=MagicMock(content=json.dumps(routing)))]
+        mock_openai.chat.completions.create.return_value = mock_choice
+
+        client = self._make_client()
+        with client.websocket_connect("/ws/test-ws-session") as ws:
+            ws.send_text("Hello over WebSocket")
+            reply = ws.receive_text()
+        self.assertEqual(reply, "WS reply!")
+
+    @patch("autogpt.orchestrator.openai")
+    def test_websocket_session_reuse(self, mock_openai):
+        """Two messages on the same WS session share one Orchestrator."""
+        replies = [
+            {"agent": "none", "task": "", "direct_reply": "First"},
+            {"agent": "none", "task": "", "direct_reply": "Second"},
+        ]
+        mock_choice = MagicMock()
+        mock_choice.choices = [
+            MagicMock(message=MagicMock(content=json.dumps(r))) for r in replies
+        ]
+        mock_openai.chat.completions.create.side_effect = [
+            MagicMock(choices=[MagicMock(message=MagicMock(content=json.dumps(r)))]) for r in replies
+        ]
+
+        client = self._make_client()
+        with client.websocket_connect("/ws/shared-session") as ws:
+            ws.send_text("Message one")
+            r1 = ws.receive_text()
+            ws.send_text("Message two")
+            r2 = ws.receive_text()
+
+        self.assertEqual(r1, "First")
+        self.assertEqual(r2, "Second")
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -58,6 +58,12 @@ class Config:
     meta_ad_account_id: str = os.getenv("META_AD_ACCOUNT_ID", "")
 
     # ------------------------------------------------------------------ #
+    # Web UI
+    # ------------------------------------------------------------------ #
+    web_port: int = int(os.getenv("WEB_PORT", "8000"))
+    session_secret: str = os.getenv("SESSION_SECRET", "")
+
+    # ------------------------------------------------------------------ #
     # General
     # ------------------------------------------------------------------ #
     verbose: bool = os.getenv("VERBOSE", "false").lower() == "true"

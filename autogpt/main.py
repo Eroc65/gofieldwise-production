@@ -8,6 +8,9 @@ Usage
     # Single-shot command
     python -m autogpt.main --message "Build me a Flask app called myapp and deploy it."
 
+    # Launch the web chat UI
+    python -m autogpt.main --web
+
     # With verbose logging
     python -m autogpt.main --verbose
 """
@@ -35,6 +38,24 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Single message to send to the orchestrator (non-interactive mode).",
     )
     parser.add_argument(
+        "--web",
+        "-w",
+        action="store_true",
+        help="Launch the FastAPI web chat UI instead of the CLI.",
+    )
+    parser.add_argument(
+        "--host",
+        type=str,
+        default="0.0.0.0",
+        help="Host to bind the web server to (default: 0.0.0.0).",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="Port for the web server (default: WEB_PORT env var or 8000).",
+    )
+    parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",
@@ -59,6 +80,30 @@ def main(argv: list[str] | None = None) -> None:
         log.error("Configuration error: %s", exc)
         sys.exit(1)
 
+    # ------------------------------------------------------------------ #
+    # Web UI mode
+    # ------------------------------------------------------------------ #
+    if args.web:
+        try:
+            import uvicorn
+        except ImportError:
+            log.error(
+                "uvicorn is not installed. "
+                "Run `pip install fastapi uvicorn[standard]` to enable the web UI."
+            )
+            sys.exit(1)
+
+        from autogpt.web.app import create_app
+
+        app = create_app(config)
+        port = args.port or config.web_port
+        log.info("Starting web UI on http://%s:%d", args.host, port)
+        uvicorn.run(app, host=args.host, port=port)
+        return
+
+    # ------------------------------------------------------------------ #
+    # CLI / REPL mode
+    # ------------------------------------------------------------------ #
     orchestrator = Orchestrator(config)
 
     if args.message:
@@ -90,3 +135,4 @@ def main(argv: list[str] | None = None) -> None:
 
 if __name__ == "__main__":
     main()
+

@@ -16,11 +16,15 @@ setup(
         "meta": ["facebook-sdk>=3.1.0"],
         "database": ["psycopg2-binary>=2.9.9"],
         "browser": ["playwright>=1.42.0"],
+        "web": ["fastapi>=0.111.0", "uvicorn[standard]>=0.29.0", "websockets>=12.0"],
         "all": [
             "tweepy>=4.14.0",
             "facebook-sdk>=3.1.0",
             "psycopg2-binary>=2.9.9",
             "playwright>=1.42.0",
+            "fastapi>=0.111.0",
+            "uvicorn[standard]>=0.29.0",
+            "websockets>=12.0",
         ],
     },
     entry_points={
