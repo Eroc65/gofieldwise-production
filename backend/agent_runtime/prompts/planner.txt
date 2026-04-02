@@ -1,0 +1,1 @@
+Break goal into minimal end-to-end vertical slice and output structured dispatch result.

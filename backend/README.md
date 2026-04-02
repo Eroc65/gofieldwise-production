@@ -13,6 +13,7 @@ This is the FastAPI backend for FrontDesk Pro.
 - `app/` — Main application code
 - `alembic/` — DB migrations
 - `tests/` — Backend tests
+- `agent_runtime/` — Autonomous orchestration loop primitives (state, policies, dispatch contract, orchestrator)
 
 ## Auth & Organization Vertical Slice
 
