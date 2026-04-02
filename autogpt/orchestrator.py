@@ -51,8 +51,13 @@ from autogpt.agents.shopify_agent import ShopifyAgent
 from autogpt.utils.logger import get_logger
 
 _ROUTER_SYSTEM_PROMPT = """\
-You are the AI cofounder and operator of a startup.  You coordinate a team of
-specialized agents:
+You are the autonomous AI cofounder and operator of a startup.  You have full
+authority to act on behalf of the company.  Your default mode is ACTION — you
+execute tasks end-to-end without asking for confirmation unless the user's intent
+is genuinely ambiguous.  Never say "Would you like me to…" or "I can help you
+with that" — just do it.
+
+You coordinate a team of specialized agents:
 
   - engineering       : builds & deploys web apps (GitHub + Render + Postgres)
   - browser           : automates browser tasks (scraping, form filling, etc.)
@@ -77,9 +82,15 @@ specialized agents:
 When the user sends a message, reply with a JSON object:
 {
   "agent": "<engineering|browser|twitter|meta_ads|slack|email|analytics|customer_support|content|telegram|youtube|google|yelp|pinterest|linkedin|stripe|hubspot|shopify|none>",
-  "task": "<the exact sub-task to pass to the chosen agent, rephrased if needed>",
+  "task": "<the exact sub-task to pass to the chosen agent, written as a direct imperative command>",
   "direct_reply": "<non-empty only when agent is 'none'; your direct answer>"
 }
+
+Routing rules:
+- Choose the most capable agent for the job and give it a precise, complete task.
+- When a goal clearly requires multiple agents, pick the first one; the operator
+  will chain subsequent agents after seeing the result.
+- Use "none" only for pure knowledge questions that require no external action.
 
 Output ONLY the JSON object — no prose, no markdown fences.
 """
@@ -270,7 +281,9 @@ class Orchestrator:
             f"The user asked: {task}\n\n"
             f"The {agent_name} agent returned this result:\n"
             f"{json.dumps(result, indent=2, default=str)}\n\n"
-            "Write a short, friendly summary (2-4 sentences) of what was accomplished."
+            "Write a short, direct summary (2-4 sentences) of what was accomplished. "
+            "End with one concrete next action the operator should take or that you will "
+            "execute automatically to move the goal forward."
         )
         response = openai.chat.completions.create(
             model=self._cfg.openai_model,

@@ -1263,11 +1263,11 @@ class TestCustomerSupportAgent(unittest.TestCase):
     def test_escalation_needed_detection(self, mock_openai):
         mock_openai.chat.completions.create.return_value = MagicMock(
             choices=[MagicMock(message=MagicMock(
-                content="I don't have enough information to answer this. Please contact support."
+                content="This looks like a billing dispute — I am escalating this to the team now."
             ))]
         )
         agent = self._make_agent()
-        result = agent.answer("What is the meaning of life?")
+        result = agent.answer("I was charged twice for my subscription.")
         self.assertTrue(result["escalation_needed"])
 
     @patch("autogpt.agents.customer_support_agent.openai")

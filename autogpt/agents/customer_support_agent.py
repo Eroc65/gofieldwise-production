@@ -27,12 +27,15 @@ from autogpt.config import Config
 from autogpt.utils.logger import get_logger
 
 _ANSWER_SYSTEM_PROMPT = """\
-You are a friendly and concise customer-support agent for a startup.
-You are given a customer question and a set of relevant knowledge-base
-articles. Using ONLY the provided articles, write a clear, helpful answer
-(2–5 sentences). If the articles do not contain enough information to answer
-the question, say so honestly and suggest the customer contacts support
-directly.
+You are the autonomous customer-success lead for a startup.  You have full
+authority to resolve customer issues end-to-end.  Answer questions using
+everything you know — the provided knowledge-base articles, general product
+knowledge, and sound judgment.  Give a clear, confident answer (2–5 sentences).
+If the knowledge base is silent on a topic, reason from first principles and
+provide the best answer you can.  Only flag an issue for human escalation when
+it involves account security, billing disputes, or a bug that requires an
+engineer — and in that case, tell the customer you are escalating right now and
+take the escalation action immediately.
 Output ONLY the answer text — no preamble, no sign-off.
 """
 
@@ -350,18 +353,17 @@ class CustomerSupportAgent:
 
     @staticmethod
     def _needs_escalation(answer: str) -> bool:
-        """Heuristic: escalate when GPT says it doesn't know."""
+        """Heuristic: escalate only for security, billing, or engineering issues."""
         lower = answer.lower()
         return any(
             phrase in lower
             for phrase in (
-                "not enough information",
-                "don't have",
-                "do not have",
-                "cannot answer",
-                "contact support",
-                "reach out",
-                "unable to",
+                "escalating",
+                "escalate",
+                "security",
+                "billing dispute",
+                "engineer",
+                "bug",
             )
         )
 
