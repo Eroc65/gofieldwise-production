@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from ..api.auth import get_current_user
 from ..core.db import get_db
 from ..crud.lead import (
+    book_lead,
     convert_lead,
     create_lead,
     get_lead,
@@ -17,6 +18,8 @@ from ..crud.lead import (
 from ..crud.reminder import create_lead_booking_reminder, create_lead_followup_reminder
 from ..models.core import Organization, User
 from ..schemas.lead import (
+    LeadBookInput,
+    LeadBookOut,
     LeadConvertOut,
     LeadIntake,
     LeadOut,
@@ -180,3 +183,37 @@ def qualify_lead_api(
         lead_name=lead.name,
     )
     return LeadQualificationOut(lead=lead, booking_reminder_created=True)
+
+
+@router.post("/leads/{lead_id}/book", response_model=LeadBookOut)
+def book_lead_api(
+    lead_id: int,
+    payload: LeadBookInput,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    lead = get_lead(db, lead_id, current_user.organization_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    booked_lead, customer, job, dismissed_count, error = book_lead(
+        db,
+        lead,
+        current_user.organization_id,
+        payload.technician_id,
+        payload.scheduled_time,
+    )
+    if error:
+        raise HTTPException(status_code=422, detail=error)
+    if not booked_lead or not customer or not job:
+        raise HTTPException(status_code=500, detail="Lead booking failed unexpectedly")
+
+    return LeadBookOut(
+        lead_id=booked_lead.id,
+        customer_id=customer.id,
+        job_id=job.id,
+        job_status=job.status,
+        scheduled_time=job.scheduled_time,
+        technician_id=job.technician_id,
+        booking_reminders_dismissed=dismissed_count,
+    )

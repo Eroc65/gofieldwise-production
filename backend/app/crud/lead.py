@@ -221,3 +221,74 @@ def convert_lead(
     db.commit()
     db.refresh(lead)
     return lead, customer, job
+
+
+def book_lead(
+    db: Session,
+    lead: Lead,
+    organization_id: int,
+    technician_id: int,
+    scheduled_time,
+) -> Tuple[Optional[Lead], Optional[Customer], Optional[Job], int, Optional[str]]:
+    """Book a qualified lead into a dispatched job and clear booking reminders."""
+    if lead.status not in ("qualified", "converted"):
+        return None, None, None, 0, f"Lead in status '{lead.status}' cannot be booked."
+
+    if lead.status == "converted":
+        if not lead.customer_id or not lead.job_id:
+            return None, None, None, 0, "Converted lead is missing customer/job references."
+        customer = (
+            db.query(Customer)
+            .filter(
+                Customer.id == lead.customer_id,
+                Customer.organization_id == organization_id,
+            )
+            .first()
+        )
+        job = (
+            db.query(Job)
+            .filter(Job.id == lead.job_id, Job.organization_id == organization_id)
+            .first()
+        )
+        if not customer or not job:
+            return None, None, None, 0, "Converted lead references missing records."
+    else:
+        try:
+            lead, customer, job = convert_lead(db, lead, organization_id)
+        except ValueError as exc:
+            return None, None, None, 0, str(exc)
+
+    from .job import dispatch_job
+
+    dispatched, dispatch_error = dispatch_job(
+        db,
+        job,
+        organization_id,
+        technician_id,
+        scheduled_time,
+    )
+    if dispatch_error:
+        return None, None, None, 0, dispatch_error
+
+    from ..models.core import Reminder
+    booking_reminders = (
+        db.query(Reminder)
+        .filter(
+            Reminder.organization_id == organization_id,
+            Reminder.lead_id == lead.id,
+            Reminder.status == "pending",
+            Reminder.message.like("Book job with%"),
+        )
+        .all()
+    )
+    dismissed = 0
+    for reminder in booking_reminders:
+        reminder.status = "dismissed"
+        reminder.updated_at = _utcnow()
+        dismissed += 1
+    if dismissed > 0:
+        db.commit()
+
+    db.refresh(lead)
+    db.refresh(dispatched)
+    return lead, customer, dispatched, dismissed, None

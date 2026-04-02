@@ -42,6 +42,9 @@ GET `/api/auth/org` (Bearer token)
 **Protected test route:**
 GET `/api/protected` (Bearer token)
 
+**Lead booking workflow:**
+POST `/api/leads/{lead_id}/book` (Bearer token) with `{ scheduled_time, technician_id }`
+
 ## Setup
 1. Install Python 3.11+
 2. `pip install -r requirements.txt`

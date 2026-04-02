@@ -65,3 +65,18 @@ class MissedCallRecoveryOut(BaseModel):
 class LeadQualificationOut(BaseModel):
     lead: LeadOut
     booking_reminder_created: bool
+
+
+class LeadBookInput(BaseModel):
+    scheduled_time: datetime
+    technician_id: int
+
+
+class LeadBookOut(BaseModel):
+    lead_id: int
+    customer_id: int
+    job_id: int
+    job_status: str
+    scheduled_time: datetime
+    technician_id: int
+    booking_reminders_dismissed: int
