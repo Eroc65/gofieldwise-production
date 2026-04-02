@@ -104,3 +104,30 @@ def test_choose_next_slice_priority_order():
     ]
     picked = choose_next_slice(options)
     assert picked == "Build missed call recovery retries"
+
+
+def test_orchestration_records_tool_modes_for_steps():
+    def dispatch(role, objective, state, repo_context):
+        if role == "planner":
+            return {"status": "success", "summary": "planned"}
+        if role == "architect":
+            return {"status": "success", "summary": "designed"}
+        if role == "backend_engineer":
+            return {"status": "success", "summary": "implemented"}
+        if role == "qa_engineer":
+            return {"status": "success", "summary": "tests pass"}
+        if role == "docs_engineer":
+            return {"status": "success", "summary": "docs updated"}
+        if role == "reviewer":
+            return {"status": "success", "summary": "done", "done": True}
+        return {"status": "failed", "summary": "unknown role"}
+
+    state = run_orchestration("Build vertical slice", {"repo": "x"}, dispatch)
+    modes = {step.role: step.metadata.get("tool_mode") for step in state.completed_steps}
+
+    assert modes["planner"] == "readonly"
+    assert modes["architect"] == "readonly"
+    assert modes["backend_engineer"] == "dev"
+    assert modes["qa_engineer"] == "test"
+    assert modes["docs_engineer"] == "dev"
+    assert modes["reviewer"] == "readonly"

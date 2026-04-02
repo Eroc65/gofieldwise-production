@@ -14,6 +14,7 @@ def test_model_invoke_parses_structured_result(monkeypatch):
             "system_prompt": "planner prompt",
             "objective": "Plan a slice",
             "state": {},
+            "tool_mode": "readonly",
             "repo_context": {},
             "response_contract": {},
         }
@@ -42,6 +43,7 @@ def test_dispatch_calls_model_and_normalizes(monkeypatch):
         objective="Review slice",
         state={},
         repo_context={},
+        tool_mode="readonly",
     )
 
     assert result["status"] == "success"
@@ -75,8 +77,9 @@ def test_model_invoke_tool_request_then_final(monkeypatch):
         return replies.pop(0)
 
     class FakeExecutor:
-        def __init__(self, repo_root):
+        def __init__(self, repo_root, mode=None):
             self.repo_root = repo_root
+            self.mode = mode
 
         def execute(self, request):
             assert request["tool_name"] == "list_dir"
@@ -91,6 +94,7 @@ def test_model_invoke_tool_request_then_final(monkeypatch):
             "system_prompt": "backend prompt",
             "objective": "Build feature",
             "state": {},
+            "tool_mode": "dev",
             "repo_context": {"repo_root": "."},
             "response_contract": {},
         }
@@ -105,8 +109,9 @@ def test_model_invoke_returns_blocked_when_tool_loop_exceeded(monkeypatch):
         return '{"action":"tool","tool_name":"list_dir","args":{"path":"."}}'
 
     class FakeExecutor:
-        def __init__(self, repo_root):
+        def __init__(self, repo_root, mode=None):
             self.repo_root = repo_root
+            self.mode = mode
 
         def execute(self, request):
             return {"tool_name": request["tool_name"], "ok": True}
@@ -120,6 +125,7 @@ def test_model_invoke_returns_blocked_when_tool_loop_exceeded(monkeypatch):
             "system_prompt": "backend prompt",
             "objective": "Build feature",
             "state": {},
+            "tool_mode": "dev",
             "repo_context": {"repo_root": "."},
             "response_contract": {},
         }

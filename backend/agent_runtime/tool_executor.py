@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from agent_runtime.tool_policies import get_tool_policy
+
 
 @dataclass
 class ToolResult:
@@ -37,40 +39,18 @@ class ToolExecutor:
     - shell=False always
     """
 
-    DEFAULT_ALLOWED_PREFIXES = [
-        "python",
-        "pytest",
-        "alembic",
-        "git status",
-        "git rev-parse",
-        "git branch",
-        "ls",
-        "pwd",
-        "rg",
-        "grep",
-        "cat",
-        "head",
-        "tail",
-        "sed",
-        "make",
-        "npm test",
-        "npm run",
-        "pnpm test",
-        "pnpm run",
-        "yarn test",
-        "yarn run",
-    ]
-
-    def __init__(self, repo_root: str | Path = ".") -> None:
+    def __init__(self, repo_root: str | Path = ".", mode: str | None = None) -> None:
         self.repo_root = Path(repo_root).resolve()
         if not self.repo_root.exists():
             raise ToolExecutionError(f"Repo root does not exist: {self.repo_root}")
 
-        env_prefixes = os.getenv("AGENT_ALLOWED_COMMAND_PREFIXES", "").strip()
-        if env_prefixes:
-            self.allowed_prefixes = [x.strip() for x in env_prefixes.split(",") if x.strip()]
-        else:
-            self.allowed_prefixes = list(self.DEFAULT_ALLOWED_PREFIXES)
+        resolved_mode = (mode or os.getenv("AGENT_TOOL_MODE", "dev")).strip()
+        self.policy = get_tool_policy(resolved_mode)
+        self.allowed_prefixes = list(self.policy.allowed_command_prefixes)
+
+    def _ensure_allowed(self, flag: bool, action: str) -> None:
+        if not flag:
+            raise ToolExecutionError(f"Tool action not allowed in mode={self.policy.mode}: {action}")
 
     def execute(self, request: dict[str, Any]) -> dict[str, Any]:
         tool_name = request.get("tool_name")
@@ -106,6 +86,7 @@ class ToolExecutor:
             return path.read_text(encoding="utf-8", errors="replace")
 
     def read_file(self, path: str, max_chars: int = 20000) -> dict[str, Any]:
+        self._ensure_allowed(self.policy.allow_read_file, "read_file")
         file_path = self._resolve_repo_path(path)
         if not file_path.exists():
             raise ToolExecutionError(f"File does not exist: {path}")
@@ -124,6 +105,7 @@ class ToolExecutor:
         }
 
     def write_file(self, path: str, content: str, create_dirs: bool = True) -> dict[str, Any]:
+        self._ensure_allowed(self.policy.allow_write_file, "write_file")
         file_path = self._resolve_repo_path(path)
         if create_dirs:
             file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -136,6 +118,7 @@ class ToolExecutor:
         }
 
     def append_file(self, path: str, content: str, create_dirs: bool = True) -> dict[str, Any]:
+        self._ensure_allowed(self.policy.allow_append_file, "append_file")
         file_path = self._resolve_repo_path(path)
         if create_dirs:
             file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -149,6 +132,7 @@ class ToolExecutor:
         }
 
     def list_dir(self, path: str = ".", recursive: bool = False, max_entries: int = 200) -> dict[str, Any]:
+        self._ensure_allowed(self.policy.allow_list_dir, "list_dir")
         dir_path = self._resolve_repo_path(path)
         if not dir_path.exists():
             raise ToolExecutionError(f"Directory does not exist: {path}")
@@ -185,6 +169,7 @@ class ToolExecutor:
         max_hits: int = 100,
         max_line_length: int = 300,
     ) -> dict[str, Any]:
+        self._ensure_allowed(self.policy.allow_search_text, "search_text")
         root = self._resolve_repo_path(path)
         if not root.exists():
             raise ToolExecutionError(f"Search root does not exist: {path}")
@@ -237,6 +222,7 @@ class ToolExecutor:
         cwd: str = ".",
         env_overrides: dict[str, str] | None = None,
     ) -> dict[str, Any]:
+        self._ensure_allowed(self.policy.allow_run_command, "run_command")
         normalized = command.strip()
         if not self._command_allowed(normalized):
             raise ToolExecutionError(f"Command not allowed by policy: {command}")

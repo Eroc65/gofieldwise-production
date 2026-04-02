@@ -2,6 +2,7 @@ from dataclasses import asdict
 from typing import Any
 
 from .dispatch import DispatchFn, dispatch, dispatch_via_fn
+from .mode_resolver import choose_tool_mode
 from .policies import build_noncompliance_fix_objective, is_hard_blocker
 from .state import ExecutionState, StepResult
 
@@ -121,6 +122,11 @@ def run_orchestration(
         state.active_objective = state.pending_objectives.pop(0)
         role = state.active_objective["role"]
         objective = state.active_objective["objective"]
+        tool_mode = choose_tool_mode(
+            role=role,
+            objective=objective,
+            repo_context=state.repo_context,
+        )
 
         if dispatch_fn is not None:
             result = dispatch_via_fn(
@@ -136,7 +142,11 @@ def run_orchestration(
                 objective=objective,
                 state=asdict(state),
                 repo_context=state.repo_context,
+                tool_mode=tool_mode,
             )
+
+        metadata = result.get("metadata", {})
+        metadata["tool_mode"] = tool_mode
 
         step = StepResult(
             role=role,
@@ -148,7 +158,7 @@ def run_orchestration(
             next_recommended_role=result.get("next_recommended_role"),
             next_objective=result.get("next_objective"),
             done=result.get("done", False),
-            metadata=result.get("metadata", {}),
+            metadata=metadata,
         )
         state.add_step(step)
 
@@ -185,6 +195,7 @@ def format_final_output(state: ExecutionState) -> dict[str, Any]:
                 "status": s.status,
                 "summary": s.summary,
                 "artifacts": s.artifacts,
+                "tool_mode": s.metadata.get("tool_mode"),
             }
             for s in state.completed_steps
         ],

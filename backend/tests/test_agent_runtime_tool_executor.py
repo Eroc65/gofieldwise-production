@@ -2,6 +2,8 @@ from pathlib import Path
 
 import pytest
 
+from agent_runtime.mode_resolver import choose_tool_mode
+from agent_runtime.tool_policies import get_tool_policy
 from agent_runtime.tool_executor import ToolExecutionError, ToolExecutor
 
 
@@ -38,7 +40,7 @@ def test_list_dir_and_search_text(tmp_path):
 
 
 def test_run_command_allowlist_and_blocklist(tmp_path):
-    executor = ToolExecutor(repo_root=tmp_path)
+    executor = ToolExecutor(repo_root=tmp_path, mode="dev")
 
     ok_result = executor.run_command("python --version", cwd=".")
     assert ok_result["tool_name"] == "run_command"
@@ -48,3 +50,26 @@ def test_run_command_allowlist_and_blocklist(tmp_path):
 
     with pytest.raises(ToolExecutionError):
         executor.run_command("git reset --hard", cwd=".")
+
+
+def test_readonly_mode_blocks_writes_and_commands(tmp_path):
+    executor = ToolExecutor(repo_root=tmp_path, mode="readonly")
+
+    with pytest.raises(ToolExecutionError):
+        executor.write_file("notes/test.txt", "hello")
+
+    with pytest.raises(ToolExecutionError):
+        executor.run_command("python --version", cwd=".")
+
+
+def test_get_tool_policy_unknown_mode_raises():
+    with pytest.raises(ValueError):
+        get_tool_policy("unknown-mode")
+
+
+def test_choose_tool_mode_defaults_and_escalations():
+    assert choose_tool_mode("planner", "Inspect repo") == "readonly"
+    assert choose_tool_mode("backend_engineer", "Implement API change") == "dev"
+    assert choose_tool_mode("qa_engineer", "Run tests and validate") == "test"
+    assert choose_tool_mode("reviewer", "Check live health metrics") == "production_safe"
+    assert choose_tool_mode("backend_engineer", "Deploy updated app") == "deploy"

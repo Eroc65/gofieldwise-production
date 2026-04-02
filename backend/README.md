@@ -68,8 +68,21 @@ POST `/api/leads/{lead_id}/book` (Bearer token) with `{ scheduled_time, technici
 	- `AGENT_MODEL_TEMPERATURE` (optional, default `0.1`)
 	- `AGENT_MODEL_MAX_TOKENS` (optional, default `4000`)
 - Tool executor policy env var:
+	- `AGENT_TOOL_MODE` (default `dev`): `readonly`, `test`, `dev`, `deploy`, `production_safe`
 	- `AGENT_ALLOWED_COMMAND_PREFIXES` (comma-separated command prefixes)
 	- default allowlist includes: `python`, `pytest`, `alembic`, `git status`, `git rev-parse`, `git branch`, `rg`, `grep`, `cat`, `head`, `tail`, `sed`, `make`, and test/run commands for npm/pnpm/yarn.
+	- mode behavior:
+		- `readonly`: inspect/list/search only
+		- `test`: read/list/search + test commands
+		- `dev`: read/write/append + safe dev commands
+		- `deploy`: dev capabilities plus deployment-related command prefixes (`docker compose`, `render`)
+		- `production_safe`: read/list/search + non-destructive validate/check commands
+- Automatic mode resolver picks mode per step based on role and objective:
+	- `planner`, `architect`, `reviewer` -> `readonly`
+	- `backend_engineer`, `frontend_engineer`, `docs_engineer` -> `dev`
+	- `qa_engineer` -> `test` for validation objectives
+	- deploy/release objectives -> `deploy`
+	- live/prod/health/metrics/reconcile objectives -> `production_safe`
 - Example (bash):
 	- `export AGENT_MODEL_BASE_URL="http://localhost:1234/v1"`
 	- `export AGENT_MODEL_API_KEY="lm-studio"`
@@ -77,6 +90,7 @@ POST `/api/leads/{lead_id}/book` (Bearer token) with `{ scheduled_time, technici
 	- `export AGENT_MODEL_TIMEOUT_SECONDS="120"`
 	- `export AGENT_MODEL_TEMPERATURE="0.1"`
 	- `export AGENT_MODEL_MAX_TOKENS="4000"`
+	- `export AGENT_TOOL_MODE="dev"`
 	- `export AGENT_ALLOWED_COMMAND_PREFIXES="python,pytest,alembic,git status,git rev-parse,git branch,ls,pwd,rg,grep,cat,head,tail,sed,make,npm test,npm run,pnpm test,pnpm run,yarn test,yarn run"`
 	- `python -m agent_runtime.run_once`
 - Example (PowerShell):
@@ -86,6 +100,7 @@ POST `/api/leads/{lead_id}/book` (Bearer token) with `{ scheduled_time, technici
 	- `$env:AGENT_MODEL_TIMEOUT_SECONDS="120"`
 	- `$env:AGENT_MODEL_TEMPERATURE="0.1"`
 	- `$env:AGENT_MODEL_MAX_TOKENS="4000"`
+	- `$env:AGENT_TOOL_MODE="dev"`
 	- `$env:AGENT_ALLOWED_COMMAND_PREFIXES="python,pytest,alembic,git status,git rev-parse,git branch,ls,pwd,rg,grep,cat,head,tail,sed,make,npm test,npm run,pnpm test,pnpm run,yarn test,yarn run"`
 	- `python -m agent_runtime.run_once`
 

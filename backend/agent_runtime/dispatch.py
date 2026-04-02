@@ -48,6 +48,7 @@ def build_dispatch_payload(
     objective: str,
     state: dict[str, Any],
     repo_context: dict[str, Any],
+    tool_mode: str,
 ) -> dict[str, Any]:
     return {
         "role": role,
@@ -55,6 +56,7 @@ def build_dispatch_payload(
         "objective": objective,
         "state": state,
         "repo_context": repo_context,
+        "tool_mode": tool_mode,
         "response_contract": {
             "status": "success|failed|blocked",
             "summary": "short text",
@@ -111,6 +113,7 @@ def _compress_state_for_prompt(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def _build_initial_messages(payload: dict[str, Any]) -> list[dict[str, str]]:
+    tool_mode = payload.get("tool_mode", "dev")
     system = (
         payload["system_prompt"]
         + "\n\n"
@@ -150,6 +153,7 @@ def _build_initial_messages(payload: dict[str, Any]) -> list[dict[str, str]]:
         {
             "role": payload["role"],
             "objective": payload["objective"],
+                "tool_mode": tool_mode,
             "repo_context": payload["repo_context"],
             "state": _compress_state_for_prompt(payload["state"]),
             "response_contract": payload["response_contract"],
@@ -185,7 +189,11 @@ def model_invoke(payload: dict[str, Any]) -> dict[str, Any]:
     4. eventually return the final structured dispatch result
     """
     messages = _build_initial_messages(payload)
-    executor = ToolExecutor(repo_root=payload.get("repo_context", {}).get("repo_root", "."))
+    tool_mode = payload.get("tool_mode", "dev")
+    executor = ToolExecutor(
+        repo_root=payload.get("repo_context", {}).get("repo_root", "."),
+        mode=tool_mode,
+    )
 
     for _ in range(MAX_TOOL_LOOPS):
         raw_text = invoke_openai_compatible_chat(messages)
@@ -230,12 +238,14 @@ def dispatch(
     objective: str,
     state: dict[str, Any],
     repo_context: dict[str, Any],
+    tool_mode: str,
 ) -> dict[str, Any]:
     payload = build_dispatch_payload(
         role=role,
         objective=objective,
         state=state,
         repo_context=repo_context,
+        tool_mode=tool_mode,
     )
     raw = model_invoke(payload)
     return validate_dispatch_result(raw)
