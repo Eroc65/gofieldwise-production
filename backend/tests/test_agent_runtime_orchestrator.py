@@ -52,7 +52,7 @@ def test_orchestration_qa_failure_loops_back_to_backend():
     assert calls["qa"] >= 2
 
 
-def test_orchestration_stall_response_is_redispatched():
+def test_orchestration_stall_response_gets_noncompliance_followup():
     planner_calls = {"count": 0}
 
     def dispatch(role, objective, state, repo_context):
@@ -60,7 +60,7 @@ def test_orchestration_stall_response_is_redispatched():
             planner_calls["count"] += 1
             if planner_calls["count"] == 1:
                 return {"status": "success", "summary": "Which would you like first?"}
-            return {"status": "success", "summary": "planned after strict redispatch"}
+            return {"status": "success", "summary": "planned after noncompliance correction"}
         if role == "architect":
             return {"status": "success", "summary": "designed"}
         if role == "backend_engineer":
@@ -76,6 +76,8 @@ def test_orchestration_stall_response_is_redispatched():
     state = run_orchestration("Stall guardrail test", {}, dispatch)
     assert state.done is True
     assert planner_calls["count"] == 2
+    assert state.completed_steps[0].status == "failed"
+    assert state.completed_steps[0].metadata.get("stall_detected") is True
 
 
 def test_orchestration_stops_on_true_hard_blocker():
