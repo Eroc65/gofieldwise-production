@@ -5,10 +5,12 @@ from typing import Any, Callable
 
 from agent_runtime.model_backend import invoke_openai_compatible_chat, parse_structured_result
 from agent_runtime.policies import looks_like_stall
+from agent_runtime.tool_executor import ToolExecutionError, ToolExecutor
 
 
 DispatchResult = dict[str, Any]
 DispatchFn = Callable[[str, str, dict[str, Any], dict[str, Any]], dict[str, Any]]
+MAX_TOOL_LOOPS = 12
 
 
 ROLE_SYSTEM_PROMPTS: dict[str, str] = {
@@ -108,30 +110,27 @@ def _compress_state_for_prompt(state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _build_messages(payload: dict[str, Any]) -> list[dict[str, str]]:
+def _build_initial_messages(payload: dict[str, Any]) -> list[dict[str, str]]:
     system = (
         payload["system_prompt"]
         + "\n\n"
         + "You are part of an autonomous orchestration loop.\n"
-        + "Return ONLY a valid JSON object matching the response contract.\n"
+        + "You may either request one tool call at a time or return the final JSON result.\n"
         + "Do not return markdown. Do not return code fences. Do not ask the user to choose.\n"
         + "If multiple valid next steps exist, choose the highest-leverage one and continue.\n"
-    )
-
-    user = (
-        "Dispatch payload:\n"
+        + "\n"
+        + "Tool request format:\n"
         + json.dumps(
             {
-                "role": payload["role"],
-                "objective": payload["objective"],
-                "repo_context": payload["repo_context"],
-                "state": _compress_state_for_prompt(payload["state"]),
-                "response_contract": payload["response_contract"],
+                "action": "tool",
+                "tool_name": "read_file|write_file|append_file|list_dir|search_text|run_command",
+                "args": {},
+                "reason": "why this tool call is needed",
             },
             indent=2,
         )
         + "\n\n"
-        + "Return a JSON object with exactly these keys at minimum:\n"
+        + "Final result format:\n"
         + json.dumps(
             {
                 "status": "success",
@@ -147,19 +146,82 @@ def _build_messages(payload: dict[str, Any]) -> list[dict[str, str]]:
         )
     )
 
+    user = "Dispatch payload:\n" + json.dumps(
+        {
+            "role": payload["role"],
+            "objective": payload["objective"],
+            "repo_context": payload["repo_context"],
+            "state": _compress_state_for_prompt(payload["state"]),
+            "response_contract": payload["response_contract"],
+        },
+        indent=2,
+    )
+
     return [
         {"role": "system", "content": system},
         {"role": "user", "content": user},
     ]
 
 
+def _is_tool_request(obj: dict[str, Any]) -> bool:
+    return obj.get("action") == "tool" and "tool_name" in obj
+
+
+def _tool_result_message(tool_result: dict[str, Any]) -> dict[str, str]:
+    return {
+        "role": "user",
+        "content": "Tool result:\n" + json.dumps(tool_result, indent=2),
+    }
+
+
 def model_invoke(payload: dict[str, Any]) -> dict[str, Any]:
     """
-    Real model adapter using an OpenAI-compatible chat completions backend.
+    Tool-using model adapter.
+
+    The model may:
+    1. request a tool call
+    2. inspect the tool result
+    3. request another tool
+    4. eventually return the final structured dispatch result
     """
-    messages = _build_messages(payload)
-    raw_text = invoke_openai_compatible_chat(messages)
-    return parse_structured_result(raw_text)
+    messages = _build_initial_messages(payload)
+    executor = ToolExecutor(repo_root=payload.get("repo_context", {}).get("repo_root", "."))
+
+    for _ in range(MAX_TOOL_LOOPS):
+        raw_text = invoke_openai_compatible_chat(messages)
+        obj = parse_structured_result(raw_text)
+
+        if _is_tool_request(obj):
+            try:
+                tool_result = executor.execute(
+                    {
+                        "tool_name": obj["tool_name"],
+                        "args": obj.get("args", {}),
+                    }
+                )
+            except ToolExecutionError as exc:
+                tool_result = {
+                    "tool_name": obj.get("tool_name"),
+                    "ok": False,
+                    "error": str(exc),
+                }
+
+            messages.append({"role": "assistant", "content": json.dumps(obj)})
+            messages.append(_tool_result_message(tool_result))
+            continue
+
+        return obj
+
+    return {
+        "status": "blocked",
+        "summary": "Tool-use loop exceeded maximum iterations.",
+        "artifacts": [],
+        "blockers": ["TOOL_LOOP_EXCEEDED"],
+        "next_recommended_role": None,
+        "next_objective": None,
+        "done": False,
+        "metadata": {"max_tool_loops": MAX_TOOL_LOOPS},
+    }
 
 
 def dispatch(
