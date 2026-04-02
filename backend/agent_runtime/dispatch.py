@@ -1,3 +1,7 @@
+import json
+import os
+import urllib.error
+import urllib.request
 from typing import Any, Callable
 
 from .policies import looks_like_stall
@@ -97,11 +101,118 @@ def validate_dispatch_result(result: dict[str, Any] | None) -> dict[str, Any]:
 
 def model_invoke(payload: dict[str, Any]) -> dict[str, Any]:
     """
-    Replace this with your real model/agent invocation.
+    Invoke a runtime adapter for orchestration dispatch.
 
-    It must return the response contract described in build_dispatch_payload().
+    Modes are controlled by AGENT_RUNTIME_DISPATCH_MODE:
+    - mock (default): deterministic local adapter for development/testing
+    - http: POST payload to AGENT_RUNTIME_DISPATCH_ENDPOINT
     """
-    raise NotImplementedError("Wire model_invoke() to your actual VS Code agent runtime")
+    mode = os.getenv("AGENT_RUNTIME_DISPATCH_MODE", "mock").strip().lower()
+    if mode == "mock":
+        return _mock_model_invoke(payload)
+    if mode == "http":
+        return _http_model_invoke(payload)
+    return {
+        "status": "blocked",
+        "summary": f"Unsupported dispatch mode: {mode}",
+        "artifacts": [],
+        "blockers": ["UNSUPPORTED_DISPATCH_MODE"],
+        "done": False,
+        "metadata": {"dispatch_mode": mode},
+    }
+
+
+def _mock_model_invoke(payload: dict[str, Any]) -> dict[str, Any]:
+    role = str(payload.get("role", ""))
+    objective = str(payload.get("objective", ""))
+    next_role_map = {
+        "planner": "architect",
+        "architect": "backend_engineer",
+        "backend_engineer": "qa_engineer",
+        "qa_engineer": "reviewer",
+        "docs_engineer": "reviewer",
+    }
+    return {
+        "status": "success",
+        "summary": f"[{role}] mock execution complete: {objective[:120]}",
+        "artifacts": [],
+        "blockers": [],
+        "next_recommended_role": next_role_map.get(role),
+        "next_objective": None,
+        "done": role == "reviewer",
+        "metadata": {"dispatch_mode": "mock"},
+    }
+
+
+def _http_model_invoke(payload: dict[str, Any]) -> dict[str, Any]:
+    endpoint = os.getenv("AGENT_RUNTIME_DISPATCH_ENDPOINT", "").strip()
+    timeout_raw = os.getenv("AGENT_RUNTIME_DISPATCH_TIMEOUT_SECONDS", "30").strip()
+
+    if not endpoint:
+        return {
+            "status": "blocked",
+            "summary": "AGENT_RUNTIME_DISPATCH_ENDPOINT is required for http mode",
+            "artifacts": [],
+            "blockers": ["MISSING_DISPATCH_ENDPOINT"],
+            "done": False,
+            "metadata": {"dispatch_mode": "http"},
+        }
+
+    try:
+        timeout_seconds = float(timeout_raw)
+    except ValueError:
+        timeout_seconds = 30.0
+
+    body = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        endpoint,
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+            response_body = response.read().decode("utf-8")
+        parsed = json.loads(response_body) if response_body else {}
+    except urllib.error.HTTPError as exc:
+        return {
+            "status": "blocked",
+            "summary": f"Dispatch endpoint HTTP error: {exc.code}",
+            "artifacts": [],
+            "blockers": ["DISPATCH_ENDPOINT_HTTP_ERROR"],
+            "done": False,
+            "metadata": {"dispatch_mode": "http", "http_status": exc.code},
+        }
+    except urllib.error.URLError:
+        return {
+            "status": "blocked",
+            "summary": "Dispatch endpoint is unreachable",
+            "artifacts": [],
+            "blockers": ["DISPATCH_ENDPOINT_UNREACHABLE"],
+            "done": False,
+            "metadata": {"dispatch_mode": "http"},
+        }
+    except json.JSONDecodeError:
+        return {
+            "status": "failed",
+            "summary": "Dispatch endpoint returned invalid JSON",
+            "artifacts": [],
+            "blockers": ["INVALID_DISPATCH_RESPONSE_JSON"],
+            "done": False,
+            "metadata": {"dispatch_mode": "http"},
+        }
+
+    if not isinstance(parsed, dict):
+        return {
+            "status": "failed",
+            "summary": "Dispatch endpoint response must be a JSON object",
+            "artifacts": [],
+            "blockers": ["INVALID_DISPATCH_RESPONSE_SHAPE"],
+            "done": False,
+            "metadata": {"dispatch_mode": "http"},
+        }
+
+    return parsed
 
 
 def dispatch(

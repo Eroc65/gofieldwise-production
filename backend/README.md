@@ -56,6 +56,15 @@ POST `/api/leads/{lead_id}/book` (Bearer token) with `{ scheduled_time, technici
 - `pytest -q`
 - `python scripts/smoke_auth.py`
 
+## Agent Runtime Invocation
+- Runtime entrypoint: `python -m agent_runtime`
+- Dispatch adapter is configured with env vars:
+	- `AGENT_RUNTIME_DISPATCH_MODE`:
+		- `mock` (default) for deterministic local orchestration runs
+		- `http` to call an external dispatch service
+	- `AGENT_RUNTIME_DISPATCH_ENDPOINT`: required when mode is `http`
+	- `AGENT_RUNTIME_DISPATCH_TIMEOUT_SECONDS`: optional (default `30`)
+
 ## VS Code Tasks
 - `backend: test (backend dir)`
 - `backend: run`
