@@ -297,6 +297,53 @@ class TestOrchestrator(unittest.TestCase):
         orc = Orchestrator(self.cfg, session_id="my-session-123")
         self.assertEqual(orc.session_id, "my-session-123")
 
+    @patch("autogpt.orchestrator.openai")
+    def test_chat_chains_two_agents(self, mock_openai):
+        """Orchestrator dispatches a second agent when GPT requests it."""
+        self.cfg.database_url = ""
+        route_1 = {"agent": "google", "task": "Research SaaS pricing", "direct_reply": ""}
+        route_2 = {"agent": "content", "task": "Write a pricing page based on research", "direct_reply": ""}
+        route_done = {"agent": "none", "task": "", "direct_reply": "done"}
+        mock_openai.chat.completions.create.side_effect = [
+            MagicMock(choices=[MagicMock(message=MagicMock(content=json.dumps(route_1)))]),
+            MagicMock(choices=[MagicMock(message=MagicMock(content=json.dumps(route_2)))]),
+            MagicMock(choices=[MagicMock(message=MagicMock(content=json.dumps(route_done)))]),
+            MagicMock(choices=[MagicMock(message=MagicMock(content="Research done and pricing page written."))]),
+        ]
+        from autogpt.orchestrator import Orchestrator
+        from autogpt.agents.google_agent import GoogleAgent
+        from autogpt.agents.content_agent import ContentAgent
+
+        with patch.object(GoogleAgent, "run", return_value={"results": [], "summary": "SaaS pricing info"}), \
+             patch.object(ContentAgent, "run", return_value={"title": "Pricing", "sections": [], "conclusion": "Done"}):
+            orc = Orchestrator(self.cfg)
+            reply = orc.chat("Research SaaS pricing and write a pricing page")
+            # last_agent should be the final non-none agent dispatched
+            self.assertEqual(orc.last_agent, "content")
+            self.assertIn("pricing", reply.lower())
+
+    @patch("autogpt.orchestrator.openai")
+    def test_chat_stops_at_max_iterations(self, mock_openai):
+        """Orchestrator exits the chain loop at max_iterations."""
+        self.cfg.database_url = ""
+        self.cfg.max_iterations = 2
+        route_agent = {"agent": "google", "task": "keep researching", "direct_reply": ""}
+        # GPT never returns "none" — always another step
+        mock_openai.chat.completions.create.side_effect = [
+            MagicMock(choices=[MagicMock(message=MagicMock(content=json.dumps(route_agent)))]),
+            MagicMock(choices=[MagicMock(message=MagicMock(content=json.dumps(route_agent)))]),
+            MagicMock(choices=[MagicMock(message=MagicMock(content="Summary after max iterations."))]),
+        ]
+        from autogpt.orchestrator import Orchestrator
+        from autogpt.agents.google_agent import GoogleAgent
+
+        with patch.object(GoogleAgent, "run", return_value={"results": [], "summary": "data"}):
+            orc = Orchestrator(self.cfg)
+            reply = orc.chat("Research forever")
+            # Should not raise and should return the summarise-chain reply
+            self.assertIsInstance(reply, str)
+            self.assertTrue(len(reply) > 0)
+
 
 # ======================================================================
 # Orchestrator session persistence tests
@@ -581,9 +628,10 @@ class TestOrchestratorSlackIntegration(unittest.TestCase):
     @patch("autogpt.orchestrator.openai")
     def test_slack_agent_routed_correctly(self, mock_openai):
         routing = {"agent": "slack", "task": "announce our launch", "direct_reply": ""}
-        slack_reply = {"agent": "none", "task": "", "direct_reply": "Message sent!"}
+        done_routing = {"agent": "none", "task": "", "direct_reply": "done"}
         mock_openai.chat.completions.create.side_effect = [
             MagicMock(choices=[MagicMock(message=MagicMock(content=json.dumps(routing)))]),
+            MagicMock(choices=[MagicMock(message=MagicMock(content=json.dumps(done_routing)))]),
             # summarise call
             MagicMock(choices=[MagicMock(message=MagicMock(content="Slack message sent."))]),
         ]
@@ -1034,8 +1082,10 @@ class TestOrchestratorNewAgents(unittest.TestCase):
     @patch("autogpt.orchestrator.openai")
     def test_email_agent_routed(self, mock_openai):
         routing = {"agent": "email", "task": "announce our launch", "direct_reply": ""}
+        done_routing = {"agent": "none", "task": "", "direct_reply": "done"}
         mock_openai.chat.completions.create.side_effect = [
             MagicMock(choices=[MagicMock(message=MagicMock(content=json.dumps(routing)))]),
+            MagicMock(choices=[MagicMock(message=MagicMock(content=json.dumps(done_routing)))]),
             MagicMock(choices=[MagicMock(message=MagicMock(content="Email sent."))]),
         ]
         from autogpt.orchestrator import Orchestrator
@@ -1049,8 +1099,10 @@ class TestOrchestratorNewAgents(unittest.TestCase):
     @patch("autogpt.orchestrator.openai")
     def test_analytics_agent_routed(self, mock_openai):
         routing = {"agent": "analytics", "task": "generate weekly report", "direct_reply": ""}
+        done_routing = {"agent": "none", "task": "", "direct_reply": "done"}
         mock_openai.chat.completions.create.side_effect = [
             MagicMock(choices=[MagicMock(message=MagicMock(content=json.dumps(routing)))]),
+            MagicMock(choices=[MagicMock(message=MagicMock(content=json.dumps(done_routing)))]),
             MagicMock(choices=[MagicMock(message=MagicMock(content="Report generated."))]),
         ]
         from autogpt.orchestrator import Orchestrator
@@ -1501,8 +1553,10 @@ class TestOrchestratorContentAndSupport(unittest.TestCase):
             "task": "How do I reset my password?",
             "direct_reply": "",
         }
+        done_routing = {"agent": "none", "task": "", "direct_reply": "done"}
         mock_openai.chat.completions.create.side_effect = [
             MagicMock(choices=[MagicMock(message=MagicMock(content=json.dumps(routing)))]),
+            MagicMock(choices=[MagicMock(message=MagicMock(content=json.dumps(done_routing)))]),
             MagicMock(choices=[MagicMock(message=MagicMock(content="Ticket logged."))]),
         ]
         from autogpt.orchestrator import Orchestrator
@@ -1524,8 +1578,10 @@ class TestOrchestratorContentAndSupport(unittest.TestCase):
             "task": "Write a blog post about productivity",
             "direct_reply": "",
         }
+        done_routing = {"agent": "none", "task": "", "direct_reply": "done"}
         mock_openai.chat.completions.create.side_effect = [
             MagicMock(choices=[MagicMock(message=MagicMock(content=json.dumps(routing)))]),
+            MagicMock(choices=[MagicMock(message=MagicMock(content=json.dumps(done_routing)))]),
             MagicMock(choices=[MagicMock(message=MagicMock(content="Blog post created."))]),
         ]
         from autogpt.orchestrator import Orchestrator
@@ -2242,8 +2298,10 @@ class TestOrchestratorNewChannelAgents(unittest.TestCase):
         return json.dumps({"agent": agent_name, "task": task, "direct_reply": ""})
 
     def _side_effects(self, routing_json: str) -> list:
+        done_json = json.dumps({"agent": "none", "task": "", "direct_reply": "done"})
         return [
             MagicMock(choices=[MagicMock(message=MagicMock(content=routing_json))]),
+            MagicMock(choices=[MagicMock(message=MagicMock(content=done_json))]),
             MagicMock(choices=[MagicMock(message=MagicMock(content="Done."))]),
         ]
 
@@ -2676,8 +2734,10 @@ class TestOrchestratorHubSpotShopify(unittest.TestCase):
         return json.dumps({"agent": agent_name, "task": task, "direct_reply": ""})
 
     def _side_effects(self, routing_json: str) -> list:
+        done_json = json.dumps({"agent": "none", "task": "", "direct_reply": "done"})
         return [
             MagicMock(choices=[MagicMock(message=MagicMock(content=routing_json))]),
+            MagicMock(choices=[MagicMock(message=MagicMock(content=done_json))]),
             MagicMock(choices=[MagicMock(message=MagicMock(content="Done."))]),
         ]
 

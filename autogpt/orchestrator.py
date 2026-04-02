@@ -88,9 +88,11 @@ When the user sends a message, reply with a JSON object:
 
 Routing rules:
 - Choose the most capable agent for the job and give it a precise, complete task.
-- When a goal clearly requires multiple agents, pick the first one; the operator
-  will chain subsequent agents after seeing the result.
-- Use "none" only for pure knowledge questions that require no external action.
+- When a goal requires multiple agents, pick the FIRST one now.  After each step
+  you will be called again with the step result in context — continue routing to
+  the next agent until the full goal is accomplished, then return agent=none.
+- Use "none" only for pure knowledge questions that require no external action,
+  OR to signal that all required steps have been completed.
 
 Output ONLY the JSON object — no prose, no markdown fences.
 """
@@ -161,6 +163,11 @@ class Orchestrator:
     def chat(self, message: str) -> str:
         """Process a user message and return a response string.
 
+        The orchestrator loops internally, chaining agents one after another
+        until GPT signals the goal is complete (``agent == "none"``) or
+        ``Config.max_iterations`` is reached — without returning to the caller
+        between steps.
+
         Args:
             message: Free-form message from the user / operator.
 
@@ -171,24 +178,60 @@ class Orchestrator:
         self._log.info("User: %s", message)
         self._history.append({"role": "user", "content": message})
 
-        # Ask GPT to route the request
-        routing = self._route(message)
-        agent_name = routing.get("agent", "none")
-        task = routing.get("task", message)
-        direct_reply = routing.get("direct_reply", "")
+        # Accumulate (agent_name, task, result) tuples for each step executed.
+        steps: list[tuple[str, str, dict[str, Any]]] = []
+        # Extra messages injected during the chain (not persisted to _history).
+        chain_context: list[dict[str, str]] = []
 
-        self._log.info("Routing to agent: %s", agent_name)
+        reply = "I'm not sure how to help with that."
 
-        if agent_name == "none" or not task:
-            self.last_agent = "none"
-            reply = direct_reply or "I'm not sure how to help with that."
-        else:
+        for _iteration in range(self._cfg.max_iterations):
+            routing = self._route(chain_context)
+            agent_name = routing.get("agent", "none")
+            task = routing.get("task", message)
+            direct_reply = routing.get("direct_reply", "")
+
+            self._log.info("Routing to agent: %s (step %d)", agent_name, _iteration + 1)
+
+            if agent_name == "none" or not task:
+                if steps:
+                    # All steps done — produce a consolidated summary.
+                    reply = self._summarise_chain(steps)
+                else:
+                    self.last_agent = "none"
+                    reply = direct_reply or "I'm not sure how to help with that."
+                break
+
             self.last_agent = agent_name
             result = self._dispatch(agent_name, task)
-            reply = self._summarise(agent_name, task, result)
-            # Optional Slack notification when a real agent completes a task.
-            if agent_name != "slack":
-                self._get_slack().notify_task_result(agent_name, task, reply)
+            steps.append((agent_name, task, result))
+
+            if "error" in result:
+                reply = self._summarise_chain(steps)
+                break
+
+            # Feed the step result back as context so the router can decide
+            # whether another agent is needed or the goal is complete.
+            step_content = (
+                f"[Step {len(steps)}] Agent '{agent_name}' completed task: {task}\n"
+                f"Result: {json.dumps(result, default=str)}"
+            )
+            chain_context.append({"role": "assistant", "content": step_content})
+            chain_context.append({
+                "role": "user",
+                "content": (
+                    "Step complete. What is the next step to finish the original goal? "
+                    "Return agent=none when the goal is fully accomplished."
+                ),
+            })
+        else:
+            # Reached max_iterations without a "none" routing signal.
+            reply = self._summarise_chain(steps) if steps else "Reached the maximum number of steps."
+
+        # Optional Slack notification for the completed chain.
+        if steps and steps[-1][0] != "slack":
+            last_agent, last_task, _ = steps[-1]
+            self._get_slack().notify_task_result(last_agent, last_task, reply)
 
         self._history.append({"role": "assistant", "content": reply})
         self._log.info("Assistant: %s", reply[:120])
@@ -204,11 +247,18 @@ class Orchestrator:
     # Internal routing helpers
     # ------------------------------------------------------------------ #
 
-    def _route(self, message: str) -> dict[str, Any]:
-        """Ask GPT to classify and route the message."""
+    def _route(self, extra_messages: list[dict[str, str]] | None = None) -> dict[str, Any]:
+        """Ask GPT to classify and route the message.
+
+        Args:
+            extra_messages: Optional list of additional messages (chain context)
+                to append after ``self._history`` for this call only.  These are
+                NOT persisted to the conversation history.
+        """
+        messages = self._history + (extra_messages or [])
         response = openai.chat.completions.create(
             model=self._cfg.openai_model,
-            messages=self._history,
+            messages=messages,
             temperature=0.1,
         )
         raw = response.choices[0].message.content or "{}"
@@ -272,24 +322,40 @@ class Orchestrator:
             return {"error": str(exc)}
         return {}
 
-    def _summarise(self, agent_name: str, task: str, result: dict[str, Any]) -> str:
-        """Convert an agent result dict into a human-readable string using GPT."""
-        if "error" in result:
-            return f"⚠️  The {agent_name} agent encountered an error: {result['error']}"
+    def _summarise_chain(self, steps: list[tuple[str, str, dict[str, Any]]]) -> str:
+        """Produce a human-readable summary for one or more completed agent steps.
 
+        Args:
+            steps: List of ``(agent_name, task, result)`` tuples in execution order.
+
+        Returns:
+            A concise narrative of what was accomplished, ending with a next action.
+        """
+        if not steps:
+            return "No steps were executed."
+
+        if "error" in steps[-1][2]:
+            last_agent, _, last_result = steps[-1]
+            return f"⚠️  The {last_agent} agent encountered an error: {last_result['error']}"
+
+        steps_text = "\n\n".join(
+            f"Step {i + 1} — {agent} → {task}\n"
+            f"Result: {json.dumps(result, indent=2, default=str)}"
+            for i, (agent, task, result) in enumerate(steps)
+        )
+        n = len(steps)
         summary_prompt = (
-            f"The user asked: {task}\n\n"
-            f"The {agent_name} agent returned this result:\n"
-            f"{json.dumps(result, indent=2, default=str)}\n\n"
-            "Write a short, direct summary (2-4 sentences) of what was accomplished. "
-            "End with one concrete next action the operator should take or that you will "
-            "execute automatically to move the goal forward."
+            f"The following {n} agent step(s) were executed to complete the goal:\n\n"
+            f"{steps_text}\n\n"
+            "Write a short, direct summary (2-5 sentences) of what was accomplished "
+            "across all steps. End with one concrete next action the operator should "
+            "take or that you will execute automatically to move the goal forward."
         )
         response = openai.chat.completions.create(
             model=self._cfg.openai_model,
             messages=[{"role": "user", "content": summary_prompt}],
             temperature=0.4,
-            max_tokens=200,
+            max_tokens=300,
         )
         return (response.choices[0].message.content or "Done.").strip()
 
