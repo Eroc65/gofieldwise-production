@@ -57,13 +57,32 @@ POST `/api/leads/{lead_id}/book` (Bearer token) with `{ scheduled_time, technici
 - `python scripts/smoke_auth.py`
 
 ## Agent Runtime Invocation
-- Runtime entrypoint: `python -m agent_runtime`
-- Dispatch adapter is configured with env vars:
-	- `AGENT_RUNTIME_DISPATCH_MODE`:
-		- `mock` (default) for deterministic local orchestration runs
-		- `http` to call an external dispatch service
-	- `AGENT_RUNTIME_DISPATCH_ENDPOINT`: required when mode is `http`
-	- `AGENT_RUNTIME_DISPATCH_TIMEOUT_SECONDS`: optional (default `30`)
+- Runtime entrypoints:
+	- `python -m agent_runtime`
+	- `python -m agent_runtime.run_once`
+- Model backend is OpenAI-compatible chat completions and uses these env vars:
+	- `AGENT_MODEL_BASE_URL` (example: `http://localhost:1234/v1` or `https://api.openai.com/v1`)
+	- `AGENT_MODEL_API_KEY`
+	- `AGENT_MODEL_NAME` (example: `gpt-4.1-mini`)
+	- `AGENT_MODEL_TIMEOUT_SECONDS` (optional, default `120`)
+	- `AGENT_MODEL_TEMPERATURE` (optional, default `0.1`)
+	- `AGENT_MODEL_MAX_TOKENS` (optional, default `4000`)
+- Example (bash):
+	- `export AGENT_MODEL_BASE_URL="http://localhost:1234/v1"`
+	- `export AGENT_MODEL_API_KEY="lm-studio"`
+	- `export AGENT_MODEL_NAME="gpt-4.1-mini"`
+	- `export AGENT_MODEL_TIMEOUT_SECONDS="120"`
+	- `export AGENT_MODEL_TEMPERATURE="0.1"`
+	- `export AGENT_MODEL_MAX_TOKENS="4000"`
+	- `python -m agent_runtime.run_once`
+- Example (PowerShell):
+	- `$env:AGENT_MODEL_BASE_URL="http://localhost:1234/v1"`
+	- `$env:AGENT_MODEL_API_KEY="lm-studio"`
+	- `$env:AGENT_MODEL_NAME="gpt-4.1-mini"`
+	- `$env:AGENT_MODEL_TIMEOUT_SECONDS="120"`
+	- `$env:AGENT_MODEL_TEMPERATURE="0.1"`
+	- `$env:AGENT_MODEL_MAX_TOKENS="4000"`
+	- `python -m agent_runtime.run_once`
 
 ## VS Code Tasks
 - `backend: test (backend dir)`

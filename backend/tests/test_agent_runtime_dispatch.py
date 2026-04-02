@@ -1,57 +1,41 @@
-import os
-
-from agent_runtime.dispatch import dispatch, model_invoke
+from agent_runtime.dispatch import dispatch, model_invoke, validate_dispatch_result
 
 
-def test_model_invoke_mock_mode(monkeypatch):
-    monkeypatch.setenv("AGENT_RUNTIME_DISPATCH_MODE", "mock")
+def test_model_invoke_parses_structured_result(monkeypatch):
+    def fake_invoke(messages):
+        assert len(messages) == 2
+        return '{"status":"success","summary":"ok","artifacts":[],"blockers":[],"done":false,"metadata":{}}'
+
+    monkeypatch.setattr("agent_runtime.dispatch.invoke_openai_compatible_chat", fake_invoke)
 
     result = model_invoke(
         {
             "role": "planner",
+            "system_prompt": "planner prompt",
             "objective": "Plan a slice",
             "state": {},
             "repo_context": {},
+            "response_contract": {},
         }
     )
 
     assert result["status"] == "success"
-    assert result["metadata"]["dispatch_mode"] == "mock"
+    assert result["summary"] == "ok"
 
 
-def test_model_invoke_http_mode_requires_endpoint(monkeypatch):
-    monkeypatch.setenv("AGENT_RUNTIME_DISPATCH_MODE", "http")
-    monkeypatch.delenv("AGENT_RUNTIME_DISPATCH_ENDPOINT", raising=False)
-
-    result = model_invoke(
-        {
-            "role": "planner",
-            "objective": "Plan a slice",
-            "state": {},
-            "repo_context": {},
+def test_dispatch_calls_model_and_normalizes(monkeypatch):
+    def fake_model_invoke(payload):
+        assert payload["role"] == "reviewer"
+        return {
+            "status": "success",
+            "summary": "complete",
+            "artifacts": ["backend/agent_runtime/dispatch.py"],
+            "blockers": [],
+            "done": True,
+            "metadata": {},
         }
-    )
 
-    assert result["status"] == "blocked"
-    assert "MISSING_DISPATCH_ENDPOINT" in result["blockers"]
-
-
-def test_dispatch_normalizes_unsupported_mode(monkeypatch):
-    monkeypatch.setenv("AGENT_RUNTIME_DISPATCH_MODE", "unsupported_mode")
-
-    result = dispatch(
-        role="planner",
-        objective="Plan something",
-        state={},
-        repo_context={},
-    )
-
-    assert result["status"] == "blocked"
-    assert result["blockers"] == ["UNSUPPORTED_DISPATCH_MODE"]
-
-
-def test_dispatch_mock_reaches_done_for_reviewer(monkeypatch):
-    monkeypatch.setenv("AGENT_RUNTIME_DISPATCH_MODE", "mock")
+    monkeypatch.setattr("agent_runtime.dispatch.model_invoke", fake_model_invoke)
 
     result = dispatch(
         role="reviewer",
@@ -62,10 +46,20 @@ def test_dispatch_mock_reaches_done_for_reviewer(monkeypatch):
 
     assert result["status"] == "success"
     assert result["done"] is True
-    assert result["metadata"]["dispatch_mode"] == "mock"
+    assert result["artifacts"] == ["backend/agent_runtime/dispatch.py"]
 
 
-def teardown_module():
-    os.environ.pop("AGENT_RUNTIME_DISPATCH_MODE", None)
-    os.environ.pop("AGENT_RUNTIME_DISPATCH_ENDPOINT", None)
-    os.environ.pop("AGENT_RUNTIME_DISPATCH_TIMEOUT_SECONDS", None)
+def test_validate_dispatch_result_flags_stall():
+    result = validate_dispatch_result(
+        {
+            "status": "success",
+            "summary": "Which would you like me to do first?",
+            "artifacts": [],
+            "blockers": [],
+            "metadata": {},
+        }
+    )
+
+    assert result["status"] == "failed"
+    assert result["blockers"] == ["NONCOMPLIANT_STALL_RESPONSE"]
+    assert result["metadata"]["stall_detected"] is True

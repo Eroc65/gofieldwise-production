@@ -1,15 +1,13 @@
+from __future__ import annotations
+
 import json
-import os
-import urllib.error
-import urllib.request
 from typing import Any, Callable
 
-from .policies import looks_like_stall
+from agent_runtime.model_backend import invoke_openai_compatible_chat, parse_structured_result
+from agent_runtime.policies import looks_like_stall
 
 
 DispatchResult = dict[str, Any]
-
-
 DispatchFn = Callable[[str, str, dict[str, Any], dict[str, Any]], dict[str, Any]]
 
 
@@ -68,151 +66,100 @@ def build_dispatch_payload(
     }
 
 
-def validate_dispatch_result(result: dict[str, Any] | None) -> dict[str, Any]:
-    normalized = dict(result or {})
-    status = normalized.get("status")
+def validate_dispatch_result(result: dict[str, Any]) -> dict[str, Any]:
+    status = result.get("status")
     if status not in {"success", "failed", "blocked"}:
-        normalized["status"] = "failed"
-        normalized["summary"] = f"Invalid dispatch status: {status!r}"
-        normalized.setdefault("artifacts", [])
-        normalized.setdefault("blockers", ["INVALID_DISPATCH_STATUS"])
+        result["status"] = "failed"
+        result["summary"] = f"Invalid dispatch status: {status!r}"
+        result.setdefault("artifacts", [])
+        result.setdefault("blockers", ["INVALID_DISPATCH_STATUS"])
 
-    normalized.setdefault("summary", "")
-    normalized.setdefault("artifacts", [])
-    normalized.setdefault("blockers", [])
-    normalized.setdefault("next_recommended_role", None)
-    normalized.setdefault("next_objective", None)
-    normalized.setdefault("done", False)
-    normalized.setdefault("metadata", {})
+    result.setdefault("summary", "")
+    result.setdefault("artifacts", [])
+    result.setdefault("blockers", [])
+    result.setdefault("next_recommended_role", None)
+    result.setdefault("next_objective", None)
+    result.setdefault("done", False)
+    result.setdefault("metadata", {})
 
-    normalized["summary"] = str(normalized["summary"])
-    normalized["artifacts"] = list(normalized["artifacts"] or [])
-    normalized["blockers"] = list(normalized["blockers"] or [])
-    normalized["done"] = bool(normalized["done"])
-    normalized["metadata"] = dict(normalized["metadata"] or {})
+    if looks_like_stall(result["summary"]):
+        result["status"] = "failed"
+        result["blockers"] = ["NONCOMPLIANT_STALL_RESPONSE"]
+        result["metadata"]["stall_detected"] = True
 
-    if looks_like_stall(normalized["summary"]):
-        normalized["status"] = "failed"
-        normalized["blockers"] = ["NONCOMPLIANT_STALL_RESPONSE"]
-        normalized["metadata"]["stall_detected"] = True
+    return result
 
-    return normalized
+
+def _compress_state_for_prompt(state: dict[str, Any]) -> dict[str, Any]:
+    """
+    Keep prompts bounded. We do not need the full repo dump every loop.
+    """
+    completed_steps = state.get("completed_steps", [])
+    recent_steps = completed_steps[-5:] if isinstance(completed_steps, list) else []
+
+    return {
+        "user_goal": state.get("user_goal"),
+        "loop_count": state.get("loop_count"),
+        "done": state.get("done"),
+        "active_objective": state.get("active_objective"),
+        "pending_objectives": state.get("pending_objectives", [])[:5],
+        "blockers": state.get("blockers", []),
+        "recent_steps": recent_steps,
+    }
+
+
+def _build_messages(payload: dict[str, Any]) -> list[dict[str, str]]:
+    system = (
+        payload["system_prompt"]
+        + "\n\n"
+        + "You are part of an autonomous orchestration loop.\n"
+        + "Return ONLY a valid JSON object matching the response contract.\n"
+        + "Do not return markdown. Do not return code fences. Do not ask the user to choose.\n"
+        + "If multiple valid next steps exist, choose the highest-leverage one and continue.\n"
+    )
+
+    user = (
+        "Dispatch payload:\n"
+        + json.dumps(
+            {
+                "role": payload["role"],
+                "objective": payload["objective"],
+                "repo_context": payload["repo_context"],
+                "state": _compress_state_for_prompt(payload["state"]),
+                "response_contract": payload["response_contract"],
+            },
+            indent=2,
+        )
+        + "\n\n"
+        + "Return a JSON object with exactly these keys at minimum:\n"
+        + json.dumps(
+            {
+                "status": "success",
+                "summary": "short result",
+                "artifacts": [],
+                "blockers": [],
+                "next_recommended_role": None,
+                "next_objective": None,
+                "done": False,
+                "metadata": {},
+            },
+            indent=2,
+        )
+    )
+
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
 
 
 def model_invoke(payload: dict[str, Any]) -> dict[str, Any]:
     """
-    Invoke a runtime adapter for orchestration dispatch.
-
-    Modes are controlled by AGENT_RUNTIME_DISPATCH_MODE:
-    - mock (default): deterministic local adapter for development/testing
-    - http: POST payload to AGENT_RUNTIME_DISPATCH_ENDPOINT
+    Real model adapter using an OpenAI-compatible chat completions backend.
     """
-    mode = os.getenv("AGENT_RUNTIME_DISPATCH_MODE", "mock").strip().lower()
-    if mode == "mock":
-        return _mock_model_invoke(payload)
-    if mode == "http":
-        return _http_model_invoke(payload)
-    return {
-        "status": "blocked",
-        "summary": f"Unsupported dispatch mode: {mode}",
-        "artifacts": [],
-        "blockers": ["UNSUPPORTED_DISPATCH_MODE"],
-        "done": False,
-        "metadata": {"dispatch_mode": mode},
-    }
-
-
-def _mock_model_invoke(payload: dict[str, Any]) -> dict[str, Any]:
-    role = str(payload.get("role", ""))
-    objective = str(payload.get("objective", ""))
-    next_role_map = {
-        "planner": "architect",
-        "architect": "backend_engineer",
-        "backend_engineer": "qa_engineer",
-        "qa_engineer": "reviewer",
-        "docs_engineer": "reviewer",
-    }
-    return {
-        "status": "success",
-        "summary": f"[{role}] mock execution complete: {objective[:120]}",
-        "artifacts": [],
-        "blockers": [],
-        "next_recommended_role": next_role_map.get(role),
-        "next_objective": None,
-        "done": role == "reviewer",
-        "metadata": {"dispatch_mode": "mock"},
-    }
-
-
-def _http_model_invoke(payload: dict[str, Any]) -> dict[str, Any]:
-    endpoint = os.getenv("AGENT_RUNTIME_DISPATCH_ENDPOINT", "").strip()
-    timeout_raw = os.getenv("AGENT_RUNTIME_DISPATCH_TIMEOUT_SECONDS", "30").strip()
-
-    if not endpoint:
-        return {
-            "status": "blocked",
-            "summary": "AGENT_RUNTIME_DISPATCH_ENDPOINT is required for http mode",
-            "artifacts": [],
-            "blockers": ["MISSING_DISPATCH_ENDPOINT"],
-            "done": False,
-            "metadata": {"dispatch_mode": "http"},
-        }
-
-    try:
-        timeout_seconds = float(timeout_raw)
-    except ValueError:
-        timeout_seconds = 30.0
-
-    body = json.dumps(payload).encode("utf-8")
-    request = urllib.request.Request(
-        endpoint,
-        data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-            response_body = response.read().decode("utf-8")
-        parsed = json.loads(response_body) if response_body else {}
-    except urllib.error.HTTPError as exc:
-        return {
-            "status": "blocked",
-            "summary": f"Dispatch endpoint HTTP error: {exc.code}",
-            "artifacts": [],
-            "blockers": ["DISPATCH_ENDPOINT_HTTP_ERROR"],
-            "done": False,
-            "metadata": {"dispatch_mode": "http", "http_status": exc.code},
-        }
-    except urllib.error.URLError:
-        return {
-            "status": "blocked",
-            "summary": "Dispatch endpoint is unreachable",
-            "artifacts": [],
-            "blockers": ["DISPATCH_ENDPOINT_UNREACHABLE"],
-            "done": False,
-            "metadata": {"dispatch_mode": "http"},
-        }
-    except json.JSONDecodeError:
-        return {
-            "status": "failed",
-            "summary": "Dispatch endpoint returned invalid JSON",
-            "artifacts": [],
-            "blockers": ["INVALID_DISPATCH_RESPONSE_JSON"],
-            "done": False,
-            "metadata": {"dispatch_mode": "http"},
-        }
-
-    if not isinstance(parsed, dict):
-        return {
-            "status": "failed",
-            "summary": "Dispatch endpoint response must be a JSON object",
-            "artifacts": [],
-            "blockers": ["INVALID_DISPATCH_RESPONSE_SHAPE"],
-            "done": False,
-            "metadata": {"dispatch_mode": "http"},
-        }
-
-    return parsed
+    messages = _build_messages(payload)
+    raw_text = invoke_openai_compatible_chat(messages)
+    return parse_structured_result(raw_text)
 
 
 def dispatch(
