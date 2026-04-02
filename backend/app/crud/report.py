@@ -1,8 +1,9 @@
 from datetime import timedelta
+from typing import cast
 
 from sqlalchemy import func
 
-from ..models.core import Invoice, Job, Lead, Reminder, _utcnow
+from ..models.core import Invoice, Job, Lead, Reminder, User, _utcnow
 
 
 OPERATOR_QUEUE_ITEM_TYPES = {
@@ -60,6 +61,20 @@ def _queue_suppression_state(db, organization_id: int) -> dict[tuple[str, int], 
             continue
         state[key] = action == "ack"
     return state
+
+
+def _queue_actor_user_id(reminder: Reminder) -> int | None:
+    raw_val = cast(str | None, reminder.last_dispatch_error)
+    if raw_val is None:
+        return None
+    raw = str(raw_val)
+    prefix = "actor_user_id="
+    if not raw.startswith(prefix):
+        return None
+    try:
+        return int(raw[len(prefix):])
+    except ValueError:
+        return None
 
 
 def get_revenue_path_report(db, organization_id: int) -> dict:
@@ -664,6 +679,7 @@ def acknowledge_operator_queue_item(
     organization_id: int,
     item_type: str,
     entity_id: int,
+    actor_user_id: int | None = None,
 ) -> tuple[dict | None, str | None]:
     """Acknowledge a queue item without mutating underlying domain entities."""
     if item_type not in OPERATOR_QUEUE_ITEM_TYPES:
@@ -697,6 +713,7 @@ def acknowledge_operator_queue_item(
         status="sent",
         due_at=now,
         sent_at=now,
+        last_dispatch_error=(f"actor_user_id={actor_user_id}" if actor_user_id is not None else None),
         organization_id=organization_id,
     )
     db.add(ack)
@@ -718,6 +735,7 @@ def unacknowledge_operator_queue_item(
     organization_id: int,
     item_type: str,
     entity_id: int,
+    actor_user_id: int | None = None,
 ) -> tuple[dict | None, str | None]:
     """Add queue unack marker so the item can appear again."""
     if item_type not in OPERATOR_QUEUE_ITEM_TYPES:
@@ -742,6 +760,7 @@ def unacknowledge_operator_queue_item(
         status="sent",
         due_at=now,
         sent_at=now,
+        last_dispatch_error=(f"actor_user_id={actor_user_id}" if actor_user_id is not None else None),
         organization_id=organization_id,
     )
     db.add(unack)
@@ -773,17 +792,41 @@ def get_operator_queue_ack_history(db, organization_id: int, limit: int = 100) -
     )
 
     out: list[dict] = []
+    actor_ids: set[int] = set()
+    parsed: list[tuple[Reminder, str, str, int]] = []
     for evt in events:
         action, key = _queue_parse_event(evt.message)
         if not action or not key:
             continue
         item_type, entity_id = key
+        parsed.append((evt, action, item_type, entity_id))
+        actor_id = _queue_actor_user_id(evt)
+        if actor_id is not None:
+            actor_ids.add(actor_id)
+
+    actor_email_by_id: dict[int, str] = {}
+    if actor_ids:
+        users = (
+            db.query(User)
+            .filter(
+                User.organization_id == organization_id,
+                User.id.in_(actor_ids),
+            )
+            .all()
+        )
+        actor_email_by_id = {u.id: u.email for u in users}
+
+    for evt, action, item_type, entity_id in parsed:
+        actor_id = _queue_actor_user_id(evt)
+        created_at = evt.created_at
         out.append(
             {
                 "action": action,
                 "item_type": item_type,
                 "entity_id": entity_id,
-                "timestamp": evt.created_at.isoformat() if evt.created_at else now.isoformat(),
+                "timestamp": created_at.isoformat() if created_at is not None else now.isoformat(),
+                "actor_user_id": actor_id,
+                "actor_email": actor_email_by_id.get(actor_id) if actor_id is not None else None,
             }
         )
 

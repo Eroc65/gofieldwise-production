@@ -356,3 +356,5 @@ def test_operator_queue_history_includes_ack_and_unack_events():
     assert len(events_for_lead) >= 2
     assert events_for_lead[0]["action"] == "unack"
     assert any(evt["action"] == "ack" for evt in events_for_lead)
+    assert all(evt["actor_user_id"] is not None for evt in events_for_lead[:2])
+    assert all(evt["actor_email"] == _EMAIL for evt in events_for_lead[:2])

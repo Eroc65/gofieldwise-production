@@ -78,6 +78,7 @@ def operator_queue_ack(
         current_user.organization_id,
         payload.item_type,
         payload.entity_id,
+        actor_user_id=current_user.id,
     )
     if error:
         raise HTTPException(status_code=422, detail=error)
@@ -95,6 +96,7 @@ def operator_queue_unack(
         current_user.organization_id,
         payload.item_type,
         payload.entity_id,
+        actor_user_id=current_user.id,
     )
     if error:
         raise HTTPException(status_code=422, detail=error)

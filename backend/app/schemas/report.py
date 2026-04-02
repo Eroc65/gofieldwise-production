@@ -103,6 +103,8 @@ class OperatorQueueHistoryEventOut(BaseModel):
     item_type: str
     entity_id: int
     timestamp: str
+    actor_user_id: int | None = None
+    actor_email: str | None = None
 
 
 class OperatorQueueHistoryOut(BaseModel):
