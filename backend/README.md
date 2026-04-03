@@ -67,6 +67,11 @@ POST `/api/leads/{lead_id}/book` (Bearer token) with `{ scheduled_time, technici
 	- `AGENT_MODEL_TIMEOUT_SECONDS` (optional, default `120`)
 	- `AGENT_MODEL_TEMPERATURE` (optional, default `0.1`)
 	- `AGENT_MODEL_MAX_TOKENS` (optional, default `4000`)
+	- `AGENT_MODEL_AUTORECOVER` (optional, default `1`)
+	- `AGENT_MODEL_HEALTH_PATH` (optional, default `/models`)
+	- `AGENT_MODEL_PRECHECK_TIMEOUT_SECONDS` (optional, default `4`)
+	- `AGENT_MODEL_RECOVERY_SCRIPT_TIMEOUT_SECONDS` (optional, default `60`)
+	- `AGENT_MODEL_START_CMD` (optional bootstrap command for backend start)
 - Tool executor policy env var:
 	- `AGENT_TOOL_MODE` (default `dev`): `readonly`, `test`, `dev`, `deploy`, `production_safe`
 	- `AGENT_ALLOWED_COMMAND_PREFIXES` (comma-separated command prefixes)
@@ -90,6 +95,10 @@ POST `/api/leads/{lead_id}/book` (Bearer token) with `{ scheduled_time, technici
 	- `export AGENT_MODEL_TIMEOUT_SECONDS="120"`
 	- `export AGENT_MODEL_TEMPERATURE="0.1"`
 	- `export AGENT_MODEL_MAX_TOKENS="4000"`
+	- `export AGENT_MODEL_AUTORECOVER="1"`
+	- `export AGENT_MODEL_HEALTH_PATH="/models"`
+	- `export AGENT_MODEL_PRECHECK_TIMEOUT_SECONDS="4"`
+	- `export AGENT_MODEL_RECOVERY_SCRIPT_TIMEOUT_SECONDS="60"`
 	- `export AGENT_TOOL_MODE="dev"`
 	- `export AGENT_ALLOWED_COMMAND_PREFIXES="python,pytest,alembic,git status,git rev-parse,git branch,ls,pwd,rg,grep,cat,head,tail,sed,make,npm test,npm run,pnpm test,pnpm run,yarn test,yarn run"`
 	- `python -m agent_runtime.run_once`
@@ -100,9 +109,18 @@ POST `/api/leads/{lead_id}/book` (Bearer token) with `{ scheduled_time, technici
 	- `$env:AGENT_MODEL_TIMEOUT_SECONDS="120"`
 	- `$env:AGENT_MODEL_TEMPERATURE="0.1"`
 	- `$env:AGENT_MODEL_MAX_TOKENS="4000"`
+	- `$env:AGENT_MODEL_AUTORECOVER="1"`
+	- `$env:AGENT_MODEL_HEALTH_PATH="/models"`
+	- `$env:AGENT_MODEL_PRECHECK_TIMEOUT_SECONDS="4"`
+	- `$env:AGENT_MODEL_RECOVERY_SCRIPT_TIMEOUT_SECONDS="60"`
 	- `$env:AGENT_TOOL_MODE="dev"`
 	- `$env:AGENT_ALLOWED_COMMAND_PREFIXES="python,pytest,alembic,git status,git rev-parse,git branch,ls,pwd,rg,grep,cat,head,tail,sed,make,npm test,npm run,pnpm test,pnpm run,yarn test,yarn run"`
 	- `python -m agent_runtime.run_once`
+
+- Runtime preflight behavior:
+	- Probes `AGENT_MODEL_BASE_URL + AGENT_MODEL_HEALTH_PATH` before each model request.
+	- If unavailable and autorecover is enabled, executes `scripts/ensure_model_backend.ps1`.
+	- Retries connection failures once after recovery.
 
 ## VS Code Tasks
 - `backend: test (backend dir)`

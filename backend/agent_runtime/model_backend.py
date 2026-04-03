@@ -7,6 +7,8 @@ import urllib.error
 import urllib.request
 from typing import Any
 
+from agent_runtime.preflight import ensure_model_backend_available
+
 
 def _get_env(name: str, default: str | None = None) -> str:
     value = os.getenv(name, default)
@@ -98,6 +100,9 @@ def invoke_openai_compatible_chat(messages: list[dict[str, str]]) -> str:
     cfg = build_backend_config()
     url = cfg["base_url"].rstrip("/") + "/chat/completions"
 
+    # Preflight + auto-recovery
+    ensure_model_backend_available(cfg["base_url"], allow_recovery=True)
+
     payload = {
         "model": cfg["model"],
         "messages": messages,
@@ -105,7 +110,16 @@ def invoke_openai_compatible_chat(messages: list[dict[str, str]]) -> str:
         "max_tokens": cfg["max_tokens"],
     }
 
-    data = _post_json(url, cfg["api_key"], payload, cfg["timeout_seconds"])
+    try:
+        data = _post_json(url, cfg["api_key"], payload, cfg["timeout_seconds"])
+    except RuntimeError as exc:
+        msg = str(exc).lower()
+        if "connection error" in msg or "connection refused" in msg or "timed out" in msg:
+            # One recovery retry
+            ensure_model_backend_available(cfg["base_url"], allow_recovery=True, force_recovery=True)
+            data = _post_json(url, cfg["api_key"], payload, cfg["timeout_seconds"])
+        else:
+            raise
 
     try:
         return data["choices"][0]["message"]["content"]
