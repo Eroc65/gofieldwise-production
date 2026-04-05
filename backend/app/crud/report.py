@@ -1,5 +1,5 @@
-from datetime import timedelta
-from typing import cast
+from datetime import datetime, timedelta
+from typing import Any, cast
 
 from sqlalchemy import func
 
@@ -145,6 +145,75 @@ def get_revenue_path_report(db, organization_id: int) -> dict:
         "reminders_pending": reminders_pending,
         "reminders_overdue": reminders_overdue,
         "collection_reminders_pending": collection_reminders_pending,
+    }
+
+
+def get_lead_conversion_metrics(db, organization_id: int, days: int = 7) -> dict:
+    now = _utcnow()
+    start_day = (now - timedelta(days=max(0, days - 1))).date()
+
+    lead_rows = (
+        db.query(Lead)
+        .filter(Lead.organization_id == organization_id)
+        .all()
+    )
+
+    buckets: dict[str, dict[str, Any]] = {}
+    for offset in range(days):
+        day = start_day + timedelta(days=offset)
+        key = day.isoformat()
+        buckets[key] = {
+            "date": key,
+            "intakes": 0,
+            "qualified": 0,
+            "booked": 0,
+            "qualification_rate": 0.0,
+            "booking_rate": 0.0,
+        }
+
+    for lead in lead_rows:
+        created_day = cast(str, lead.created_at.date().isoformat())
+        if created_day in buckets:
+            buckets[created_day]["intakes"] = int(cast(int, buckets[created_day]["intakes"])) + 1
+
+        qualified_at = cast(datetime | None, lead.qualified_at)
+        if qualified_at is not None:
+            qualified_day = qualified_at.date().isoformat()
+            if qualified_day in buckets:
+                buckets[qualified_day]["qualified"] = int(cast(int, buckets[qualified_day]["qualified"])) + 1
+
+        lead_status = cast(str, lead.status)
+        if lead_status == "converted" and cast(object, lead.updated_at) is not None:
+            booked_day = cast(str, lead.updated_at.date().isoformat())
+            if booked_day in buckets:
+                buckets[booked_day]["booked"] = int(cast(int, buckets[booked_day]["booked"])) + 1
+
+    timeline: list[dict] = []
+    for day_key in sorted(buckets.keys()):
+        day = buckets[day_key]
+        intakes = int(cast(int, day["intakes"]))
+        qualified = int(cast(int, day["qualified"]))
+        booked = int(cast(int, day["booked"]))
+        day["qualification_rate"] = round((qualified / intakes * 100.0) if intakes > 0 else 0.0, 1)
+        day["booking_rate"] = round((booked / intakes * 100.0) if intakes > 0 else 0.0, 1)
+        timeline.append(day)
+
+    totals_intakes = sum(int(cast(int, row["intakes"])) for row in timeline)
+    totals_qualified = sum(int(cast(int, row["qualified"])) for row in timeline)
+    totals_booked = sum(int(cast(int, row["booked"])) for row in timeline)
+
+    return {
+        "organization_id": organization_id,
+        "timestamp": now.isoformat(),
+        "days": days,
+        "totals": {
+            "intakes": totals_intakes,
+            "qualified": totals_qualified,
+            "booked": totals_booked,
+            "qualification_rate": round((totals_qualified / totals_intakes * 100.0) if totals_intakes > 0 else 0.0, 1),
+            "booking_rate": round((totals_booked / totals_intakes * 100.0) if totals_intakes > 0 else 0.0, 1),
+        },
+        "timeline": timeline,
     }
 
 

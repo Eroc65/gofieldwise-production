@@ -179,6 +179,9 @@ export default function HomePage() {
           <a className="ghost-link" href="/leads">
             Open Lead Inbox
           </a>
+          <a className="ghost-link" href="/metrics">
+            View Metrics
+          </a>
         </div>
       </section>
 

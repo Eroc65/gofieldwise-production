@@ -144,6 +144,9 @@ export default function LeadInboxPage() {
         <p className="eyebrow">Lead Inbox</p>
         <h1>Review, Qualify, And Book New Leads Fast</h1>
         <p>Single-screen operator workflow to move inbound leads from new to booked without context switching.</p>
+        <div className="hero-actions">
+          <a className="ghost-link" href="/metrics">Open Metrics</a>
+        </div>
       </section>
 
       <section className="dispatch-card">

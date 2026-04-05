@@ -7,12 +7,14 @@ from ..crud.report import escalate_sla_breaches
 from ..crud.report import acknowledge_operator_queue_item
 from ..crud.report import unacknowledge_operator_queue_item
 from ..crud.report import get_daily_digest
+from ..crud.report import get_lead_conversion_metrics
 from ..crud.report import get_operator_queue_ack_history
 from ..crud.report import get_operator_queue
 from ..crud.report import get_revenue_path_report
 from ..crud.report import get_operational_dashboard
 from ..models.core import User
 from ..schemas.report import DailyDigestOut
+from ..schemas.report import LeadConversionMetricsOut
 from ..schemas.report import OperatorQueueAckIn
 from ..schemas.report import OperatorQueueAckOut
 from ..schemas.report import OperatorQueueUnackIn
@@ -32,6 +34,15 @@ def revenue_path_report(
     current_user: User = Depends(get_current_user),
 ):
     return get_revenue_path_report(db, current_user.organization_id)
+
+
+@router.get("/reports/lead-conversion", response_model=LeadConversionMetricsOut)
+def lead_conversion_metrics(
+    days: int = Query(7, ge=1, le=30),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return get_lead_conversion_metrics(db, current_user.organization_id, days=days)
 
 
 @router.get("/reports/operational-dashboard", response_model=OperationalDashboardOut)

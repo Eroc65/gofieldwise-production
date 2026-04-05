@@ -251,6 +251,16 @@ export async function bookLead({ token, leadId, technicianId, scheduledTime }) {
   });
 }
 
+export async function getLeadConversionMetrics({ token, days = 7 }) {
+  const query = new URLSearchParams({ days: String(days) });
+  return apiFetch(`/api/reports/lead-conversion?${query.toString()}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
 export async function listJobs({ token }) {
   return apiFetch("/api/jobs", {
     method: "GET",

@@ -31,10 +31,16 @@ The frontend also includes a Lead Inbox page at `/leads`:
 - qualify lead with quick defaults
 - book qualified leads to a technician/time
 
+And a Metrics page at `/metrics`:
+
+- daily intake, qualified, and booked conversion timeline
+- conversion rates for selected day range
+
 ## Structure
 
 - `pages/` — routes (`index.js`, `_app.js`)
 	- includes `leads.js` for operator lead queue workflow
+	- includes `metrics.js` for conversion reporting workflow
 - `components/` — UI (`DispatchAssistant.js`)
 - `lib/` — API helpers (`api.js`)
 - `styles/` — global styles (`globals.css`)

@@ -124,3 +124,42 @@ def test_revenue_path_report_counts():
     assert body["invoices_overdue"] >= 1
     assert body["reminders_overdue"] >= 1
     assert body["collection_reminders_pending"] >= 1
+
+
+def test_lead_conversion_metrics_daily_series():
+    client = TestClient(app)
+    headers = _auth_headers(client)
+    org_id = _org_id()
+
+    created = client.post(
+        f"/api/leads/intake/{org_id}",
+        json={"name": "Metrics Lead", "phone": "555-6010", "source": "web_form"},
+    )
+    assert created.status_code == 201
+    lead_id = created.json()["id"]
+
+    qualified = client.post(
+        f"/api/leads/{lead_id}/qualify",
+        json={
+            "emergency": True,
+            "budget_confirmed": True,
+            "requested_within_48h": True,
+            "service_category": "plumbing",
+        },
+        headers=headers,
+    )
+    assert qualified.status_code == 200
+
+    converted = client.post(f"/api/leads/{lead_id}/convert", headers=headers)
+    assert converted.status_code == 200
+
+    report = client.get("/api/reports/lead-conversion?days=7", headers=headers)
+    assert report.status_code == 200
+    body = report.json()
+
+    assert body["organization_id"] == org_id
+    assert body["days"] == 7
+    assert body["totals"]["intakes"] >= 1
+    assert body["totals"]["qualified"] >= 1
+    assert body["totals"]["booked"] >= 1
+    assert len(body["timeline"]) == 7

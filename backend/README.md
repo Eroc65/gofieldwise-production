@@ -53,6 +53,9 @@ POST `/api/leads/{lead_id}/book` (Bearer token) with `{ scheduled_time, technici
 - POST `/api/leads/intake/missed-call/by-key/{intake_key}`
 - GET `/api/auth/org` returns `intake_key` for authenticated org admins
 
+**Operator metrics reporting:**
+- GET `/api/reports/lead-conversion?days=7` (auth required, days 1-30)
+
 **Schedule readiness workflow:**
 - GET `/api/jobs/scheduling/conflict` with query: `technician_id`, `scheduled_time`, optional `exclude_job_id`, `buffer_minutes`
 - GET `/api/jobs/scheduling/next-slot` with query: `technician_id`, `requested_time`, optional `search_hours`, `step_minutes`, `exclude_job_id`, `buffer_minutes`

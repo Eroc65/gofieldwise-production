@@ -253,6 +253,28 @@ textarea {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.metric-table-wrap {
+  overflow-x: auto;
+}
+
+.metric-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.metric-table th,
+.metric-table td {
+  border: 1px solid var(--line);
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.metric-table th {
+  background: #f7efe1;
+  color: #214754;
+}
+
 .dispatch-head h2 {
   margin: 0;
   font-size: 1.45rem;

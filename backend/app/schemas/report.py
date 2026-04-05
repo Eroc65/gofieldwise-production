@@ -18,6 +18,23 @@ class RevenuePathReportOut(BaseModel):
     collection_reminders_pending: int
 
 
+class LeadConversionDayOut(BaseModel):
+    date: str
+    intakes: int
+    qualified: int
+    booked: int
+    qualification_rate: float
+    booking_rate: float
+
+
+class LeadConversionMetricsOut(BaseModel):
+    organization_id: int
+    timestamp: str
+    days: int
+    totals: dict
+    timeline: list[LeadConversionDayOut]
+
+
 class OperationalDashboardOut(BaseModel):
     organization_id: int
     timestamp: str
