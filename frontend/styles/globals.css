@@ -241,6 +241,12 @@ textarea {
   color: #214754;
 }
 
+.submit-error {
+  margin: 0;
+  font-weight: 700;
+  color: var(--error);
+}
+
 .dispatch-head h2 {
   margin: 0;
   font-size: 1.45rem;

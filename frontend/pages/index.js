@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
 
 import DispatchAssistant from "../components/DispatchAssistant";
+import { submitPublicLeadIntake } from "../lib/api";
 
 const PHONE_NUMBER = process.env.NEXT_PUBLIC_SALES_PHONE || "+1 (555) 010-2024";
 const BOOKING_URL = process.env.NEXT_PUBLIC_BOOKING_URL || "https://cal.com/gofieldwise/demo";
+const INTAKE_ORG_ID = Number(process.env.NEXT_PUBLIC_INTAKE_ORG_ID || "1");
 
 const offerings = [
   {
@@ -103,6 +105,8 @@ export default function HomePage() {
     details: "",
   });
   const [submitMessage, setSubmitMessage] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const offeringAnchors = useMemo(
     () => offerings.map((offering) => ({ ...offering, id: offering.title.toLowerCase().replace(/[^a-z0-9]+/g, "-") })),
@@ -112,6 +116,7 @@ export default function HomePage() {
   function handleGetStarted(serviceName) {
     setSelectedService(serviceName);
     setSubmitMessage("");
+    setSubmitError("");
     const el = document.getElementById("get-started");
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -122,19 +127,34 @@ export default function HomePage() {
     setLead((prev) => ({ ...prev, [field]: value }));
   }
 
-  function onSubmitLead(event) {
+  async function onSubmitLead(event) {
     event.preventDefault();
-    const subject = encodeURIComponent(`GoFieldWise Inquiry: ${selectedService}`);
-    const body = encodeURIComponent(
-      `Service Interest: ${selectedService}\n` +
-        `Name: ${lead.name}\n` +
-        `Phone: ${lead.phone}\n` +
-        `Email: ${lead.email}\n` +
-        `Business: ${lead.company}\n\n` +
-        `Details:\n${lead.details}`,
-    );
-    window.location.href = `mailto:sales@gofieldwise.com?subject=${subject}&body=${body}`;
-    setSubmitMessage("Draft email opened. If it did not open, call or text us and we will book your demo manually.");
+    setSubmitMessage("");
+    setSubmitError("");
+    setIsSubmitting(true);
+    try {
+      await submitPublicLeadIntake({
+        orgId: INTAKE_ORG_ID,
+        name: lead.name,
+        phone: lead.phone,
+        email: lead.email,
+        service: selectedService,
+        company: lead.company,
+        details: lead.details,
+      });
+      setSubmitMessage("Intake received. Our team will contact you shortly to map your setup plan.");
+      setLead({
+        name: "",
+        phone: "",
+        email: "",
+        company: "",
+        details: "",
+      });
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Unable to submit intake right now.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -234,8 +254,11 @@ export default function HomePage() {
             <textarea value={lead.details} onChange={(e) => onLeadFieldChange("details", e.target.value)} rows={4} />
           </label>
 
-          <button type="submit">Send Intake And Get Setup Plan</button>
+          <button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Submitting..." : "Send Intake And Get Setup Plan"}
+          </button>
           {submitMessage ? <p className="submit-note">{submitMessage}</p> : null}
+          {submitError ? <p className="submit-error">{submitError}</p> : null}
         </form>
       </section>
 

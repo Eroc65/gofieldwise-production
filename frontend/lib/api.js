@@ -167,6 +167,32 @@ export async function getJobTimeline({ token, jobId }) {
   });
 }
 
+export async function submitPublicLeadIntake({
+  orgId,
+  name,
+  phone,
+  email,
+  service,
+  company,
+  details,
+}) {
+  const serviceLine = service ? `Service interest: ${service}` : "";
+  const companyLine = company ? `Business: ${company}` : "";
+  const detailBlock = details ? `Details: ${details}` : "";
+  const rawMessage = [serviceLine, companyLine, detailBlock].filter(Boolean).join("\n");
+
+  return apiFetch(`/api/leads/intake/${orgId}`, {
+    method: "POST",
+    body: JSON.stringify({
+      name: name || null,
+      phone: phone || null,
+      email: email || null,
+      source: "web_form",
+      raw_message: rawMessage || null,
+    }),
+  });
+}
+
 export async function listJobs({ token }) {
   return apiFetch("/api/jobs", {
     method: "GET",
