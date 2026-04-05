@@ -52,6 +52,12 @@ POST `/api/leads/{lead_id}/book` (Bearer token) with `{ scheduled_time, technici
 - PATCH `/api/jobs/{job_id}/dispatch` with `{ technician_id, scheduled_time }` and optional query `buffer_minutes`
 - technician availability defaults: 8:00 AM to 7:00 PM Central, Monday to Friday
 
+**Job lifecycle quick-actions (Sprint A):**
+- PATCH `/api/jobs/{job_id}/on-my-way`
+- PATCH `/api/jobs/{job_id}/start`
+- PATCH `/api/jobs/{job_id}/complete` with optional `{ completion_notes }`
+- GET `/api/jobs/{job_id}/timeline`
+
 ## Setup
 1. Install Python 3.11+
 2. `pip install -r requirements.txt`
@@ -60,6 +66,7 @@ POST `/api/leads/{lead_id}/book` (Bearer token) with `{ scheduled_time, technici
 
 ## Validation
 - `pytest -q`
+- `pytest -q tests/test_dispatch_flow_integration.py tests/test_dispatch.py -k "lifecycle_quick_actions_require_valid_order or conflict_next_slot_then_dispatch"`
 - `python scripts/smoke_auth.py`
 - `python scripts/smoke_schedule_readiness.py`
 - `python scripts/smoke_collections_readiness.py`
