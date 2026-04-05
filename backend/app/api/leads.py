@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from ..api.auth import get_current_user
+from ..api.auth import normalize_user_role
 from ..core.db import get_db
 from ..crud.lead import (
     book_lead,
@@ -12,6 +13,7 @@ from ..crud.lead import (
     create_lead,
     get_lead,
     get_leads,
+    list_lead_activities,
     qualify_lead,
     transition_lead_status,
     upsert_missed_call_lead,
@@ -21,6 +23,7 @@ from ..models.core import Organization, User
 from ..schemas.lead import (
     LeadBookInput,
     LeadBookOut,
+    LeadActivityOut,
     LeadConvertOut,
     LeadIntake,
     LeadOut,
@@ -32,6 +35,19 @@ from ..schemas.lead import (
 )
 
 router = APIRouter()
+
+LEAD_QUALIFY_ROLES = {"owner", "admin", "dispatcher"}
+LEAD_BOOK_ROLES = {"owner", "admin", "dispatcher"}
+
+
+def _ensure_user_role(current_user: User, allowed_roles: set[str], action: str) -> None:
+    user_role = normalize_user_role(cast(str | None, current_user.role))
+    if user_role not in allowed_roles:
+        allowed = ", ".join(sorted(allowed_roles))
+        raise HTTPException(
+            status_code=403,
+            detail=f"Role '{user_role}' cannot {action}. Allowed roles: {allowed}.",
+        )
 
 
 def _resolve_org_for_intake(db: Session, *, org_id: int | None = None, intake_key: str | None = None) -> Organization:
@@ -189,7 +205,12 @@ def update_lead_status(
     lead = get_lead(db, lead_id, org_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-    lead, error = transition_lead_status(db, lead, update.status)
+    lead, error = transition_lead_status(
+        db,
+        lead,
+        update.status,
+        actor_user_id=int(cast(int, current_user.id)),
+    )
     if error:
         raise HTTPException(status_code=422, detail=error)
     return lead
@@ -206,7 +227,12 @@ def convert_lead_api(
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     try:
-        lead, customer, job = convert_lead(db, lead, org_id)
+        lead, customer, job = convert_lead(
+            db,
+            lead,
+            org_id,
+            actor_user_id=int(cast(int, current_user.id)),
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     return LeadConvertOut(
@@ -223,6 +249,8 @@ def qualify_lead_api(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _ensure_user_role(current_user, LEAD_QUALIFY_ROLES, "qualify leads")
+
     org_id = int(cast(int, current_user.organization_id))
     lead = get_lead(db, lead_id, org_id)
     if not lead:
@@ -235,6 +263,7 @@ def qualify_lead_api(
         budget_confirmed=payload.budget_confirmed,
         requested_within_48h=payload.requested_within_48h,
         service_category=payload.service_category,
+        actor_user_id=int(cast(int, current_user.id)),
     )
     if error:
         raise HTTPException(status_code=422, detail=error)
@@ -255,6 +284,8 @@ def book_lead_api(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _ensure_user_role(current_user, LEAD_BOOK_ROLES, "book leads")
+
     org_id = int(cast(int, current_user.organization_id))
     lead = get_lead(db, lead_id, org_id)
     if not lead:
@@ -266,6 +297,7 @@ def book_lead_api(
         org_id,
         payload.technician_id,
         payload.scheduled_time,
+        actor_user_id=int(cast(int, current_user.id)),
     )
     if error:
         raise HTTPException(status_code=422, detail=error)
@@ -281,3 +313,16 @@ def book_lead_api(
         technician_id=int(cast(int, job.technician_id)),
         booking_reminders_dismissed=dismissed_count,
     )
+
+
+@router.get("/leads/{lead_id}/activity", response_model=List[LeadActivityOut])
+def get_lead_activity_api(
+    lead_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    org_id = int(cast(int, current_user.organization_id))
+    lead = get_lead(db, lead_id, org_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    return list_lead_activities(db, lead_id, org_id)

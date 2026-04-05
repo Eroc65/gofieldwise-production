@@ -13,6 +13,8 @@ _ORG = "Qualify Org"
 _OTHER_EMAIL = "qualify_other@example.com"
 _OTHER_PASSWORD = "qualifyother"
 _OTHER_ORG = "Qualify Other Org"
+_TECH_EMAIL = "qualify_tech@example.com"
+_TECH_PASSWORD = "qualifytech"
 
 
 def setup_module():
@@ -27,6 +29,7 @@ def setup_module():
         db.add(other_org)
         db.flush()
         db.add(User(email=_EMAIL, hashed_password=hash_password(_PASSWORD), organization_id=org.id))
+        db.add(User(email=_TECH_EMAIL, hashed_password=hash_password(_TECH_PASSWORD), role="technician", organization_id=org.id))
         db.add(User(email=_OTHER_EMAIL, hashed_password=hash_password(_OTHER_PASSWORD), organization_id=other_org.id))
         db.commit()
     finally:
@@ -127,3 +130,22 @@ def test_qualify_respects_org_scoping():
         headers=other_headers,
     )
     assert resp.status_code == 404
+
+
+def test_qualify_rejects_technician_role():
+    client = TestClient(app)
+    org_id = _org_id(_ORG)
+    tech_headers = _auth_headers(client, _TECH_EMAIL, _TECH_PASSWORD)
+
+    created = client.post(
+        f"/api/leads/intake/{org_id}",
+        json={"name": "Tech Restricted", "phone": "555-5103", "source": "web_form"},
+    )
+    lead_id = created.json()["id"]
+
+    resp = client.post(
+        f"/api/leads/{lead_id}/qualify",
+        json={"emergency": True},
+        headers=tech_headers,
+    )
+    assert resp.status_code == 403

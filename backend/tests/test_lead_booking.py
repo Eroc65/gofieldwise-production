@@ -16,6 +16,8 @@ _ORG = "LeadBook Org"
 _OTHER_EMAIL = "leadbook_other@example.com"
 _OTHER_PASSWORD = "leadbookother"
 _OTHER_ORG = "LeadBook Other Org"
+_TECH_EMAIL = "leadbook_tech@example.com"
+_TECH_PASSWORD = "leadbooktech"
 
 
 def setup_module():
@@ -31,6 +33,7 @@ def setup_module():
         db.flush()
 
         db.add(User(email=_EMAIL, hashed_password=hash_password(_PASSWORD), organization_id=org.id))
+        db.add(User(email=_TECH_EMAIL, hashed_password=hash_password(_TECH_PASSWORD), role="technician", organization_id=org.id))
         db.add(User(email=_OTHER_EMAIL, hashed_password=hash_password(_OTHER_PASSWORD), organization_id=other_org.id))
         db.commit()
     finally:
@@ -206,3 +209,42 @@ def test_book_respects_org_scope_and_technician_scope():
         headers=headers,
     )
     assert bad_tech.status_code == 422
+
+
+def test_book_rejects_technician_role():
+    client = TestClient(app)
+    org_id = _org_id(_ORG)
+    owner_headers = _auth_headers(client, _EMAIL, _PASSWORD)
+    tech_headers = _auth_headers(client, _TECH_EMAIL, _TECH_PASSWORD)
+
+    tech = client.post(
+        "/api/technicians",
+        json={
+            "name": "Book Tech",
+            "availability_start_hour_utc": 0,
+            "availability_end_hour_utc": 24,
+            "availability_weekdays": "0,1,2,3,4,5,6",
+        },
+        headers=owner_headers,
+    )
+    technician_id = tech.json()["id"]
+
+    intake = client.post(
+        f"/api/leads/intake/{org_id}",
+        json={"name": "Book Restricted", "phone": "555-7400", "source": "web_form"},
+    )
+    lead_id = intake.json()["id"]
+
+    qual = client.post(
+        f"/api/leads/{lead_id}/qualify",
+        json={"emergency": True},
+        headers=owner_headers,
+    )
+    assert qual.status_code == 200
+
+    denied = client.post(
+        f"/api/leads/{lead_id}/book",
+        json={"scheduled_time": _future(6), "technician_id": technician_id},
+        headers=tech_headers,
+    )
+    assert denied.status_code == 403

@@ -189,6 +189,10 @@ def test_convert_requires_auth(client):
     assert client.post("/api/leads/1/convert").status_code == 401
 
 
+def test_activity_requires_auth(client):
+    assert client.get("/api/leads/1/activity").status_code == 401
+
+
 # ---------------------------------------------------------------------------
 # Authenticated list / get
 # ---------------------------------------------------------------------------
@@ -269,6 +273,30 @@ def test_terminal_state_rejects_further_transition(client, auth_headers, org_id)
     assert resp.status_code == 422
 
 
+def test_lead_activity_returns_lifecycle_events(client, auth_headers, org_id):
+    created = client.post(
+        f"/api/leads/intake/{org_id}",
+        json={"name": "Activity Test", "phone": "555-0203", "source": "web_form"},
+    )
+    assert created.status_code == 201
+    lead_id = created.json()["id"]
+
+    status_resp = client.patch(
+        f"/api/leads/{lead_id}/status",
+        json={"status": "contacted"},
+        headers=auth_headers,
+    )
+    assert status_resp.status_code == 200
+
+    activity = client.get(f"/api/leads/{lead_id}/activity", headers=auth_headers)
+    assert activity.status_code == 200
+    events = activity.json()
+    assert len(events) >= 2
+    actions = [event["action"] for event in events]
+    assert "created" in actions
+    assert "status_updated" in actions
+
+
 # ---------------------------------------------------------------------------
 # Convert to Customer + Job
 # ---------------------------------------------------------------------------
@@ -343,3 +371,6 @@ def test_org_scoping_cannot_see_other_org_leads(client, auth_headers, other_auth
     # Authenticated user from the primary org should NOT see it
     resp = client.get(f"/api/leads/{other_lead_id}", headers=auth_headers)
     assert resp.status_code == 404
+
+    activity_resp = client.get(f"/api/leads/{other_lead_id}/activity", headers=auth_headers)
+    assert activity_resp.status_code == 404

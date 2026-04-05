@@ -19,6 +19,9 @@ def _assert_schema_compatibility() -> None:
     required_organization_columns = {
         "intake_key",
     }
+    required_user_columns = {
+        "role",
+    }
 
     with engine.connect() as connection:
         inspector = inspect(connection)
@@ -53,6 +56,12 @@ def _assert_schema_compatibility() -> None:
                 "Run `alembic upgrade head` (or reset local sqlite test.db) before starting the API."
             )
 
+        if "lead_activities" not in table_names:
+            raise RuntimeError(
+                "Database schema mismatch. Missing table: lead_activities. "
+                "Run `alembic upgrade head` (or reset local sqlite test.db) before starting the API."
+            )
+
         if "organizations" in table_names:
             organization_columns = {column["name"] for column in inspector.get_columns("organizations")}
             missing_org_columns = sorted(required_organization_columns - organization_columns)
@@ -60,6 +69,17 @@ def _assert_schema_compatibility() -> None:
                 missing_text = ", ".join(missing_org_columns)
                 raise RuntimeError(
                     "Database schema mismatch for organizations table. "
+                    f"Missing columns: {missing_text}. "
+                    "Run `alembic upgrade head` (or reset local sqlite test.db) before starting the API."
+                )
+
+        if "users" in table_names:
+            user_columns = {column["name"] for column in inspector.get_columns("users")}
+            missing_user_columns = sorted(required_user_columns - user_columns)
+            if missing_user_columns:
+                missing_text = ", ".join(missing_user_columns)
+                raise RuntimeError(
+                    "Database schema mismatch for users table. "
                     f"Missing columns: {missing_text}. "
                     "Run `alembic upgrade head` (or reset local sqlite test.db) before starting the API."
                 )

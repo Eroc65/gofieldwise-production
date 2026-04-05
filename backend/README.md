@@ -36,6 +36,7 @@ POST `/api/auth/login` (OAuth2 form: username=email, password)
 
 **Get current user:**
 GET `/api/auth/me` (Bearer token)
+- includes `role` (`owner`, `admin`, `dispatcher`, `technician`)
 
 **Get current org:**
 GET `/api/auth/org` (Bearer token)
@@ -45,6 +46,14 @@ GET `/api/protected` (Bearer token)
 
 **Lead booking workflow:**
 POST `/api/leads/{lead_id}/book` (Bearer token) with `{ scheduled_time, technician_id }`
+- role-gated to `owner`, `admin`, `dispatcher`
+
+**Lead qualification workflow:**
+POST `/api/leads/{lead_id}/qualify` (Bearer token)
+- role-gated to `owner`, `admin`, `dispatcher`
+
+**Lead activity audit trail:**
+- GET `/api/leads/{lead_id}/activity` (Bearer token)
 
 **Public intake routing options:**
 - POST `/api/leads/intake/{org_id}`

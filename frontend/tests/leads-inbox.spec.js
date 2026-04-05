@@ -20,6 +20,14 @@ test("lead inbox flow works", async ({ page }) => {
     });
   });
 
+  await page.route("**/api/auth/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ id: 7, email: "owner@example.com", role: "owner", organization_id: 11 }),
+    });
+  });
+
   await page.route("**/api/leads", async (route) => {
     await route.fulfill({
       status: 200,
@@ -94,6 +102,26 @@ test("lead inbox flow works", async ({ page }) => {
     });
   });
 
+  await page.route("**/api/leads/301/activity", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          id: 1,
+          action: "status_updated",
+          from_status: "new",
+          to_status: "contacted",
+          note: null,
+          actor_user_id: 7,
+          lead_id: 301,
+          organization_id: 11,
+          created_at: new Date().toISOString(),
+        },
+      ]),
+    });
+  });
+
   await page.goto("/leads");
 
   await expect(page.getByRole("heading", { name: "Review, Qualify, And Book New Leads Fast" })).toBeVisible();
@@ -104,6 +132,7 @@ test("lead inbox flow works", async ({ page }) => {
 
   await expect(page.getByLabel("Pick Lead")).toContainText("#301 Leak Lead (new)");
   await expect(page.getByRole("heading", { name: "Recommended Next Action" })).toBeVisible();
+  await expect(page.getByText("Current role:")).toBeVisible();
   await expect(page.getByText("Focus on speed-to-booking for qualified leads and offer tighter appointment windows.")).toBeVisible();
   await expect(page.getByText("7 Day Intakes")).toBeVisible();
   await expect(page.getByText("10").first()).toBeVisible();
@@ -119,4 +148,5 @@ test("lead inbox flow works", async ({ page }) => {
 
   await page.getByRole("button", { name: "Book Lead" }).click();
   await expect(page.getByText("Lead booked. Job #880 scheduled")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Lead Activity Timeline" })).toBeVisible();
 });

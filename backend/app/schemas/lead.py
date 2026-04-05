@@ -80,3 +80,16 @@ class LeadBookOut(BaseModel):
     scheduled_time: datetime
     technician_id: int
     booking_reminders_dismissed: int
+
+
+class LeadActivityOut(BaseModel):
+    id: int
+    action: str
+    from_status: Optional[str] = None
+    to_status: str
+    note: Optional[str] = None
+    actor_user_id: Optional[int] = None
+    lead_id: int
+    organization_id: int
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)

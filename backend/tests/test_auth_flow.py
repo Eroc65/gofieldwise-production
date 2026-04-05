@@ -24,6 +24,7 @@ def test_auth_signup_login_and_protected_routes(client) -> None:
 	)
 	assert signup_resp.status_code == 200
 	assert signup_resp.json()["email"] == email
+	assert signup_resp.json()["role"] == "owner"
 
 	# Login
 	login_resp = client.post(

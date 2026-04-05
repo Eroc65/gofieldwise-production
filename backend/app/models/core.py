@@ -29,12 +29,14 @@ class Organization(Base):
     notes = relationship("Note", back_populates="organization")
     leads = relationship("Lead", back_populates="organization")
     job_activities = relationship("JobActivity", back_populates="organization")
+    lead_activities = relationship("LeadActivity", back_populates="organization")
 
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
+    role = Column(String, nullable=False, default="owner")
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
     organization = relationship("Organization", back_populates="users")
 
@@ -208,3 +210,19 @@ class Lead(Base):
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
     organization = relationship("Organization", back_populates="leads")
     reminders = relationship("Reminder", back_populates="lead")
+    activities = relationship("LeadActivity", back_populates="lead")
+
+
+class LeadActivity(Base):
+    __tablename__ = "lead_activities"
+    id = Column(Integer, primary_key=True, index=True)
+    action = Column(String, nullable=False)
+    from_status = Column(String)
+    to_status = Column(String, nullable=False)
+    note = Column(Text)
+    actor_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    lead_id = Column(Integer, ForeignKey("leads.id"), nullable=False)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+    organization = relationship("Organization", back_populates="lead_activities")
+    lead = relationship("Lead", back_populates="activities")

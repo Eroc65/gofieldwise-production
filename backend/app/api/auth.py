@@ -15,10 +15,21 @@ from ..schemas.user import UserCreate, UserOut
 router = APIRouter()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+ALLOWED_USER_ROLES = {"owner", "admin", "dispatcher", "technician"}
 
 
 def _new_intake_key() -> str:
     return f"org_{token_urlsafe(12)}"
+
+
+def normalize_user_role(role: str | None) -> str:
+    if role is None:
+        return "owner"
+    normalized = role.strip().lower()
+    if normalized not in ALLOWED_USER_ROLES:
+        valid = ", ".join(sorted(ALLOWED_USER_ROLES))
+        raise HTTPException(status_code=422, detail=f"Invalid role '{role}'. Allowed roles: {valid}.")
+    return normalized
 
 def get_current_user(
     token: str = Depends(oauth2_scheme),
@@ -54,6 +65,7 @@ def signup(user: UserCreate, db: Session = Depends(get_db)):
     db_user = User(
         email=user.email,
         hashed_password=hash_password(user.password),
+        role=normalize_user_role(user.role),
         organization_id=organization.id,
     )
     db.add(db_user)

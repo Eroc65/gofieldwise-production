@@ -28,8 +28,10 @@ The frontend also includes a Lead Inbox page at `/leads`:
 
 - list leads by organization
 - mark lead contacted
-- qualify lead with quick defaults
-- book qualified leads to a technician/time
+- qualify lead with quick defaults (role-gated)
+- book qualified leads to a technician/time (role-gated)
+- role indicator via `/api/auth/me`
+- lead activity timeline via `/api/leads/{lead_id}/activity`
 
 And a Metrics page at `/metrics`:
 

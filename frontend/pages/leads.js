@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 
 import {
   bookLead,
+  getCurrentUser,
+  getLeadActivity,
   getLeadConversionMetrics,
   listLeads,
   listTechnicians,
@@ -29,6 +31,8 @@ export default function LeadInboxPage() {
   const [authPassword, setAuthPassword] = useState("");
   const [leads, setLeads] = useState([]);
   const [technicians, setTechnicians] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [leadActivity, setLeadActivity] = useState([]);
   const [conversionSummary, setConversionSummary] = useState(null);
   const [selectedLeadId, setSelectedLeadId] = useState("");
   const [serviceCategory, setServiceCategory] = useState("");
@@ -80,12 +84,14 @@ export default function LeadInboxPage() {
 
   async function refreshInbox() {
     await withAction("refresh", async () => {
-      const [leadRows, techRows] = await Promise.all([
+      const [leadRows, techRows, me] = await Promise.all([
         listLeads({ token }),
         listTechnicians({ token }),
+        getCurrentUser({ token }),
       ]);
       setLeads(Array.isArray(leadRows) ? leadRows : []);
       setTechnicians(Array.isArray(techRows) ? techRows : []);
+      setCurrentUser(me || null);
       if (!selectedLeadId && Array.isArray(leadRows) && leadRows.length > 0) {
         setSelectedLeadId(String(leadRows[0].id));
       }
@@ -99,8 +105,47 @@ export default function LeadInboxPage() {
       } catch {
         setConversionSummary(null);
       }
+
+      const activeLeadId = Number(selectedLeadId || leadRows?.[0]?.id || 0);
+      if (activeLeadId > 0) {
+        try {
+          const events = await getLeadActivity({ token, leadId: activeLeadId });
+          setLeadActivity(Array.isArray(events) ? events : []);
+        } catch {
+          setLeadActivity([]);
+        }
+      } else {
+        setLeadActivity([]);
+      }
     });
   }
+
+  useEffect(() => {
+    if (!token || !selectedLeadId) {
+      return;
+    }
+    let cancelled = false;
+    async function loadLeadTimeline() {
+      try {
+        const events = await getLeadActivity({ token, leadId: Number(selectedLeadId) });
+        if (!cancelled) {
+          setLeadActivity(Array.isArray(events) ? events : []);
+        }
+      } catch {
+        if (!cancelled) {
+          setLeadActivity([]);
+        }
+      }
+    }
+    void loadLeadTimeline();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, selectedLeadId]);
+
+  const role = String(currentUser?.role || "owner").toLowerCase();
+  const canQualify = ["owner", "admin", "dispatcher"].includes(role);
+  const canBook = ["owner", "admin", "dispatcher"].includes(role);
 
   async function onMarkContacted() {
     await withAction("contacted", async () => {
@@ -156,7 +201,7 @@ export default function LeadInboxPage() {
       <section className="dispatch-card">
         <header className="dispatch-head">
           <h2>Operator Access</h2>
-          <p>Use an existing account from your organization.</p>
+          <p>Use an existing account from your organization. Current role: <strong>{currentUser?.role || "unknown"}</strong></p>
         </header>
 
         <div className="form-grid">
@@ -259,13 +304,19 @@ export default function LeadInboxPage() {
           <button type="button" onClick={onMarkContacted} disabled={busyAction !== "" || !token || !selectedLeadId}>
             {busyAction === "contacted" ? "Updating..." : "Mark Contacted"}
           </button>
-          <button type="button" onClick={onQualifyLead} disabled={busyAction !== "" || !token || !selectedLeadId}>
+          <button type="button" onClick={onQualifyLead} disabled={busyAction !== "" || !token || !selectedLeadId || !canQualify}>
             {busyAction === "qualify" ? "Qualifying..." : "Qualify Lead"}
           </button>
-          <button type="button" onClick={onBookLead} disabled={busyAction !== "" || !token || !selectedLeadId || !bookTechId}>
+          <button type="button" onClick={onBookLead} disabled={busyAction !== "" || !token || !selectedLeadId || !bookTechId || !canBook}>
             {busyAction === "book" ? "Booking..." : "Book Lead"}
           </button>
         </div>
+
+        {!canQualify || !canBook ? (
+          <div className="panel error">
+            <p>Your role has limited lead-action permissions. Contact an owner/admin if you need qualification or booking access.</p>
+          </div>
+        ) : null}
 
         {actionResult ? <div className="panel"><p>{actionResult}</p></div> : null}
         {error ? <div className="panel error">{error}</div> : null}
@@ -291,6 +342,31 @@ export default function LeadInboxPage() {
                   <li>Source: {lead.source}</li>
                   <li>Priority: {lead.priority_score ?? "-"}</li>
                   <li>Created: {prettyDate(lead.created_at)}</li>
+                </ul>
+              </article>
+            ))
+          )}
+        </div>
+      </section>
+
+      <section className="dispatch-card">
+        <header className="dispatch-head">
+          <h2>Lead Activity Timeline</h2>
+          <p>Audit trail for the currently selected lead.</p>
+        </header>
+        <div className="lead-list">
+          {leadActivity.length === 0 ? (
+            <p>No activity available for this lead yet.</p>
+          ) : (
+            leadActivity.map((event) => (
+              <article key={event.id} className="panel">
+                <h3>{event.action}</h3>
+                <ul>
+                  <li>From: {event.from_status || "-"}</li>
+                  <li>To: {event.to_status}</li>
+                  <li>Actor User ID: {event.actor_user_id ?? "system"}</li>
+                  <li>When: {prettyDate(event.created_at)}</li>
+                  <li>Note: {event.note || "-"}</li>
                 </ul>
               </article>
             ))

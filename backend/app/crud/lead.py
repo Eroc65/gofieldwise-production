@@ -3,7 +3,7 @@ from typing import Any, List, Optional, Tuple, cast
 
 from sqlalchemy.orm import Session
 
-from ..models.core import Customer, Job, Lead, LEAD_VALID_TRANSITIONS, _utcnow
+from ..models.core import Customer, Job, Lead, LeadActivity, LEAD_VALID_TRANSITIONS, _utcnow
 
 
 def _as_opt_str(value: object) -> Optional[str]:
@@ -19,9 +19,40 @@ def _as_opt_int(value: object) -> Optional[int]:
     return int(cast(int, value))
 
 
+def _record_lead_activity(
+    db: Session,
+    *,
+    lead: Lead,
+    action: str,
+    from_status: Optional[str],
+    to_status: str,
+    note: Optional[str] = None,
+    actor_user_id: Optional[int] = None,
+) -> None:
+    event = LeadActivity(
+        action=action,
+        from_status=from_status,
+        to_status=to_status,
+        note=note,
+        actor_user_id=actor_user_id,
+        lead_id=int(cast(int, lead.id)),
+        organization_id=int(cast(int, lead.organization_id)),
+    )
+    db.add(event)
+
+
 def create_lead(db: Session, data: dict, organization_id: int) -> Lead:
     lead = Lead(**data, organization_id=organization_id)
     db.add(lead)
+    db.flush()
+    _record_lead_activity(
+        db,
+        lead=lead,
+        action="created",
+        from_status=None,
+        to_status=str(cast(str, lead.status)),
+        note="Lead created via intake.",
+    )
     db.commit()
     db.refresh(lead)
     return lead
@@ -72,6 +103,15 @@ def upsert_missed_call_lead(
         organization_id=organization_id,
     )
     db.add(lead)
+    db.flush()
+    _record_lead_activity(
+        db,
+        lead=lead,
+        action="created",
+        from_status=None,
+        to_status="new",
+        note="Lead created via missed-call intake.",
+    )
     db.commit()
     db.refresh(lead)
     return lead, True
@@ -95,7 +135,7 @@ def get_leads(db: Session, organization_id: int) -> List[Lead]:
 
 
 def transition_lead_status(
-    db: Session, lead: Lead, new_status: str
+    db: Session, lead: Lead, new_status: str, actor_user_id: Optional[int] = None
 ) -> Tuple[Lead, Optional[str]]:
     """Apply a status transition. Returns (lead, error_message).
     error_message is None on success."""
@@ -111,6 +151,14 @@ def transition_lead_status(
     lead_obj = cast(Any, lead)
     lead_obj.status = new_status
     lead_obj.updated_at = _utcnow()
+    _record_lead_activity(
+        db,
+        lead=lead,
+        action="status_updated",
+        from_status=current_status,
+        to_status=new_status,
+        actor_user_id=actor_user_id,
+    )
     db.commit()
     db.refresh(lead)
     return lead, None
@@ -159,6 +207,7 @@ def qualify_lead(
     budget_confirmed: bool = False,
     requested_within_48h: bool = False,
     service_category: Optional[str] = None,
+    actor_user_id: Optional[int] = None,
 ) -> Tuple[Lead, Optional[str]]:
     current_status = str(cast(str, lead.status))
     if current_status in ("converted", "dismissed"):
@@ -173,6 +222,7 @@ def qualify_lead(
     )
 
     lead_obj = cast(Any, lead)
+    from_status = str(cast(str, lead.status))
     lead_obj.status = "qualified"
     lead_obj.priority_score = score
     lead_obj.qualified_at = _utcnow()
@@ -184,13 +234,22 @@ def qualify_lead(
     existing_notes = _as_opt_str(lead.notes)
     lead_obj.notes = (f"{existing_notes}\n{summary}".strip() if existing_notes else summary)
     lead_obj.updated_at = _utcnow()
+    _record_lead_activity(
+        db,
+        lead=lead,
+        action="qualified",
+        from_status=from_status,
+        to_status="qualified",
+        note=summary,
+        actor_user_id=actor_user_id,
+    )
     db.commit()
     db.refresh(lead)
     return lead, None
 
 
 def convert_lead(
-    db: Session, lead: Lead, organization_id: int
+    db: Session, lead: Lead, organization_id: int, actor_user_id: Optional[int] = None
 ) -> Tuple[Lead, Customer, Job]:
     """Promote a qualified lead to a Customer + Job.
     Raises ValueError on bad state or missing contact info.
@@ -245,10 +304,20 @@ def convert_lead(
     db.flush()
 
     lead_obj = cast(Any, lead)
+    from_status = str(cast(str, lead.status))
     lead_obj.status = "converted"
     lead_obj.customer_id = customer.id
     lead_obj.job_id = job.id
     lead_obj.updated_at = _utcnow()
+    _record_lead_activity(
+        db,
+        lead=lead,
+        action="converted",
+        from_status=from_status,
+        to_status="converted",
+        note=f"Created customer #{customer.id} and job #{job.id}.",
+        actor_user_id=actor_user_id,
+    )
     db.commit()
     db.refresh(lead)
     return lead, customer, job
@@ -260,6 +329,7 @@ def book_lead(
     organization_id: int,
     technician_id: int,
     scheduled_time,
+    actor_user_id: Optional[int] = None,
 ) -> Tuple[Optional[Lead], Optional[Customer], Optional[Job], int, Optional[str]]:
     """Book a qualified lead into a dispatched job and clear booking reminders."""
     current_status = str(cast(str, lead.status))
@@ -288,7 +358,7 @@ def book_lead(
             return None, None, None, 0, "Converted lead references missing records."
     else:
         try:
-            lead, customer, job = convert_lead(db, lead, organization_id)
+            lead, customer, job = convert_lead(db, lead, organization_id, actor_user_id=actor_user_id)
         except ValueError as exc:
             return None, None, None, 0, str(exc)
 
@@ -324,6 +394,33 @@ def book_lead(
     if dismissed > 0:
         db.commit()
 
+    if dispatched is None:
+        return None, None, None, dismissed, "Lead booking failed unexpectedly."
+
+    dispatched_id = int(cast(int, dispatched.id))
+    _record_lead_activity(
+        db,
+        lead=lead,
+        action="booked",
+        from_status="converted",
+        to_status="converted",
+        note=f"Booked as job #{dispatched_id} with technician #{technician_id}.",
+        actor_user_id=actor_user_id,
+    )
+    db.commit()
+
     db.refresh(lead)
     db.refresh(dispatched)
     return lead, customer, dispatched, dismissed, None
+
+
+def list_lead_activities(db: Session, lead_id: int, organization_id: int) -> List[LeadActivity]:
+    return (
+        db.query(LeadActivity)
+        .filter(
+            LeadActivity.lead_id == lead_id,
+            LeadActivity.organization_id == organization_id,
+        )
+        .order_by(LeadActivity.created_at.desc(), LeadActivity.id.desc())
+        .all()
+    )

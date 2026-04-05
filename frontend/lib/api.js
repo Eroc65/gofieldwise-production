@@ -206,6 +206,15 @@ export async function listLeads({ token }) {
   });
 }
 
+export async function getCurrentUser({ token }) {
+  return apiFetch("/api/auth/me", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
 export async function updateLeadStatus({ token, leadId, status }) {
   return apiFetch(`/api/leads/${leadId}/status`, {
     method: "PATCH",
@@ -254,6 +263,15 @@ export async function bookLead({ token, leadId, technicianId, scheduledTime }) {
 export async function getLeadConversionMetrics({ token, days = 7 }) {
   const query = new URLSearchParams({ days: String(days) });
   return apiFetch(`/api/reports/lead-conversion?${query.toString()}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export async function getLeadActivity({ token, leadId }) {
+  return apiFetch(`/api/leads/${leadId}/activity`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
