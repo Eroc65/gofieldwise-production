@@ -36,6 +36,26 @@ test("lead inbox flow works", async ({ page }) => {
     });
   });
 
+  await page.route("**/api/reports/lead-conversion**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        organization_id: 11,
+        timestamp: new Date().toISOString(),
+        days: 7,
+        totals: {
+          intakes: 10,
+          qualified: 7,
+          booked: 4,
+          qualification_rate: 70.0,
+          booking_rate: 40.0,
+        },
+        timeline: [],
+      }),
+    });
+  });
+
   await page.route("**/api/leads/301/status", async (route) => {
     leadState = { ...leadState, status: "contacted" };
     await route.fulfill({
@@ -82,6 +102,8 @@ test("lead inbox flow works", async ({ page }) => {
   await page.getByRole("button", { name: "Login" }).click();
 
   await expect(page.getByLabel("Pick Lead")).toContainText("#301 Leak Lead (new)");
+  await expect(page.getByText("7 Day Intakes")).toBeVisible();
+  await expect(page.getByText("10").first()).toBeVisible();
   await page.getByLabel("Pick Lead").selectOption("301");
   await page.getByLabel("Booking Technician").selectOption("11");
   await page.getByLabel("Service Category").fill("plumbing");

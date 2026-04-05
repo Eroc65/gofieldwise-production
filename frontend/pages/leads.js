@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   bookLead,
+  getLeadConversionMetrics,
   listLeads,
   listTechnicians,
   login,
@@ -28,6 +29,7 @@ export default function LeadInboxPage() {
   const [authPassword, setAuthPassword] = useState("");
   const [leads, setLeads] = useState([]);
   const [technicians, setTechnicians] = useState([]);
+  const [conversionSummary, setConversionSummary] = useState(null);
   const [selectedLeadId, setSelectedLeadId] = useState("");
   const [serviceCategory, setServiceCategory] = useState("");
   const [scheduledTime, setScheduledTime] = useState(toLocalInputValue(new Date(Date.now() + 2 * 60 * 60 * 1000)));
@@ -35,11 +37,6 @@ export default function LeadInboxPage() {
   const [actionResult, setActionResult] = useState("");
   const [error, setError] = useState("");
   const [busyAction, setBusyAction] = useState("");
-
-  const selectedLead = useMemo(
-    () => leads.find((lead) => String(lead.id) === String(selectedLeadId)),
-    [leads, selectedLeadId],
-  );
 
   useEffect(() => {
     const savedToken = window.localStorage.getItem("fdp.dispatch.token") || "";
@@ -94,6 +91,13 @@ export default function LeadInboxPage() {
       }
       if (!bookTechId && Array.isArray(techRows) && techRows.length > 0) {
         setBookTechId(String(techRows[0].id));
+      }
+
+      try {
+        const summary = await getLeadConversionMetrics({ token, days: 7 });
+        setConversionSummary(summary);
+      } catch {
+        setConversionSummary(null);
       }
     });
   }
@@ -185,6 +189,31 @@ export default function LeadInboxPage() {
           <h2>Lead Actions</h2>
           <p>Quickly move selected lead toward dispatch.</p>
         </header>
+
+        {conversionSummary ? (
+          <div className="results-grid">
+            <article className="panel">
+              <h3>7 Day Intakes</h3>
+              <p>{conversionSummary.totals?.intakes ?? 0}</p>
+            </article>
+            <article className="panel">
+              <h3>7 Day Qualified</h3>
+              <p>{conversionSummary.totals?.qualified ?? 0}</p>
+            </article>
+            <article className="panel">
+              <h3>7 Day Booked</h3>
+              <p>{conversionSummary.totals?.booked ?? 0}</p>
+            </article>
+            <article className="panel">
+              <h3>Qualification Rate</h3>
+              <p>{conversionSummary.totals?.qualification_rate ?? 0}%</p>
+            </article>
+            <article className="panel">
+              <h3>Booking Rate</h3>
+              <p>{conversionSummary.totals?.booking_rate ?? 0}%</p>
+            </article>
+          </div>
+        ) : null}
 
         <div className="form-grid">
           <label>
