@@ -24,6 +24,8 @@ jobs:
         run: npm ci
       - name: Build frontend
         run: npm run build
+      - name: Run frontend e2e smoke
+        run: npm run test:e2e
 
   backend-tests:
     runs-on: ubuntu-latest
