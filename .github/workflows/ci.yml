@@ -44,6 +44,8 @@ jobs:
         run: pip install -r requirements.txt
       - name: Run migrations (SQLite smoke)
         run: python -m alembic upgrade head
+      - name: Run dispatch flow integration test (fast gate)
+        run: pytest -q tests/test_dispatch_flow_integration.py
       - name: Run Python tests
         run: pytest -q
 
