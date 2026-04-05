@@ -83,7 +83,7 @@ def test_escalate_payments_initial_stage():
     
     # Create invoice due today
     import datetime
-    today = datetime.datetime.utcnow().isoformat()
+    today = datetime.datetime.now(datetime.UTC).isoformat()
     invoice = client.post(
         "/api/invoices",
         json={"amount": 500.0, "due_at": today, "job_id": job["id"]},
@@ -109,7 +109,7 @@ def test_escalate_payments_first_overdue_stage():
     
     # Create invoice due 3 days ago
     import datetime
-    three_days_ago = (datetime.datetime.utcnow() - datetime.timedelta(days=3)).isoformat()
+    three_days_ago = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=3)).isoformat()
     invoice = client.post(
         "/api/invoices",
         json={"amount": 750.0, "due_at": three_days_ago, "job_id": job["id"]},
@@ -135,7 +135,7 @@ def test_escalate_payments_second_overdue_stage():
     
     # Create invoice due 7 days ago
     import datetime
-    seven_days_ago = (datetime.datetime.utcnow() - datetime.timedelta(days=7)).isoformat()
+    seven_days_ago = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=7)).isoformat()
     invoice = client.post(
         "/api/invoices",
         json={"amount": 1000.0, "due_at": seven_days_ago, "job_id": job["id"]},
@@ -161,7 +161,7 @@ def test_escalate_payments_final_stage():
     
     # Create invoice due 14 days ago
     import datetime
-    fourteen_days_ago = (datetime.datetime.utcnow() - datetime.timedelta(days=14)).isoformat()
+    fourteen_days_ago = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=14)).isoformat()
     invoice = client.post(
         "/api/invoices",
         json={"amount": 1500.0, "due_at": fourteen_days_ago, "job_id": job["id"]},
@@ -191,19 +191,19 @@ def test_escalate_payments_multiple_stages():
         job = _create_job(client, headers, customer["id"])
         if i == 0:
             # Due today
-            due_date = datetime.datetime.utcnow().isoformat()
+            due_date = datetime.datetime.now(datetime.UTC).isoformat()
             amount = 100
         elif i == 1:
             # 3 days overdue
-            due_date = (datetime.datetime.utcnow() - datetime.timedelta(days=3)).isoformat()
+            due_date = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=3)).isoformat()
             amount = 200
         elif i == 2:
             # 7 days overdue
-            due_date = (datetime.datetime.utcnow() - datetime.timedelta(days=7)).isoformat()
+            due_date = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=7)).isoformat()
             amount = 300
         else:
             # 14 days overdue
-            due_date = (datetime.datetime.utcnow() - datetime.timedelta(days=14)).isoformat()
+            due_date = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=14)).isoformat()
             amount = 400
         
         invoice = client.post(
@@ -234,7 +234,7 @@ def test_invoice_stage_persists_after_escalation():
     
     # Create invoice due today
     import datetime
-    today = datetime.datetime.utcnow().isoformat()
+    today = datetime.datetime.now(datetime.UTC).isoformat()
     invoice_resp = client.post(
         "/api/invoices",
         json={"amount": 500.0, "due_at": today, "job_id": job["id"]},
@@ -265,7 +265,7 @@ def test_paid_invoice_not_escalated():
     
     # Create invoice and mark it paid
     import datetime
-    seven_days_ago = (datetime.datetime.utcnow() - datetime.timedelta(days=7)).isoformat()
+    seven_days_ago = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=7)).isoformat()
     invoice = client.post(
         "/api/invoices",
         json={"amount": 500.0, "due_at": seven_days_ago, "job_id": job["id"]},

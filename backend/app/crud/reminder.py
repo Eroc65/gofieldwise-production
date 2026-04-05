@@ -1,5 +1,5 @@
 from datetime import timedelta
-from typing import List, Optional
+from typing import Any, List, Optional, cast
 
 from sqlalchemy.orm import Session
 
@@ -148,19 +148,22 @@ def update_reminder_status(
     if new_status not in REMINDER_STATUSES:
         valid = ", ".join(REMINDER_STATUSES)
         return reminder, f"Invalid status '{new_status}'. Must be one of: {valid}."
-    if reminder.status == new_status:
+    current_status = str(cast(str, reminder.status))
+    if current_status == new_status:
         return reminder, None  # idempotent
-    reminder.status = new_status
+    reminder_obj = cast(Any, reminder)
+    reminder_obj.status = new_status
     if new_status == "sent":
-        reminder.sent_at = _utcnow()
-    reminder.updated_at = _utcnow()
+        reminder_obj.sent_at = _utcnow()
+    reminder_obj.updated_at = _utcnow()
     db.commit()
     db.refresh(reminder)
     return reminder, None
 
 
 def _channel_contact_available(reminder: Reminder) -> bool:
-    if reminder.channel == "internal":
+    channel = str(cast(str, reminder.channel))
+    if channel == "internal":
         return True
 
     phone = None
@@ -172,9 +175,9 @@ def _channel_contact_available(reminder: Reminder) -> bool:
         phone = reminder.lead.phone
         email = reminder.lead.email
 
-    if reminder.channel in ("sms", "call"):
+    if channel in ("sms", "call"):
         return bool(phone)
-    if reminder.channel == "email":
+    if channel == "email":
         return bool(email)
     return False
 
@@ -213,18 +216,19 @@ def dispatch_due_reminders(
         }
 
     for reminder in candidates:
-        reminder.dispatch_attempts = (reminder.dispatch_attempts or 0) + 1
+        reminder_obj = cast(Any, reminder)
+        reminder_obj.dispatch_attempts = int(cast(int, reminder.dispatch_attempts or 0)) + 1
         if not _channel_contact_available(reminder):
-            reminder.last_dispatch_error = "Missing destination contact for reminder channel"
-            reminder.updated_at = now
-            failed.append({"id": reminder.id, "error": reminder.last_dispatch_error})
+            reminder_obj.last_dispatch_error = "Missing destination contact for reminder channel"
+            reminder_obj.updated_at = now
+            failed.append({"id": int(cast(int, reminder.id)), "error": str(cast(str, reminder.last_dispatch_error))})
             continue
 
-        reminder.status = "sent"
-        reminder.sent_at = now
-        reminder.last_dispatch_error = None
-        reminder.updated_at = now
-        sent_ids.append(reminder.id)
+        reminder_obj.status = "sent"
+        reminder_obj.sent_at = now
+        reminder_obj.last_dispatch_error = None
+        reminder_obj.updated_at = now
+        sent_ids.append(int(cast(int, reminder.id)))
 
     db.commit()
 

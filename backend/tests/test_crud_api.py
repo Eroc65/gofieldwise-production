@@ -85,7 +85,81 @@ def test_technicians_crud(client, auth_headers):
     resp = client.post("/api/technicians", json={"name": "Test Tech"}, headers=auth_headers)
     assert resp.status_code == 201
     tid = resp.json()["id"]
+    assert resp.json()["availability_start_hour_utc"] == 8
+    assert resp.json()["availability_end_hour_utc"] == 19
+    assert resp.json()["availability_weekdays"] == "0,1,2,3,4"
     assert client.get("/api/technicians", headers=auth_headers).status_code == 200
     assert client.get(f"/api/technicians/{tid}", headers=auth_headers).status_code == 200
-    assert client.put(f"/api/technicians/{tid}", json={"name": "Updated Tech"}, headers=auth_headers).status_code == 200
+    updated = client.put(
+        f"/api/technicians/{tid}",
+        json={
+            "name": "Updated Tech",
+            "availability_start_hour_utc": 7,
+            "availability_end_hour_utc": 18,
+            "availability_weekdays": "0,1,2,3,4,5",
+        },
+        headers=auth_headers,
+    )
+    assert updated.status_code == 200
+    assert updated.json()["availability_start_hour_utc"] == 7
+    assert updated.json()["availability_end_hour_utc"] == 18
+    assert updated.json()["availability_weekdays"] == "0,1,2,3,4,5"
+
+
+def test_technician_availability_validation_rejects_invalid_create_payloads(client, auth_headers):
+    bad_start = client.post(
+        "/api/technicians",
+        json={"name": "Bad Start", "availability_start_hour_utc": -1},
+        headers=auth_headers,
+    )
+    assert bad_start.status_code == 422
+
+    bad_end = client.post(
+        "/api/technicians",
+        json={"name": "Bad End", "availability_end_hour_utc": 25},
+        headers=auth_headers,
+    )
+    assert bad_end.status_code == 422
+
+    bad_window = client.post(
+        "/api/technicians",
+        json={
+            "name": "Bad Window",
+            "availability_start_hour_utc": 19,
+            "availability_end_hour_utc": 19,
+        },
+        headers=auth_headers,
+    )
+    assert bad_window.status_code == 422
+
+    bad_weekdays_duplicate = client.post(
+        "/api/technicians",
+        json={"name": "Bad Days", "availability_weekdays": "0,0,1"},
+        headers=auth_headers,
+    )
+    assert bad_weekdays_duplicate.status_code == 422
+
+    bad_weekdays_range = client.post(
+        "/api/technicians",
+        json={"name": "Bad Range", "availability_weekdays": "0,7"},
+        headers=auth_headers,
+    )
+    assert bad_weekdays_range.status_code == 422
+
+
+def test_technician_availability_validation_rejects_invalid_update_payloads(client, auth_headers):
+    create = client.post(
+        "/api/technicians",
+        json={"name": "Update Target"},
+        headers=auth_headers,
+    )
+    assert create.status_code == 201
+    technician_id = create.json()["id"]
+
+    bad_update = client.put(
+        f"/api/technicians/{technician_id}",
+        json={"name": "Update Target", "availability_start_hour_utc": 22, "availability_end_hour_utc": 10},
+        headers=auth_headers,
+    )
+    assert bad_update.status_code == 422
 

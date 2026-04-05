@@ -76,6 +76,9 @@ class Technician(Base):
     __tablename__ = "technicians"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
+    availability_start_hour_utc = Column(Integer, nullable=False, default=8)
+    availability_end_hour_utc = Column(Integer, nullable=False, default=19)
+    availability_weekdays = Column(String, nullable=False, default="0,1,2,3,4")
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
     organization = relationship("Organization", back_populates="technicians")
     jobs = relationship("Job", back_populates="technician")

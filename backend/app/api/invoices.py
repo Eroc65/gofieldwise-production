@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -34,7 +34,8 @@ def create_invoice_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    invoice, error = create_invoice(db, payload.model_dump(), current_user.organization_id)
+    org_id = int(cast(int, current_user.organization_id))
+    invoice, error = create_invoice(db, payload.model_dump(), org_id)
     if error:
         raise HTTPException(status_code=422, detail=error)
     return invoice
@@ -46,7 +47,8 @@ def list_invoices(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return get_invoices(db, current_user.organization_id, status=status)
+    org_id = int(cast(int, current_user.organization_id))
+    return get_invoices(db, org_id, status=status)
 
 
 @router.get("/invoices/overdue", response_model=List[InvoiceOut])
@@ -54,7 +56,8 @@ def list_overdue_invoices(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return get_overdue_invoices(db, current_user.organization_id)
+    org_id = int(cast(int, current_user.organization_id))
+    return get_overdue_invoices(db, org_id)
 
 
 @router.get("/invoices/{invoice_id}", response_model=InvoiceOut)
@@ -63,7 +66,8 @@ def get_invoice_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    invoice = get_invoice(db, invoice_id, current_user.organization_id)
+    org_id = int(cast(int, current_user.organization_id))
+    invoice = get_invoice(db, invoice_id, org_id)
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
     return invoice
@@ -76,7 +80,8 @@ def update_invoice_status_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    invoice = get_invoice(db, invoice_id, current_user.organization_id)
+    org_id = int(cast(int, current_user.organization_id))
+    invoice = get_invoice(db, invoice_id, org_id)
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
 
@@ -92,7 +97,8 @@ def escalate_payments(
     current_user: User = Depends(get_current_user),
 ):
     """Check all unpaid invoices and escalate payment reminders based on days overdue."""
-    initial, first, second, final = escalate_payment_reminders(db, current_user.organization_id)
+    org_id = int(cast(int, current_user.organization_id))
+    initial, first, second, final = escalate_payment_reminders(db, org_id)
     return PaymentEscalationResult(
         initial_reminders_created=initial,
         first_overdue_reminders_created=first,

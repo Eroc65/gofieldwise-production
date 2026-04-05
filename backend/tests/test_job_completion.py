@@ -61,7 +61,12 @@ def _create_job(client: TestClient, headers, customer_id):
 def _create_technician(client: TestClient, headers):
     resp = client.post(
         "/api/technicians",
-        json={"name": "Completion Tech"},
+        json={
+            "name": "Completion Tech",
+            "availability_start_hour_utc": 0,
+            "availability_end_hour_utc": 24,
+            "availability_weekdays": "0,1,2,3,4,5,6",
+        },
         headers=headers,
     )
     assert resp.status_code == 201
@@ -94,7 +99,7 @@ def test_complete_dispatched_job():
     
     # Dispatch job
     import datetime
-    scheduled_time = (datetime.datetime.utcnow() + datetime.timedelta(hours=2)).isoformat()
+    scheduled_time = (datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=2)).isoformat()
     dispatched = _dispatch_job(client, headers, job["id"], tech["id"], scheduled_time)
     assert dispatched["status"] == "dispatched"
     
@@ -140,7 +145,7 @@ def test_complete_job_creates_followup_reminder():
     
     # Dispatch and complete
     import datetime
-    scheduled_time = (datetime.datetime.utcnow() + datetime.timedelta(hours=2)).isoformat()
+    scheduled_time = (datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=2)).isoformat()
     _dispatch_job(client, headers, job["id"], tech["id"], scheduled_time)
     
     # Get reminders before completion
@@ -179,7 +184,7 @@ def test_cannot_complete_completed_job():
     
     # Dispatch and complete
     import datetime
-    scheduled_time = (datetime.datetime.utcnow() + datetime.timedelta(hours=2)).isoformat()
+    scheduled_time = (datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=2)).isoformat()
     _dispatch_job(client, headers, job["id"], tech["id"], scheduled_time)
     
     completed = client.patch(
@@ -210,7 +215,7 @@ def test_complete_job_optional_notes():
     
     # Dispatch and complete without notes
     import datetime
-    scheduled_time = (datetime.datetime.utcnow() + datetime.timedelta(hours=2)).isoformat()
+    scheduled_time = (datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=2)).isoformat()
     _dispatch_job(client, headers, job["id"], tech["id"], scheduled_time)
     
     completed = client.patch(
@@ -238,7 +243,7 @@ def test_dispatch_job_creates_completion_reminder():
     
     # Dispatch job
     import datetime
-    scheduled_time = (datetime.datetime.utcnow() + datetime.timedelta(hours=2)).isoformat()
+    scheduled_time = (datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=2)).isoformat()
     _dispatch_job(client, headers, job["id"], tech["id"], scheduled_time)
     
     # Verify reminder was created
@@ -265,7 +270,7 @@ def test_complete_job_dismisses_completion_reminder():
     
     # Dispatch job (creates completion reminder)
     import datetime
-    scheduled_time = (datetime.datetime.utcnow() + datetime.timedelta(hours=2)).isoformat()
+    scheduled_time = (datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=2)).isoformat()
     _dispatch_job(client, headers, job["id"], tech["id"], scheduled_time)
     
     # Get reminders for this job before completion
@@ -302,7 +307,7 @@ def test_complete_job_creates_followup_reminder_after_dismissing_completion():
     
     # Dispatch (creates completion reminder)
     import datetime
-    scheduled_time = (datetime.datetime.utcnow() + datetime.timedelta(hours=2)).isoformat()
+    scheduled_time = (datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=2)).isoformat()
     _dispatch_job(client, headers, job["id"], tech["id"], scheduled_time)
     
     # Complete job (dismisses completion, creates follow-up)
@@ -354,7 +359,7 @@ def test_complete_job_with_approved_estimate_creates_invoice():
     assert approved.status_code == 200
     
     # Dispatch job
-    scheduled_time = (datetime.datetime.utcnow() + datetime.timedelta(hours=2)).isoformat()
+    scheduled_time = (datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=2)).isoformat()
     _dispatch_job(client, headers, job["id"], tech["id"], scheduled_time)
     
     # Check invoices before completion
@@ -391,7 +396,7 @@ def test_complete_job_without_estimate_no_invoice_created():
     
     # Dispatch job (no estimate)
     import datetime
-    scheduled_time = (datetime.datetime.utcnow() + datetime.timedelta(hours=2)).isoformat()
+    scheduled_time = (datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=2)).isoformat()
     _dispatch_job(client, headers, job["id"], tech["id"], scheduled_time)
     
     # Check invoices before completion
@@ -429,7 +434,7 @@ def test_complete_job_with_unapproved_estimate_no_invoice():
     assert estimate.status_code == 201
     
     # Dispatch job
-    scheduled_time = (datetime.datetime.utcnow() + datetime.timedelta(hours=2)).isoformat()
+    scheduled_time = (datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=2)).isoformat()
     _dispatch_job(client, headers, job["id"], tech["id"], scheduled_time)
     
     # Check invoices before completion

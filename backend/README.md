@@ -46,6 +46,12 @@ GET `/api/protected` (Bearer token)
 **Lead booking workflow:**
 POST `/api/leads/{lead_id}/book` (Bearer token) with `{ scheduled_time, technician_id }`
 
+**Schedule readiness workflow:**
+- GET `/api/jobs/scheduling/conflict` with query: `technician_id`, `scheduled_time`, optional `exclude_job_id`, `buffer_minutes`
+- GET `/api/jobs/scheduling/next-slot` with query: `technician_id`, `requested_time`, optional `search_hours`, `step_minutes`, `exclude_job_id`, `buffer_minutes`
+- PATCH `/api/jobs/{job_id}/dispatch` with `{ technician_id, scheduled_time }` and optional query `buffer_minutes`
+- technician availability defaults: 8:00 AM to 7:00 PM Central, Monday to Friday
+
 ## Setup
 1. Install Python 3.11+
 2. `pip install -r requirements.txt`
@@ -55,6 +61,7 @@ POST `/api/leads/{lead_id}/book` (Bearer token) with `{ scheduled_time, technici
 ## Validation
 - `pytest -q`
 - `python scripts/smoke_auth.py`
+- `python scripts/smoke_schedule_readiness.py`
 
 ## Agent Runtime Invocation
 - Runtime entrypoints:

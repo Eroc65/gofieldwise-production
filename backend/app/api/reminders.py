@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -37,7 +37,8 @@ def create_reminder_endpoint(
             detail=f"Invalid channel '{payload.channel}'. Must be one of: {', '.join(REMINDER_CHANNELS)}.",
         )
     data = payload.model_dump()
-    return create_reminder(db, data, current_user.organization_id)
+    org_id = int(cast(int, current_user.organization_id))
+    return create_reminder(db, data, org_id)
 
 
 @router.get("/reminders/overdue", response_model=List[ReminderOut])
@@ -45,7 +46,8 @@ def list_overdue(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return get_overdue_reminders(db, current_user.organization_id)
+    org_id = int(cast(int, current_user.organization_id))
+    return get_overdue_reminders(db, org_id)
 
 
 @router.get("/reminders", response_model=List[ReminderOut])
@@ -57,9 +59,10 @@ def list_reminders(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    org_id = int(cast(int, current_user.organization_id))
     return get_reminders(
         db,
-        organization_id=current_user.organization_id,
+        organization_id=org_id,
         status=status,
         lead_id=lead_id,
         job_id=job_id,
@@ -73,7 +76,8 @@ def get_reminder_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    reminder = get_reminder(db, reminder_id, current_user.organization_id)
+    org_id = int(cast(int, current_user.organization_id))
+    reminder = get_reminder(db, reminder_id, org_id)
     if not reminder:
         raise HTTPException(status_code=404, detail="Reminder not found")
     return reminder
@@ -86,7 +90,8 @@ def update_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    reminder = get_reminder(db, reminder_id, current_user.organization_id)
+    org_id = int(cast(int, current_user.organization_id))
+    reminder = get_reminder(db, reminder_id, org_id)
     if not reminder:
         raise HTTPException(status_code=404, detail="Reminder not found")
     reminder, error = update_reminder_status(db, reminder, update.status)
@@ -102,9 +107,10 @@ def run_due_reminders(
     current_user: User = Depends(get_current_user),
 ):
     limit = min(max(payload.limit, 1), 500)
+    org_id = int(cast(int, current_user.organization_id))
     return dispatch_due_reminders(
         db,
-        organization_id=current_user.organization_id,
+        organization_id=org_id,
         limit=limit,
         dry_run=payload.dry_run,
     )

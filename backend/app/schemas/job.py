@@ -30,6 +30,21 @@ class JobDispatchUpdate(BaseModel):
 class JobCompletionUpdate(BaseModel):
     completion_notes: Optional[str] = None
 
+
+class JobDispatchConflictOut(BaseModel):
+    conflict: bool
+    conflicting_job_id: Optional[int] = None
+    message: str
+
+
+class JobNextSlotOut(BaseModel):
+    technician_id: int
+    requested_time: datetime
+    search_hours: int
+    step_minutes: int
+    next_available_time: Optional[datetime] = None
+    conflicting_job_ids: list[int]
+
 class JobOut(JobBase):
     id: int
     organization_id: int

@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from typing import cast
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -39,7 +40,9 @@ def setup_module():
 def _org_id(name: str) -> int:
     db: Session = SessionLocal()
     try:
-        return db.query(Organization).filter(Organization.name == name).first().id
+        org = db.query(Organization).filter(Organization.name == name).first()
+        assert org is not None
+        return int(cast(int, org.id))
     finally:
         db.close()
 
@@ -68,7 +71,16 @@ def test_book_qualified_lead_dispatches_and_clears_booking_reminders():
     org_id = _org_id(_ORG)
     headers = _auth_headers(client, _EMAIL, _PASSWORD)
 
-    tech = client.post("/api/technicians", json={"name": "Tech One"}, headers=headers)
+    tech = client.post(
+        "/api/technicians",
+        json={
+            "name": "Tech One",
+            "availability_start_hour_utc": 0,
+            "availability_end_hour_utc": 24,
+            "availability_weekdays": "0,1,2,3,4,5,6",
+        },
+        headers=headers,
+    )
     assert tech.status_code == 201
     technician_id = tech.json()["id"]
 
@@ -123,7 +135,16 @@ def test_book_rejects_non_qualified_lead():
     org_id = _org_id(_ORG)
     headers = _auth_headers(client, _EMAIL, _PASSWORD)
 
-    tech = client.post("/api/technicians", json={"name": "Tech Two"}, headers=headers)
+    tech = client.post(
+        "/api/technicians",
+        json={
+            "name": "Tech Two",
+            "availability_start_hour_utc": 0,
+            "availability_end_hour_utc": 24,
+            "availability_weekdays": "0,1,2,3,4,5,6",
+        },
+        headers=headers,
+    )
     technician_id = tech.json()["id"]
 
     intake = client.post(
@@ -146,7 +167,16 @@ def test_book_respects_org_scope_and_technician_scope():
     headers = _auth_headers(client, _EMAIL, _PASSWORD)
     other_headers = _auth_headers(client, _OTHER_EMAIL, _OTHER_PASSWORD)
 
-    other_tech = client.post("/api/technicians", json={"name": "Other Tech"}, headers=other_headers)
+    other_tech = client.post(
+        "/api/technicians",
+        json={
+            "name": "Other Tech",
+            "availability_start_hour_utc": 0,
+            "availability_end_hour_utc": 24,
+            "availability_weekdays": "0,1,2,3,4,5,6",
+        },
+        headers=other_headers,
+    )
     assert other_tech.status_code == 201
     other_tech_id = other_tech.json()["id"]
 

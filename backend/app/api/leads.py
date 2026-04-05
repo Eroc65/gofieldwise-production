@@ -1,4 +1,5 @@
-from typing import List
+from typing import List, cast
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -53,7 +54,12 @@ def intake(org_id: int, payload: LeadIntake, db: Session = Depends(get_db)):
     data = payload.model_dump()
     lead = create_lead(db, data, org_id)
     # Auto-schedule a follow-up reminder so the lead doesn't slip through the cracks.
-    create_lead_followup_reminder(db, lead.id, org_id, lead_name=lead.name)
+    create_lead_followup_reminder(
+        db,
+        int(cast(int, lead.id)),
+        org_id,
+        lead_name=cast(str | None, lead.name),
+    )
     return lead
 
 
@@ -88,7 +94,13 @@ def intake_missed_call(
     reminder_created = False
     if created_new:
         # Missed calls are high urgency; nudge team immediately.
-        create_lead_followup_reminder(db, lead.id, org_id, lead_name=lead.name, hours=0)
+        create_lead_followup_reminder(
+            db,
+            int(cast(int, lead.id)),
+            org_id,
+            lead_name=cast(str | None, lead.name),
+            hours=0,
+        )
         reminder_created = True
 
     return MissedCallRecoveryOut(
@@ -107,7 +119,8 @@ def list_leads(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return get_leads(db, current_user.organization_id)
+    org_id = int(cast(int, current_user.organization_id))
+    return get_leads(db, org_id)
 
 
 @router.get("/leads/{lead_id}", response_model=LeadOut)
@@ -116,7 +129,8 @@ def get_lead_api(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    lead = get_lead(db, lead_id, current_user.organization_id)
+    org_id = int(cast(int, current_user.organization_id))
+    lead = get_lead(db, lead_id, org_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     return lead
@@ -129,7 +143,8 @@ def update_lead_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    lead = get_lead(db, lead_id, current_user.organization_id)
+    org_id = int(cast(int, current_user.organization_id))
+    lead = get_lead(db, lead_id, org_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     lead, error = transition_lead_status(db, lead, update.status)
@@ -144,14 +159,19 @@ def convert_lead_api(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    lead = get_lead(db, lead_id, current_user.organization_id)
+    org_id = int(cast(int, current_user.organization_id))
+    lead = get_lead(db, lead_id, org_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     try:
-        lead, customer, job = convert_lead(db, lead, current_user.organization_id)
+        lead, customer, job = convert_lead(db, lead, org_id)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
-    return LeadConvertOut(lead_id=lead.id, customer_id=customer.id, job_id=job.id)
+    return LeadConvertOut(
+        lead_id=int(cast(int, lead.id)),
+        customer_id=int(cast(int, customer.id)),
+        job_id=int(cast(int, job.id)),
+    )
 
 
 @router.post("/leads/{lead_id}/qualify", response_model=LeadQualificationOut)
@@ -161,7 +181,8 @@ def qualify_lead_api(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    lead = get_lead(db, lead_id, current_user.organization_id)
+    org_id = int(cast(int, current_user.organization_id))
+    lead = get_lead(db, lead_id, org_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
 
@@ -178,9 +199,9 @@ def qualify_lead_api(
 
     create_lead_booking_reminder(
         db,
-        lead_id=lead.id,
-        organization_id=current_user.organization_id,
-        lead_name=lead.name,
+        lead_id=int(cast(int, lead.id)),
+        organization_id=org_id,
+        lead_name=cast(str | None, lead.name),
     )
     return LeadQualificationOut(lead=lead, booking_reminder_created=True)
 
@@ -192,14 +213,15 @@ def book_lead_api(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    lead = get_lead(db, lead_id, current_user.organization_id)
+    org_id = int(cast(int, current_user.organization_id))
+    lead = get_lead(db, lead_id, org_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
 
     booked_lead, customer, job, dismissed_count, error = book_lead(
         db,
         lead,
-        current_user.organization_id,
+        org_id,
         payload.technician_id,
         payload.scheduled_time,
     )
@@ -209,11 +231,11 @@ def book_lead_api(
         raise HTTPException(status_code=500, detail="Lead booking failed unexpectedly")
 
     return LeadBookOut(
-        lead_id=booked_lead.id,
-        customer_id=customer.id,
-        job_id=job.id,
-        job_status=job.status,
-        scheduled_time=job.scheduled_time,
-        technician_id=job.technician_id,
+        lead_id=int(cast(int, booked_lead.id)),
+        customer_id=int(cast(int, customer.id)),
+        job_id=int(cast(int, job.id)),
+        job_status=str(cast(str, job.status)),
+        scheduled_time=cast(datetime, job.scheduled_time),
+        technician_id=int(cast(int, job.technician_id)),
         booking_reminders_dismissed=dismissed_count,
     )

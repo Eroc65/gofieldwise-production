@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
+from typing import cast
 
 from app.core.auth import hash_password
 from app.core.db import Base, SessionLocal, engine
@@ -35,7 +36,9 @@ def setup_module():
 def _get_org_id() -> int:
     db: Session = SessionLocal()
     try:
-        return db.query(Organization).filter(Organization.name == _ORG).first().id
+        org = db.query(Organization).filter(Organization.name == _ORG).first()
+        assert org is not None
+        return int(cast(int, org.id))
     finally:
         db.close()
 

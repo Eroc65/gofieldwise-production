@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple, cast
 
 from sqlalchemy.orm import Session
 
@@ -50,27 +50,29 @@ def update_estimate_status(
     estimate: Estimate,
     new_status: str,
 ) -> Tuple[Optional[Estimate], Optional[str]]:
+    current_status = str(cast(str, estimate.status))
     if new_status not in VALID_ESTIMATE_STATUSES:
         return None, "Invalid status. Must be one of: draft, sent, approved, rejected"
-    if estimate.status == new_status:
+    if current_status == new_status:
         return estimate, None
-    if estimate.status == "approved" and new_status != "approved":
+    if current_status == "approved" and new_status != "approved":
         return None, "Approved estimates are terminal"
-    if estimate.status == "rejected" and new_status != "rejected":
+    if current_status == "rejected" and new_status != "rejected":
         return None, "Rejected estimates are terminal"
 
-    estimate.status = new_status
+    estimate_obj = cast(Any, estimate)
+    estimate_obj.status = new_status
     if new_status == "approved":
-        estimate.approved_at = _utcnow()
-        estimate.rejected_at = None
-        estimate.job.status = "approved"
+        estimate_obj.approved_at = _utcnow()
+        estimate_obj.rejected_at = None
+        cast(Any, estimate.job).status = "approved"
     elif new_status == "rejected":
-        estimate.rejected_at = _utcnow()
-        estimate.approved_at = None
-        estimate.job.status = "estimate_rejected"
+        estimate_obj.rejected_at = _utcnow()
+        estimate_obj.approved_at = None
+        cast(Any, estimate.job).status = "estimate_rejected"
     else:
-        estimate.approved_at = None
-        estimate.rejected_at = None
+        estimate_obj.approved_at = None
+        estimate_obj.rejected_at = None
 
     db.commit()
     db.refresh(estimate)

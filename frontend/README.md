@@ -1,16 +1,56 @@
 # FrontDesk Pro Frontend
 
-This is the Next.js (React, TypeScript) frontend for FrontDesk Pro.
+This is the Next.js frontend for FrontDesk Pro.
 
 - Next.js
 - React
-- TypeScript
+
+## Current UI Slice
+
+The frontend includes a Dispatch Assistant page at `/` that is wired to backend scheduling APIs:
+
+- conflict check: `GET /api/jobs/scheduling/conflict`
+- next-slot suggestion: `GET /api/jobs/scheduling/next-slot`
+- dispatch action: `PATCH /api/jobs/{job_id}/dispatch`
+- optional conflict buffer control: `buffer_minutes` (for conflict and next-slot queries)
+
+The UI also includes a lightweight auth helper:
+
+- signup + login flow to acquire token
+- login-only flow for existing users
+- token persistence in local storage for faster repeated testing
+
+Business-hours note shown in the UI:
+
+- default technician window is 8:00 AM to 7:00 PM Central, Monday to Friday
 
 ## Structure
-- `pages/` — Routing
-- `components/` — UI components
-- `lib/` — API clients, hooks
-- `tests/` — Frontend tests
+
+- `pages/` — routes (`index.js`, `_app.js`)
+- `components/` — UI (`DispatchAssistant.js`)
+- `lib/` — API helpers (`api.js`)
+- `styles/` — global styles (`globals.css`)
 
 ## Setup
-Instructions will be added as implementation progresses.
+
+1. Install Node.js 18+ (includes `npm`).
+2. Install dependencies:
+	- `npm install`
+	- if PowerShell blocks npm.ps1, use: `& "C:\Program Files\nodejs\npm.cmd" install`
+3. Configure API base URL (optional):
+	- PowerShell: `$env:NEXT_PUBLIC_API_BASE_URL="http://localhost:8001"`
+4. Start dev server:
+	- `npm run dev`
+	- PowerShell fallback: `& "C:\Program Files\nodejs\npm.cmd" run dev`
+5. Open:
+	- `http://localhost:3000`
+
+## Build Validation
+
+- `npm run build`
+- PowerShell fallback: `& "C:\Program Files\nodejs\npm.cmd" run build`
+
+## UI Smoke Test
+
+- `npm run test:e2e`
+- PowerShell fallback: `& "C:\Program Files\nodejs\npm.cmd" run test:e2e`

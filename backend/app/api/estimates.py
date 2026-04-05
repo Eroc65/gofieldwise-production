@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -18,7 +18,8 @@ def create_estimate_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    estimate, error = create_estimate(db, payload.model_dump(), current_user.organization_id)
+    org_id = int(cast(int, current_user.organization_id))
+    estimate, error = create_estimate(db, payload.model_dump(), org_id)
     if error:
         raise HTTPException(status_code=422, detail=error)
     return estimate
@@ -30,7 +31,8 @@ def list_estimates(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return get_estimates(db, current_user.organization_id, status=status)
+    org_id = int(cast(int, current_user.organization_id))
+    return get_estimates(db, org_id, status=status)
 
 
 @router.get("/estimates/{estimate_id}", response_model=EstimateOut)
@@ -39,7 +41,8 @@ def get_estimate_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    estimate = get_estimate(db, estimate_id, current_user.organization_id)
+    org_id = int(cast(int, current_user.organization_id))
+    estimate = get_estimate(db, estimate_id, org_id)
     if not estimate:
         raise HTTPException(status_code=404, detail="Estimate not found")
     return estimate
@@ -52,7 +55,8 @@ def update_estimate_status_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    estimate = get_estimate(db, estimate_id, current_user.organization_id)
+    org_id = int(cast(int, current_user.organization_id))
+    estimate = get_estimate(db, estimate_id, org_id)
     if not estimate:
         raise HTTPException(status_code=404, detail="Estimate not found")
 

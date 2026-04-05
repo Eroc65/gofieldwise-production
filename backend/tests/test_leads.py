@@ -8,6 +8,7 @@ Covers:
 - Org scoping (cannot see other org's leads)
 """
 import uuid
+from typing import cast
 
 import pytest
 from fastapi.testclient import TestClient
@@ -65,7 +66,8 @@ def org_id():
     db: Session = SessionLocal()
     try:
         org = db.query(Organization).filter(Organization.name == _ORG_NAME).first()
-        return org.id
+        assert org is not None
+        return int(cast(int, org.id))
     finally:
         db.close()
 
@@ -75,7 +77,8 @@ def other_org_id():
     db: Session = SessionLocal()
     try:
         org = db.query(Organization).filter(Organization.name == _OTHER_ORG).first()
-        return org.id
+        assert org is not None
+        return int(cast(int, org.id))
     finally:
         db.close()
 

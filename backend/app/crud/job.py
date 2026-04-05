@@ -1,12 +1,50 @@
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
 from ..models.core import Customer, Estimate, Job, JOB_VALID_TRANSITIONS, Reminder, Technician
 
+CENTRAL_TZ = ZoneInfo("America/Chicago")
+
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _normalize_schedule_time(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _parse_weekdays(value: str) -> set[int]:
+    days: set[int] = set()
+    for part in value.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            day = int(part)
+        except ValueError:
+            continue
+        if 0 <= day <= 6:
+            days.add(day)
+    return days
+
+
+def technician_is_available_at(technician: Technician, scheduled_time: datetime) -> bool:
+    ts = scheduled_time
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    local_ts = ts.astimezone(CENTRAL_TZ)
+    weekdays = _parse_weekdays(technician.availability_weekdays or "")
+    if weekdays and local_ts.weekday() not in weekdays:
+        return False
+    start_hour = int(technician.availability_start_hour_utc)
+    end_hour = int(technician.availability_end_hour_utc)
+    hour = local_ts.hour
+    return start_hour <= hour < end_hour
 
 def get_jobs(db: Session, organization_id: int) -> List[Job]:
     return db.query(Job).filter(Job.organization_id == organization_id).all()
@@ -54,7 +92,10 @@ def dispatch_job(
     organization_id: int,
     technician_id: int,
     scheduled_time,
+    buffer_minutes: int = 0,
 ) -> Tuple[Optional[Job], Optional[str]]:
+    normalized_time = _normalize_schedule_time(scheduled_time)
+
     technician = (
         db.query(Technician)
         .filter(Technician.id == technician_id, Technician.organization_id == organization_id)
@@ -63,21 +104,22 @@ def dispatch_job(
     if not technician:
         return None, "Technician not found in your organization"
 
-    conflict = (
-        db.query(Job)
-        .filter(
-            Job.organization_id == organization_id,
-            Job.technician_id == technician_id,
-            Job.scheduled_time == scheduled_time,
-            Job.id != db_job.id,
-        )
-        .first()
+    if not technician_is_available_at(technician, normalized_time):
+        return None, "Technician is outside configured availability window"
+
+    conflict = get_dispatch_conflict(
+        db,
+        organization_id,
+        technician_id,
+        normalized_time,
+        exclude_job_id=int(db_job.id) if db_job.id is not None else None,
+        buffer_minutes=buffer_minutes,
     )
     if conflict:
         return None, "Technician already has a job scheduled at that time"
 
     db_job.technician_id = technician_id
-    db_job.scheduled_time = scheduled_time
+    db_job.scheduled_time = normalized_time
     db_job.status = "dispatched"
     db.commit()
     db.refresh(db_job)
@@ -87,6 +129,73 @@ def dispatch_job(
     create_job_completion_reminder(db, db_job.id, organization_id, db_job.title)
     
     return db_job, None
+
+
+def get_dispatch_conflict(
+    db: Session,
+    organization_id: int,
+    technician_id: int,
+    scheduled_time: datetime,
+    exclude_job_id: Optional[int] = None,
+    buffer_minutes: int = 0,
+) -> Optional[Job]:
+    normalized_time = _normalize_schedule_time(scheduled_time)
+    window_start = normalized_time - timedelta(minutes=max(0, buffer_minutes))
+    window_end = normalized_time + timedelta(minutes=max(0, buffer_minutes))
+
+    query = db.query(Job).filter(
+        Job.organization_id == organization_id,
+        Job.technician_id == technician_id,
+        Job.scheduled_time >= window_start,
+        Job.scheduled_time <= window_end,
+    )
+    if exclude_job_id is not None:
+        query = query.filter(Job.id != exclude_job_id)
+    return query.first()
+
+
+def find_next_available_slot(
+    db: Session,
+    organization_id: int,
+    technician_id: int,
+    requested_time: datetime,
+    search_hours: int = 24,
+    step_minutes: int = 30,
+    exclude_job_id: Optional[int] = None,
+    buffer_minutes: int = 0,
+) -> Tuple[Optional[datetime], list[int]]:
+    technician = (
+        db.query(Technician)
+        .filter(Technician.id == technician_id, Technician.organization_id == organization_id)
+        .first()
+    )
+    if technician is None:
+        return None, []
+
+    candidate = _normalize_schedule_time(requested_time)
+    horizon = candidate + timedelta(hours=search_hours)
+    seen_conflicts: list[int] = []
+
+    while candidate <= horizon:
+        if not technician_is_available_at(technician, candidate):
+            candidate = candidate + timedelta(minutes=step_minutes)
+            continue
+
+        conflict = get_dispatch_conflict(
+            db,
+            organization_id,
+            technician_id,
+            candidate,
+            exclude_job_id=exclude_job_id,
+            buffer_minutes=buffer_minutes,
+        )
+        if conflict is None:
+            return candidate, seen_conflicts
+        if conflict.id is not None and conflict.id not in seen_conflicts:
+            seen_conflicts.append(int(conflict.id))
+        candidate = candidate + timedelta(minutes=step_minutes)
+
+    return None, seen_conflicts
 
 
 def complete_job(

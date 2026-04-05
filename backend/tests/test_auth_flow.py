@@ -1,12 +1,6 @@
 from uuid import uuid4
 
-from fastapi.testclient import TestClient
-
-from app.main import app
-
-
-def test_auth_signup_login_and_protected_routes() -> None:
-	client = TestClient(app)
+def test_auth_signup_login_and_protected_routes(client) -> None:
 
 	email = f"testclientuser-{uuid4().hex[:8]}@example.com"
 	password = "testpass123"

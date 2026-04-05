@@ -19,6 +19,7 @@ from app.core.db import Base, SessionLocal, engine
 from app.core.auth import hash_password
 from app.main import app
 from app.models.core import Organization, User
+from typing import cast
 
 _EMAIL = "remtest@example.com"
 _PASSWORD = "remtestpass"
@@ -67,7 +68,9 @@ def client():
 def org_id():
     db: Session = SessionLocal()
     try:
-        return db.query(Organization).filter(Organization.name == _ORG).first().id
+        org = db.query(Organization).filter(Organization.name == _ORG).first()
+        assert org is not None
+        return int(cast(int, org.id))
     finally:
         db.close()
 
@@ -76,7 +79,9 @@ def org_id():
 def other_org_id():
     db: Session = SessionLocal()
     try:
-        return db.query(Organization).filter(Organization.name == _OTHER_ORG).first().id
+        org = db.query(Organization).filter(Organization.name == _OTHER_ORG).first()
+        assert org is not None
+        return int(cast(int, org.id))
     finally:
         db.close()
 

@@ -1,0 +1,149 @@
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8001";
+
+export function getApiBase() {
+  return API_BASE;
+}
+
+export async function signup({ email, password, organizationName }) {
+  return apiFetch("/api/auth/signup", {
+    method: "POST",
+    body: JSON.stringify({
+      email,
+      password,
+      organization_name: organizationName,
+    }),
+  });
+}
+
+export async function login({ email, password }) {
+  const body = new URLSearchParams();
+  body.set("username", email);
+  body.set("password", password);
+
+  const response = await fetch(`${API_BASE}/api/auth/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: body.toString(),
+  });
+
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok) {
+    const detail = payload && payload.detail ? payload.detail : `HTTP ${response.status}`;
+    throw new Error(String(detail));
+  }
+
+  return payload;
+}
+
+export async function apiFetch(path, options = {}) {
+  const response = await fetch(`${API_BASE}${path}`, {
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+    ...options,
+  });
+
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok) {
+    const detail = payload && payload.detail ? payload.detail : `HTTP ${response.status}`;
+    throw new Error(String(detail));
+  }
+
+  return payload;
+}
+
+export async function checkSchedulingConflict({ token, technicianId, scheduledTime, excludeJobId, bufferMinutes }) {
+  const query = new URLSearchParams({
+    technician_id: String(technicianId),
+    scheduled_time: scheduledTime,
+  });
+  if (excludeJobId != null && excludeJobId !== "") {
+    query.set("exclude_job_id", String(excludeJobId));
+  }
+  if (bufferMinutes != null && bufferMinutes !== "") {
+    query.set("buffer_minutes", String(bufferMinutes));
+  }
+
+  return apiFetch(`/api/jobs/scheduling/conflict?${query.toString()}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export async function getNextSlot({
+  token,
+  technicianId,
+  requestedTime,
+  searchHours,
+  stepMinutes,
+  excludeJobId,
+  bufferMinutes,
+}) {
+  const query = new URLSearchParams({
+    technician_id: String(technicianId),
+    requested_time: requestedTime,
+    search_hours: String(searchHours),
+    step_minutes: String(stepMinutes),
+  });
+  if (excludeJobId != null && excludeJobId !== "") {
+    query.set("exclude_job_id", String(excludeJobId));
+  }
+  if (bufferMinutes != null && bufferMinutes !== "") {
+    query.set("buffer_minutes", String(bufferMinutes));
+  }
+
+  return apiFetch(`/api/jobs/scheduling/next-slot?${query.toString()}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export async function dispatchJob({ token, jobId, technicianId, scheduledTime }) {
+  return apiFetch(`/api/jobs/${jobId}/dispatch`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      technician_id: Number(technicianId),
+      scheduled_time: scheduledTime,
+    }),
+  });
+}
+
+export async function listJobs({ token }) {
+  return apiFetch("/api/jobs", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export async function listTechnicians({ token }) {
+  return apiFetch("/api/technicians", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}

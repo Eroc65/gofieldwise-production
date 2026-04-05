@@ -1,5 +1,5 @@
 from datetime import timedelta
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple, cast
 
 from sqlalchemy.orm import Session
 
@@ -87,10 +87,11 @@ def update_invoice_status(
     if new_status not in VALID_INVOICE_STATUSES:
         return None, "Invalid status. Must be one of: unpaid, paid, void"
 
-    was_status = invoice.status
-    invoice.status = new_status
+    invoice_obj = cast(Any, invoice)
+    was_status = str(cast(str, invoice.status))
+    invoice_obj.status = new_status
     if new_status == "paid":
-        invoice.paid_at = _utcnow()
+        invoice_obj.paid_at = _utcnow()
         # Stop active collection reminders once payment is received.
         reminders = (
             db.query(Reminder)
@@ -103,10 +104,11 @@ def update_invoice_status(
             .all()
         )
         for reminder in reminders:
-            reminder.status = "dismissed"
-            reminder.updated_at = _utcnow()
+            reminder_obj = cast(Any, reminder)
+            reminder_obj.status = "dismissed"
+            reminder_obj.updated_at = _utcnow()
     else:
-        invoice.paid_at = None
+        invoice_obj.paid_at = None
         # If invoice reopens from paid -> unpaid, reactivate its collection reminder.
         if new_status == "unpaid" and was_status == "paid":
             reminders = (
@@ -120,9 +122,10 @@ def update_invoice_status(
                 .all()
             )
             for reminder in reminders:
-                reminder.status = "pending"
-                reminder.due_at = invoice.due_at or _utcnow()
-                reminder.updated_at = _utcnow()
+                reminder_obj = cast(Any, reminder)
+                reminder_obj.status = "pending"
+                reminder_obj.due_at = cast(Any, invoice.due_at) or _utcnow()
+                reminder_obj.updated_at = _utcnow()
 
     db.commit()
     db.refresh(invoice)
@@ -144,8 +147,9 @@ def create_invoice_from_estimate(
     if not estimate:
         return None, "Estimate not found in your organization"
     
-    if estimate.status != "approved":
-        return None, f"Cannot create invoice from estimate with status '{estimate.status}'. Must be 'approved'."
+    estimate_status = str(cast(str, estimate.status))
+    if estimate_status != "approved":
+        return None, f"Cannot create invoice from estimate with status '{estimate_status}'. Must be 'approved'."
     
     # Check if an invoice already exists for this estimate's job
     existing_invoice = (
@@ -171,6 +175,8 @@ def create_invoice_from_estimate(
     
     # Auto-create collection reminder
     job = db.query(Job).filter(Job.id == estimate.job_id).first()
+    if job is None:
+        return None, "Job not found for estimate"
     reminder = Reminder(
         message=f"Collect payment for invoice #{invoice.id}",
         channel="internal",
@@ -219,10 +225,11 @@ def escalate_payment_reminders(
     )
     
     for invoice in unpaid_invoices:
-        if not invoice.due_at:
+        due_at = cast(Any, invoice.due_at)
+        if not due_at:
             continue
         
-        days_overdue = (now - invoice.due_at).days
+        days_overdue = (now - cast(Any, due_at)).days
         
         # Skip if not yet due (future dates)
         if days_overdue < 0:
@@ -245,7 +252,7 @@ def escalate_payment_reminders(
             continue
         
         # Only escalate if we haven't already created a reminder for this stage
-        if invoice.payment_reminder_stage == target_stage:
+        if str(cast(str, invoice.payment_reminder_stage)) == target_stage:
             # Already at this stage, skip
             continue
         
@@ -276,7 +283,7 @@ def escalate_payment_reminders(
         db.add(escalation_reminder)
         
         # Update invoice stage
-        invoice.payment_reminder_stage = target_stage
+        cast(Any, invoice).payment_reminder_stage = target_stage
     
     db.commit()
     return initial_count, first_overdue_count, second_overdue_count, final_count

@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from typing import cast
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -37,7 +38,9 @@ def _auth_headers(client: TestClient):
 def _org_id() -> int:
     db: Session = SessionLocal()
     try:
-        return db.query(Organization).filter(Organization.name == _ORG).first().id
+        org = db.query(Organization).filter(Organization.name == _ORG).first()
+        assert org is not None
+        return int(cast(int, org.id))
     finally:
         db.close()
 
@@ -76,7 +79,16 @@ def test_revenue_path_report_counts():
     job_id = conv.json()["job_id"]
 
     # Dispatch
-    tech = client.post("/api/technicians", json={"name": "Reporter Tech"}, headers=headers)
+    tech = client.post(
+        "/api/technicians",
+        json={
+            "name": "Reporter Tech",
+            "availability_start_hour_utc": 0,
+            "availability_end_hour_utc": 24,
+            "availability_weekdays": "0,1,2,3,4,5,6",
+        },
+        headers=headers,
+    )
     assert tech.status_code == 201
     dispatch = client.patch(
         f"/api/jobs/{job_id}/dispatch",

@@ -4,6 +4,7 @@ import json
 from typing import Any, Callable
 
 from agent_runtime.model_backend import invoke_openai_compatible_chat, parse_structured_result
+from agent_runtime.policy import SYSTEM_PROMPT as AUTONOMY_SYSTEM_PROMPT
 from agent_runtime.policies import looks_like_stall
 from agent_runtime.tool_executor import ToolExecutionError, ToolExecutor
 
@@ -115,7 +116,9 @@ def _compress_state_for_prompt(state: dict[str, Any]) -> dict[str, Any]:
 def _build_initial_messages(payload: dict[str, Any]) -> list[dict[str, str]]:
     tool_mode = payload.get("tool_mode", "dev")
     system = (
-        payload["system_prompt"]
+        AUTONOMY_SYSTEM_PROMPT.strip()
+        + "\n\n"
+        + payload["system_prompt"]
         + "\n\n"
         + "You are part of an autonomous orchestration loop.\n"
         + "You may either request one tool call at a time or return the final JSON result.\n"
@@ -153,7 +156,7 @@ def _build_initial_messages(payload: dict[str, Any]) -> list[dict[str, str]]:
         {
             "role": payload["role"],
             "objective": payload["objective"],
-                "tool_mode": tool_mode,
+            "tool_mode": tool_mode,
             "repo_context": payload["repo_context"],
             "state": _compress_state_for_prompt(payload["state"]),
             "response_contract": payload["response_contract"],

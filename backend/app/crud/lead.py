@@ -1,9 +1,22 @@
 from datetime import timedelta
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple, cast
 
 from sqlalchemy.orm import Session
 
 from ..models.core import Customer, Job, Lead, LEAD_VALID_TRANSITIONS, _utcnow
+
+
+def _as_opt_str(value: object) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value)
+    return text if text != "" else None
+
+
+def _as_opt_int(value: object) -> Optional[int]:
+    if value is None:
+        return None
+    return int(cast(int, value))
 
 
 def create_lead(db: Session, data: dict, organization_id: int) -> Lead:
@@ -37,12 +50,15 @@ def upsert_missed_call_lead(
         .first()
     )
     if existing:
+        existing_obj = cast(Any, existing)
+        existing_raw_message = _as_opt_str(existing.raw_message)
+        existing_name = _as_opt_str(existing.name)
         if raw_message:
-            prior = existing.raw_message or ""
-            existing.raw_message = (prior + "\n" + raw_message).strip() if prior else raw_message
-        if name and not existing.name:
-            existing.name = name
-        existing.updated_at = _utcnow()
+            prior = existing_raw_message or ""
+            existing_obj.raw_message = (prior + "\n" + raw_message).strip() if prior else raw_message
+        if name and not existing_name:
+            existing_obj.name = name
+        existing_obj.updated_at = _utcnow()
         db.commit()
         db.refresh(existing)
         return existing, False
@@ -83,16 +99,18 @@ def transition_lead_status(
 ) -> Tuple[Lead, Optional[str]]:
     """Apply a status transition. Returns (lead, error_message).
     error_message is None on success."""
-    allowed = LEAD_VALID_TRANSITIONS.get(lead.status, set())
+    current_status = str(cast(str, lead.status))
+    allowed = LEAD_VALID_TRANSITIONS.get(current_status, set())
     if new_status not in allowed:
         valid = sorted(allowed) if allowed else []
         msg = (
-            f"Cannot move lead from '{lead.status}' to '{new_status}'. "
+            f"Cannot move lead from '{current_status}' to '{new_status}'. "
             f"Valid next statuses: {valid or 'none (terminal state)'}."
         )
         return lead, msg
-    lead.status = new_status
-    lead.updated_at = _utcnow()
+    lead_obj = cast(Any, lead)
+    lead_obj.status = new_status
+    lead_obj.updated_at = _utcnow()
     db.commit()
     db.refresh(lead)
     return lead, None
@@ -106,9 +124,12 @@ def _compute_lead_priority_score(
     service_category: Optional[str],
 ) -> int:
     score = 0
-    if lead.phone:
+    lead_phone = _as_opt_str(lead.phone)
+    lead_email = _as_opt_str(lead.email)
+    lead_source = str(cast(str, lead.source))
+    if lead_phone:
         score += 20
-    if lead.email:
+    if lead_email:
         score += 10
 
     source_weights = {
@@ -117,7 +138,7 @@ def _compute_lead_priority_score(
         "sms": 20,
         "manual": 10,
     }
-    score += source_weights.get(lead.source, 10)
+    score += source_weights.get(lead_source, 10)
 
     if emergency:
         score += 25
@@ -139,8 +160,9 @@ def qualify_lead(
     requested_within_48h: bool = False,
     service_category: Optional[str] = None,
 ) -> Tuple[Lead, Optional[str]]:
-    if lead.status in ("converted", "dismissed"):
-        return lead, f"Lead in status '{lead.status}' cannot be qualified."
+    current_status = str(cast(str, lead.status))
+    if current_status in ("converted", "dismissed"):
+        return lead, f"Lead in status '{current_status}' cannot be qualified."
 
     score = _compute_lead_priority_score(
         lead,
@@ -150,16 +172,18 @@ def qualify_lead(
         service_category=service_category,
     )
 
-    lead.status = "qualified"
-    lead.priority_score = score
-    lead.qualified_at = _utcnow()
+    lead_obj = cast(Any, lead)
+    lead_obj.status = "qualified"
+    lead_obj.priority_score = score
+    lead_obj.qualified_at = _utcnow()
     summary = (
         f"Qualified lead (score={score}, emergency={emergency}, "
         f"budget_confirmed={budget_confirmed}, within_48h={requested_within_48h}, "
         f"category={service_category or 'unspecified'})"
     )
-    lead.notes = (f"{lead.notes}\n{summary}".strip() if lead.notes else summary)
-    lead.updated_at = _utcnow()
+    existing_notes = _as_opt_str(lead.notes)
+    lead_obj.notes = (f"{existing_notes}\n{summary}".strip() if existing_notes else summary)
+    lead_obj.updated_at = _utcnow()
     db.commit()
     db.refresh(lead)
     return lead, None
@@ -171,29 +195,35 @@ def convert_lead(
     """Promote a qualified lead to a Customer + Job.
     Raises ValueError on bad state or missing contact info.
     Finds existing customer by phone within org to avoid duplicates."""
-    if lead.status == "converted":
+    current_status = str(cast(str, lead.status))
+    lead_name = _as_opt_str(lead.name)
+    lead_phone = _as_opt_str(lead.phone)
+    lead_email = _as_opt_str(lead.email)
+    lead_raw_message = _as_opt_str(lead.raw_message)
+
+    if current_status == "converted":
         raise ValueError("Lead is already converted.")
-    if lead.status not in ("new", "contacted", "qualified"):
-        raise ValueError(f"Lead in status '{lead.status}' cannot be converted.")
-    if not lead.name and not lead.phone:
+    if current_status not in ("new", "contacted", "qualified"):
+        raise ValueError(f"Lead in status '{current_status}' cannot be converted.")
+    if not lead_name and not lead_phone:
         raise ValueError("Lead must have at least a name or phone number to convert.")
 
     # Find or create customer
     customer: Optional[Customer] = None
-    if lead.phone:
+    if lead_phone:
         customer = (
             db.query(Customer)
             .filter(
-                Customer.phone == lead.phone,
+                Customer.phone == lead_phone,
                 Customer.organization_id == organization_id,
             )
             .first()
         )
     if customer is None:
         customer = Customer(
-            name=lead.name or "Unknown",
-            phone=lead.phone,
-            email=lead.email,
+            name=lead_name or "Unknown",
+            phone=lead_phone,
+            email=lead_email,
             organization_id=organization_id,
         )
         db.add(customer)
@@ -201,12 +231,12 @@ def convert_lead(
 
     # Derive job title from raw_message or name
     job_title = f"New request from {customer.name}"
-    if lead.raw_message:
-        job_title = (lead.raw_message[:72].strip().split("\n")[0]) or job_title
+    if lead_raw_message:
+        job_title = (lead_raw_message[:72].strip().split("\n")[0]) or job_title
 
     job = Job(
         title=job_title,
-        description=lead.raw_message,
+        description=lead_raw_message,
         status="pending",
         organization_id=organization_id,
         customer_id=customer.id,
@@ -214,10 +244,11 @@ def convert_lead(
     db.add(job)
     db.flush()
 
-    lead.status = "converted"
-    lead.customer_id = customer.id
-    lead.job_id = job.id
-    lead.updated_at = _utcnow()
+    lead_obj = cast(Any, lead)
+    lead_obj.status = "converted"
+    lead_obj.customer_id = customer.id
+    lead_obj.job_id = job.id
+    lead_obj.updated_at = _utcnow()
     db.commit()
     db.refresh(lead)
     return lead, customer, job
@@ -231,23 +262,26 @@ def book_lead(
     scheduled_time,
 ) -> Tuple[Optional[Lead], Optional[Customer], Optional[Job], int, Optional[str]]:
     """Book a qualified lead into a dispatched job and clear booking reminders."""
-    if lead.status not in ("qualified", "converted"):
-        return None, None, None, 0, f"Lead in status '{lead.status}' cannot be booked."
+    current_status = str(cast(str, lead.status))
+    if current_status not in ("qualified", "converted"):
+        return None, None, None, 0, f"Lead in status '{current_status}' cannot be booked."
 
-    if lead.status == "converted":
-        if not lead.customer_id or not lead.job_id:
+    if current_status == "converted":
+        lead_customer_id = _as_opt_int(lead.customer_id)
+        lead_job_id = _as_opt_int(lead.job_id)
+        if lead_customer_id is None or lead_job_id is None:
             return None, None, None, 0, "Converted lead is missing customer/job references."
         customer = (
             db.query(Customer)
             .filter(
-                Customer.id == lead.customer_id,
+                Customer.id == lead_customer_id,
                 Customer.organization_id == organization_id,
             )
             .first()
         )
         job = (
             db.query(Job)
-            .filter(Job.id == lead.job_id, Job.organization_id == organization_id)
+            .filter(Job.id == lead_job_id, Job.organization_id == organization_id)
             .first()
         )
         if not customer or not job:
@@ -283,8 +317,9 @@ def book_lead(
     )
     dismissed = 0
     for reminder in booking_reminders:
-        reminder.status = "dismissed"
-        reminder.updated_at = _utcnow()
+        reminder_obj = cast(Any, reminder)
+        reminder_obj.status = "dismissed"
+        reminder_obj.updated_at = _utcnow()
         dismissed += 1
     if dismissed > 0:
         db.commit()
