@@ -1,4 +1,9 @@
+import { useMemo, useState } from "react";
+
 import DispatchAssistant from "../components/DispatchAssistant";
+
+const PHONE_NUMBER = process.env.NEXT_PUBLIC_SALES_PHONE || "+1 (555) 010-2024";
+const BOOKING_URL = process.env.NEXT_PUBLIC_BOOKING_URL || "https://cal.com/gofieldwise/demo";
 
 const offerings = [
   {
@@ -89,6 +94,49 @@ const offerings = [
 ];
 
 export default function HomePage() {
+  const [selectedService, setSelectedService] = useState(offerings[0].title);
+  const [lead, setLead] = useState({
+    name: "",
+    phone: "",
+    email: "",
+    company: "",
+    details: "",
+  });
+  const [submitMessage, setSubmitMessage] = useState("");
+
+  const offeringAnchors = useMemo(
+    () => offerings.map((offering) => ({ ...offering, id: offering.title.toLowerCase().replace(/[^a-z0-9]+/g, "-") })),
+    [],
+  );
+
+  function handleGetStarted(serviceName) {
+    setSelectedService(serviceName);
+    setSubmitMessage("");
+    const el = document.getElementById("get-started");
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+
+  function onLeadFieldChange(field, value) {
+    setLead((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function onSubmitLead(event) {
+    event.preventDefault();
+    const subject = encodeURIComponent(`GoFieldWise Inquiry: ${selectedService}`);
+    const body = encodeURIComponent(
+      `Service Interest: ${selectedService}\n` +
+        `Name: ${lead.name}\n` +
+        `Phone: ${lead.phone}\n` +
+        `Email: ${lead.email}\n` +
+        `Business: ${lead.company}\n\n` +
+        `Details:\n${lead.details}`,
+    );
+    window.location.href = `mailto:sales@gofieldwise.com?subject=${subject}&body=${body}`;
+    setSubmitMessage("Draft email opened. If it did not open, call or text us and we will book your demo manually.");
+  }
+
   return (
     <main className="page-shell">
       <section className="hero">
@@ -98,11 +146,25 @@ export default function HomePage() {
           AI-forward systems that answer every call, capture and qualify leads, and book work 24/7.
           Never miss a lead because the phone rang at the wrong time.
         </p>
+        <div className="hero-actions">
+          <button type="button" onClick={() => handleGetStarted("AI Voice Agents")}>Start With AI Voice</button>
+          <a className="ghost-link" href={BOOKING_URL} target="_blank" rel="noreferrer">
+            Book A Demo Call
+          </a>
+        </div>
+      </section>
+
+      <section className="service-jump" aria-label="Service shortcuts">
+        {offeringAnchors.map((offering) => (
+          <a key={offering.id} href={`#${offering.id}`}>
+            {offering.title}
+          </a>
+        ))}
       </section>
 
       <section className="offerings" aria-label="GoFieldWise offerings">
-        {offerings.map((offering) => (
-          <article className="offering-card" key={offering.title}>
+        {offeringAnchors.map((offering) => (
+          <article className="offering-card" key={offering.title} id={offering.id}>
             <header>
               <h2>{offering.title}</h2>
               <p className="offering-subtitle">{offering.subtitle}</p>
@@ -119,9 +181,62 @@ export default function HomePage() {
             <p className="ideal-for">
               <strong>Ideal For:</strong> {offering.idealFor}
             </p>
-            <button type="button">Get Started</button>
+            <button type="button" onClick={() => handleGetStarted(offering.title)}>Get Started</button>
           </article>
         ))}
+      </section>
+
+      <section className="lead-capture" id="get-started" aria-label="Get started">
+        <article className="lead-intro">
+          <p className="eyebrow">Get Started</p>
+          <h2>Tell us your business and we will map the automation stack</h2>
+          <p>
+            Picked service: <strong>{selectedService}</strong>
+          </p>
+          <div className="contact-quick-actions">
+            <a href={`tel:${PHONE_NUMBER.replace(/[^\d+]/g, "")}`}>Call {PHONE_NUMBER}</a>
+            <a href={BOOKING_URL} target="_blank" rel="noreferrer">Schedule Demo</a>
+          </div>
+        </article>
+
+        <form className="lead-form" onSubmit={onSubmitLead}>
+          <label>
+            Service Needed
+            <select value={selectedService} onChange={(e) => setSelectedService(e.target.value)}>
+              {offerings.map((offering) => (
+                <option key={offering.title} value={offering.title}>{offering.title}</option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Name
+            <input value={lead.name} onChange={(e) => onLeadFieldChange("name", e.target.value)} required />
+          </label>
+
+          <label>
+            Phone
+            <input value={lead.phone} onChange={(e) => onLeadFieldChange("phone", e.target.value)} required />
+          </label>
+
+          <label>
+            Email
+            <input type="email" value={lead.email} onChange={(e) => onLeadFieldChange("email", e.target.value)} required />
+          </label>
+
+          <label>
+            Business Name
+            <input value={lead.company} onChange={(e) => onLeadFieldChange("company", e.target.value)} />
+          </label>
+
+          <label>
+            What should we automate first?
+            <textarea value={lead.details} onChange={(e) => onLeadFieldChange("details", e.target.value)} rows={4} />
+          </label>
+
+          <button type="submit">Send Intake And Get Setup Plan</button>
+          {submitMessage ? <p className="submit-note">{submitMessage}</p> : null}
+        </form>
       </section>
 
       <DispatchAssistant />

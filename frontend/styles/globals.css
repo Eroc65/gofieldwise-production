@@ -56,6 +56,31 @@ body {
   opacity: 0.95;
 }
 
+.hero-actions {
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.ghost-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 14px;
+  border-radius: 11px;
+  font-weight: 700;
+  text-decoration: none;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  color: #f8f7f1;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ghost-link:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
 .eyebrow {
   margin: 0 0 8px;
   text-transform: uppercase;
@@ -80,6 +105,28 @@ body {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+.service-jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.service-jump a {
+  display: inline-flex;
+  text-decoration: none;
+  color: #234452;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid #c8d6db;
+  border-radius: 999px;
+  padding: 8px 12px;
+}
+
+.service-jump a:hover {
+  border-color: #9fb7c0;
+  background: #fff;
 }
 
 .offering-card {
@@ -128,6 +175,70 @@ body {
 .ideal-for {
   margin: 0;
   color: #203941;
+}
+
+.lead-capture {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 14px;
+}
+
+.lead-intro {
+  background: linear-gradient(145deg, #19333c, #325a68);
+  color: #f6f8f9;
+  border-radius: 16px;
+  padding: 18px;
+  box-shadow: var(--shadow);
+}
+
+.lead-intro h2 {
+  margin: 0;
+  font-size: 1.45rem;
+}
+
+.lead-intro p {
+  margin: 10px 0 0;
+}
+
+.contact-quick-actions {
+  margin-top: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.contact-quick-actions a {
+  text-decoration: none;
+  color: #0f2f39;
+  background: #ffd9ae;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-weight: 800;
+}
+
+.lead-form {
+  background: #fffdf8;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 18px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 10px;
+}
+
+textarea {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 0.95rem;
+  background: #fff;
+  resize: vertical;
+  min-height: 92px;
+}
+
+.submit-note {
+  margin: 0;
+  font-weight: 700;
+  color: #214754;
 }
 
 .dispatch-head h2 {
@@ -255,6 +366,10 @@ button:disabled {
 
 @media (max-width: 900px) {
   .offerings {
+    grid-template-columns: 1fr;
+  }
+
+  .lead-capture {
     grid-template-columns: 1fr;
   }
 
