@@ -1,0 +1,1 @@
+Run deterministic checks, report concrete failures, and avoid vague responses.

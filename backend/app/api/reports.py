@@ -1,0 +1,112 @@
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+
+from ..api.auth import get_current_user
+from ..core.db import get_db
+from ..crud.report import escalate_sla_breaches
+from ..crud.report import acknowledge_operator_queue_item
+from ..crud.report import unacknowledge_operator_queue_item
+from ..crud.report import get_daily_digest
+from ..crud.report import get_operator_queue_ack_history
+from ..crud.report import get_operator_queue
+from ..crud.report import get_revenue_path_report
+from ..crud.report import get_operational_dashboard
+from ..models.core import User
+from ..schemas.report import DailyDigestOut
+from ..schemas.report import OperatorQueueAckIn
+from ..schemas.report import OperatorQueueAckOut
+from ..schemas.report import OperatorQueueUnackIn
+from ..schemas.report import OperatorQueueHistoryOut
+from ..schemas.report import OperatorQueueUnackOut
+from ..schemas.report import OperatorQueueOut
+from ..schemas.report import RevenuePathReportOut
+from ..schemas.report import OperationalDashboardOut
+from ..schemas.report import SLABreachEscalationOut
+
+router = APIRouter()
+
+
+@router.get("/reports/revenue-path", response_model=RevenuePathReportOut)
+def revenue_path_report(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return get_revenue_path_report(db, current_user.organization_id)
+
+
+@router.get("/reports/operational-dashboard", response_model=OperationalDashboardOut)
+def operational_dashboard(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return get_operational_dashboard(db, current_user.organization_id)
+
+
+@router.post("/reports/sla-breaches/escalate", response_model=SLABreachEscalationOut)
+def escalate_sla_breaches_endpoint(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return escalate_sla_breaches(db, current_user.organization_id)
+
+
+@router.get("/reports/daily-digest", response_model=DailyDigestOut)
+def daily_digest(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return get_daily_digest(db, current_user.organization_id)
+
+
+@router.get("/reports/operator-queue", response_model=OperatorQueueOut)
+def operator_queue(
+    limit: int = Query(10, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return get_operator_queue(db, current_user.organization_id, limit=limit)
+
+
+@router.post("/reports/operator-queue/ack", response_model=OperatorQueueAckOut)
+def operator_queue_ack(
+    payload: OperatorQueueAckIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result, error = acknowledge_operator_queue_item(
+        db,
+        current_user.organization_id,
+        payload.item_type,
+        payload.entity_id,
+        actor_user_id=current_user.id,
+    )
+    if error:
+        raise HTTPException(status_code=422, detail=error)
+    return result
+
+
+@router.post("/reports/operator-queue/unack", response_model=OperatorQueueUnackOut)
+def operator_queue_unack(
+    payload: OperatorQueueUnackIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result, error = unacknowledge_operator_queue_item(
+        db,
+        current_user.organization_id,
+        payload.item_type,
+        payload.entity_id,
+        actor_user_id=current_user.id,
+    )
+    if error:
+        raise HTTPException(status_code=422, detail=error)
+    return result
+
+
+@router.get("/reports/operator-queue/history", response_model=OperatorQueueHistoryOut)
+def operator_queue_history(
+    limit: int = Query(100, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return get_operator_queue_ack_history(db, current_user.organization_id, limit=limit)

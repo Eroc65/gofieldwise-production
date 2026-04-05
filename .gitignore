@@ -1,0 +1,31 @@
+# Node
+node_modules/
+.next/
+.env
+.env.*
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+.env
+.pytest_cache/
+test.db
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Build
+/dist/
+/build/
+
+# Misc
+*.sqlite3
