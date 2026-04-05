@@ -126,3 +126,33 @@ def test_user_role_management_endpoints(client) -> None:
 		headers=owner_headers,
 	)
 	assert bad_role.status_code == 422
+
+
+def test_cannot_demote_last_owner(client) -> None:
+	org_name = f"LastOwnerOrg-{uuid4().hex[:6]}"
+	owner_email = f"solo-owner-{uuid4().hex[:6]}@example.com"
+	password = "testpass123"
+
+	owner_signup = client.post(
+		"/api/auth/signup",
+		json={
+			"email": owner_email,
+			"password": password,
+			"organization_name": org_name,
+			"role": "owner",
+		},
+	)
+	assert owner_signup.status_code == 200
+	owner_id = owner_signup.json()["id"]
+
+	owner_login = client.post("/api/auth/login", data={"username": owner_email, "password": password})
+	assert owner_login.status_code == 200
+	owner_headers = {"Authorization": f"Bearer {owner_login.json()['access_token']}"}
+
+	resp = client.patch(
+		f"/api/auth/users/{owner_id}/role",
+		json={"role": "admin"},
+		headers=owner_headers,
+	)
+	assert resp.status_code == 422
+	assert "last owner" in resp.json()["detail"].lower()

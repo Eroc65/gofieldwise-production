@@ -41,6 +41,7 @@ GET `/api/auth/me` (Bearer token)
 **Organization users (role admins only):**
 - GET `/api/auth/users` (Bearer token; owner/admin only)
 - PATCH `/api/auth/users/{user_id}/role` with `{ role }` (owner/admin only)
+	- safety guard: cannot demote the last `owner` in an organization
 
 **Get current org:**
 GET `/api/auth/org` (Bearer token)

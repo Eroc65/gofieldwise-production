@@ -43,6 +43,26 @@ def _ensure_role_manager(current_user: User) -> None:
             detail=f"Role '{user_role}' cannot manage user roles. Allowed roles: {allowed}.",
         )
 
+
+def _ensure_not_last_owner_demotion(db: Session, current_user: User, target: User, new_role: str) -> None:
+    current_target_role = normalize_user_role(cast(str | None, target.role))
+    if current_target_role != "owner" or new_role == "owner":
+        return
+
+    owner_count = (
+        db.query(User)
+        .filter(
+            User.organization_id == current_user.organization_id,
+            User.role == "owner",
+        )
+        .count()
+    )
+    if owner_count <= 1:
+        raise HTTPException(
+            status_code=422,
+            detail="Cannot demote the last owner in the organization.",
+        )
+
 def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
@@ -135,7 +155,9 @@ def update_user_role(
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
 
-    target.role = normalize_user_role(payload.role)
+    new_role = normalize_user_role(payload.role)
+    _ensure_not_last_owner_demotion(db, current_user, target, new_role)
+    target.role = new_role
     db.commit()
     db.refresh(target)
     return target
