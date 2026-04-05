@@ -39,10 +39,16 @@ Business-hours note shown in the UI:
 	- if PowerShell blocks npm.ps1, use: `& "C:\Program Files\nodejs\npm.cmd" install`
 3. Configure API base URL (optional):
 	- PowerShell: `$env:NEXT_PUBLIC_API_BASE_URL="http://localhost:8001"`
-4. Start dev server:
+4. Configure public intake routing (required for lead form):
+	- Preferred: `$env:NEXT_PUBLIC_INTAKE_KEY="org_xxx"`
+	- Legacy fallback: `$env:NEXT_PUBLIC_INTAKE_ORG_ID="1"`
+5. Optional business contact overrides:
+	- `$env:NEXT_PUBLIC_BOOKING_URL="https://cal.com/gofieldwise/demo"`
+	- `$env:NEXT_PUBLIC_SALES_PHONE="+1 (555) 010-2024"`
+6. Start dev server:
 	- `npm run dev`
 	- PowerShell fallback: `& "C:\Program Files\nodejs\npm.cmd" run dev`
-5. Open:
+7. Open:
 	- `http://localhost:3000`
 
 ## Build Validation

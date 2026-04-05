@@ -5,7 +5,8 @@ import { submitPublicLeadIntake } from "../lib/api";
 
 const PHONE_NUMBER = process.env.NEXT_PUBLIC_SALES_PHONE || "+1 (555) 010-2024";
 const BOOKING_URL = process.env.NEXT_PUBLIC_BOOKING_URL || "https://cal.com/gofieldwise/demo";
-const INTAKE_ORG_ID = Number(process.env.NEXT_PUBLIC_INTAKE_ORG_ID || "1");
+const INTAKE_KEY = process.env.NEXT_PUBLIC_INTAKE_KEY || "";
+const LEGACY_INTAKE_ORG_ID = process.env.NEXT_PUBLIC_INTAKE_ORG_ID || "";
 
 const offerings = [
   {
@@ -133,8 +134,12 @@ export default function HomePage() {
     setSubmitError("");
     setIsSubmitting(true);
     try {
+      if (!INTAKE_KEY && !LEGACY_INTAKE_ORG_ID) {
+        throw new Error("Lead intake is not configured. Set NEXT_PUBLIC_INTAKE_KEY.");
+      }
       await submitPublicLeadIntake({
-        orgId: INTAKE_ORG_ID,
+        intakeKey: INTAKE_KEY,
+        orgId: LEGACY_INTAKE_ORG_ID,
         name: lead.name,
         phone: lead.phone,
         email: lead.email,

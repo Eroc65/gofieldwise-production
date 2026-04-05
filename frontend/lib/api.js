@@ -168,6 +168,7 @@ export async function getJobTimeline({ token, jobId }) {
 }
 
 export async function submitPublicLeadIntake({
+  intakeKey,
   orgId,
   name,
   phone,
@@ -180,8 +181,11 @@ export async function submitPublicLeadIntake({
   const companyLine = company ? `Business: ${company}` : "";
   const detailBlock = details ? `Details: ${details}` : "";
   const rawMessage = [serviceLine, companyLine, detailBlock].filter(Boolean).join("\n");
+  const route = intakeKey
+    ? `/api/leads/intake/by-key/${encodeURIComponent(intakeKey)}`
+    : `/api/leads/intake/${orgId}`;
 
-  return apiFetch(`/api/leads/intake/${orgId}`, {
+  return apiFetch(route, {
     method: "POST",
     body: JSON.stringify({
       name: name || null,

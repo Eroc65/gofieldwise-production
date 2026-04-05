@@ -43,6 +43,16 @@ def _get_org_id() -> int:
         db.close()
 
 
+def _get_org_intake_key() -> str:
+    db: Session = SessionLocal()
+    try:
+        org = db.query(Organization).filter(Organization.name == _ORG).first()
+        assert org is not None
+        return str(cast(str, org.intake_key))
+    finally:
+        db.close()
+
+
 def test_missed_call_creates_lead_and_immediate_reminder():
     client = TestClient(app)
     org_id = _get_org_id()
@@ -99,3 +109,17 @@ def test_missed_call_unknown_org_404():
         json={"phone": "555-4999"},
     )
     assert resp.status_code == 404
+
+
+def test_missed_call_by_key_creates_lead():
+    client = TestClient(app)
+    intake_key = _get_org_intake_key()
+
+    resp = client.post(
+        f"/api/leads/intake/missed-call/by-key/{intake_key}",
+        json={"phone": "555-4555", "name": "Caller Key", "call_sid": "CAKEY1"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["deduplicated"] is False
+    assert body["lead"]["source"] == "missed_call"
