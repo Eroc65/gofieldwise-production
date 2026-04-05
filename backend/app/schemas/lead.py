@@ -89,6 +89,7 @@ class LeadActivityOut(BaseModel):
     to_status: str
     note: Optional[str] = None
     actor_user_id: Optional[int] = None
+    actor_email: Optional[str] = None
     lead_id: int
     organization_id: int
     created_at: datetime

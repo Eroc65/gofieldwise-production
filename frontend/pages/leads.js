@@ -6,9 +6,11 @@ import {
   getLeadActivity,
   getLeadConversionMetrics,
   listLeads,
+  listOrganizationUsers,
   listTechnicians,
   login,
   qualifyLead,
+  updateUserRole,
   updateLeadStatus,
 } from "../lib/api";
 
@@ -32,7 +34,11 @@ export default function LeadInboxPage() {
   const [leads, setLeads] = useState([]);
   const [technicians, setTechnicians] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
+  const [orgUsers, setOrgUsers] = useState([]);
   const [leadActivity, setLeadActivity] = useState([]);
+  const [activityActionFilter, setActivityActionFilter] = useState("");
+  const [activityWindowHours, setActivityWindowHours] = useState("168");
+  const [roleDrafts, setRoleDrafts] = useState({});
   const [conversionSummary, setConversionSummary] = useState(null);
   const [selectedLeadId, setSelectedLeadId] = useState("");
   const [serviceCategory, setServiceCategory] = useState("");
@@ -92,6 +98,27 @@ export default function LeadInboxPage() {
       setLeads(Array.isArray(leadRows) ? leadRows : []);
       setTechnicians(Array.isArray(techRows) ? techRows : []);
       setCurrentUser(me || null);
+      const normalizedRole = String(me?.role || "").toLowerCase();
+      if (["owner", "admin"].includes(normalizedRole)) {
+        try {
+          const users = await listOrganizationUsers({ token });
+          const rows = Array.isArray(users) ? users : [];
+          setOrgUsers(rows);
+          setRoleDrafts((prev) => {
+            const next = { ...prev };
+            for (const user of rows) {
+              if (!next[user.id]) {
+                next[user.id] = user.role;
+              }
+            }
+            return next;
+          });
+        } catch {
+          setOrgUsers([]);
+        }
+      } else {
+        setOrgUsers([]);
+      }
       if (!selectedLeadId && Array.isArray(leadRows) && leadRows.length > 0) {
         setSelectedLeadId(String(leadRows[0].id));
       }
@@ -109,7 +136,12 @@ export default function LeadInboxPage() {
       const activeLeadId = Number(selectedLeadId || leadRows?.[0]?.id || 0);
       if (activeLeadId > 0) {
         try {
-          const events = await getLeadActivity({ token, leadId: activeLeadId });
+          const events = await getLeadActivity({
+            token,
+            leadId: activeLeadId,
+            action: activityActionFilter || undefined,
+            sinceHours: Number(activityWindowHours || "168"),
+          });
           setLeadActivity(Array.isArray(events) ? events : []);
         } catch {
           setLeadActivity([]);
@@ -127,7 +159,12 @@ export default function LeadInboxPage() {
     let cancelled = false;
     async function loadLeadTimeline() {
       try {
-        const events = await getLeadActivity({ token, leadId: Number(selectedLeadId) });
+        const events = await getLeadActivity({
+          token,
+          leadId: Number(selectedLeadId),
+          action: activityActionFilter || undefined,
+          sinceHours: Number(activityWindowHours || "168"),
+        });
         if (!cancelled) {
           setLeadActivity(Array.isArray(events) ? events : []);
         }
@@ -141,11 +178,25 @@ export default function LeadInboxPage() {
     return () => {
       cancelled = true;
     };
-  }, [token, selectedLeadId]);
+  }, [token, selectedLeadId, activityActionFilter, activityWindowHours]);
 
   const role = String(currentUser?.role || "owner").toLowerCase();
   const canQualify = ["owner", "admin", "dispatcher"].includes(role);
   const canBook = ["owner", "admin", "dispatcher"].includes(role);
+  const canManageRoles = ["owner", "admin"].includes(role);
+
+  async function onUpdateUserRole(userId) {
+    await withAction(`role-${userId}`, async () => {
+      const roleValue = roleDrafts[userId];
+      if (!roleValue) {
+        throw new Error("Select a role before saving.");
+      }
+      await updateUserRole({ token, userId: Number(userId), role: roleValue });
+      const users = await listOrganizationUsers({ token });
+      setOrgUsers(Array.isArray(users) ? users : []);
+      setActionResult(`Updated role for user #${userId} to ${roleValue}.`);
+    });
+  }
 
   async function onMarkContacted() {
     await withAction("contacted", async () => {
@@ -354,6 +405,28 @@ export default function LeadInboxPage() {
           <h2>Lead Activity Timeline</h2>
           <p>Audit trail for the currently selected lead.</p>
         </header>
+        <div className="form-grid">
+          <label>
+            Action Filter
+            <select value={activityActionFilter} onChange={(e) => setActivityActionFilter(e.target.value)}>
+              <option value="">All actions</option>
+              <option value="created">created</option>
+              <option value="status_updated">status_updated</option>
+              <option value="qualified">qualified</option>
+              <option value="converted">converted</option>
+              <option value="booked">booked</option>
+            </select>
+          </label>
+          <label>
+            Time Window
+            <select value={activityWindowHours} onChange={(e) => setActivityWindowHours(e.target.value)}>
+              <option value="24">Last 24 hours</option>
+              <option value="72">Last 3 days</option>
+              <option value="168">Last 7 days</option>
+              <option value="720">Last 30 days</option>
+            </select>
+          </label>
+        </div>
         <div className="lead-list">
           {leadActivity.length === 0 ? (
             <p>No activity available for this lead yet.</p>
@@ -365,6 +438,7 @@ export default function LeadInboxPage() {
                   <li>From: {event.from_status || "-"}</li>
                   <li>To: {event.to_status}</li>
                   <li>Actor User ID: {event.actor_user_id ?? "system"}</li>
+                  <li>Actor Email: {event.actor_email || "-"}</li>
                   <li>When: {prettyDate(event.created_at)}</li>
                   <li>Note: {event.note || "-"}</li>
                 </ul>
@@ -373,6 +447,49 @@ export default function LeadInboxPage() {
           )}
         </div>
       </section>
+
+      {canManageRoles ? (
+        <section className="dispatch-card">
+          <header className="dispatch-head">
+            <h2>Role Management</h2>
+            <p>Assign operator permissions for users in your organization.</p>
+          </header>
+          <div className="lead-list">
+            {orgUsers.length === 0 ? (
+              <p>No users available.</p>
+            ) : (
+              orgUsers.map((user) => (
+                <article key={user.id} className="panel">
+                  <h3>#{user.id} {user.email}</h3>
+                  <div className="form-grid">
+                    <label>
+                      Role
+                      <select
+                        value={roleDrafts[user.id] || user.role}
+                        onChange={(e) => setRoleDrafts((prev) => ({ ...prev, [user.id]: e.target.value }))}
+                      >
+                        <option value="owner">owner</option>
+                        <option value="admin">admin</option>
+                        <option value="dispatcher">dispatcher</option>
+                        <option value="technician">technician</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div className="actions">
+                    <button
+                      type="button"
+                      onClick={() => onUpdateUserRole(user.id)}
+                      disabled={busyAction !== "" || !token || roleDrafts[user.id] === user.role}
+                    >
+                      {busyAction === `role-${user.id}` ? "Saving..." : "Save Role"}
+                    </button>
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
+        </section>
+      ) : null}
     </main>
   );
 }

@@ -296,6 +296,16 @@ def test_lead_activity_returns_lifecycle_events(client, auth_headers, org_id):
     assert "created" in actions
     assert "status_updated" in actions
 
+    filtered = client.get(
+        f"/api/leads/{lead_id}/activity?action=status_updated&since_hours=24",
+        headers=auth_headers,
+    )
+    assert filtered.status_code == 200
+    filtered_events = filtered.json()
+    assert len(filtered_events) >= 1
+    assert all(event["action"] == "status_updated" for event in filtered_events)
+    assert any(event.get("actor_email") == _EMAIL for event in filtered_events)
+
 
 # ---------------------------------------------------------------------------
 # Convert to Customer + Job

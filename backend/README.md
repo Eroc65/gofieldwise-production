@@ -38,6 +38,10 @@ POST `/api/auth/login` (OAuth2 form: username=email, password)
 GET `/api/auth/me` (Bearer token)
 - includes `role` (`owner`, `admin`, `dispatcher`, `technician`)
 
+**Organization users (role admins only):**
+- GET `/api/auth/users` (Bearer token; owner/admin only)
+- PATCH `/api/auth/users/{user_id}/role` with `{ role }` (owner/admin only)
+
 **Get current org:**
 GET `/api/auth/org` (Bearer token)
 
@@ -54,6 +58,7 @@ POST `/api/leads/{lead_id}/qualify` (Bearer token)
 
 **Lead activity audit trail:**
 - GET `/api/leads/{lead_id}/activity` (Bearer token)
+	- optional query filters: `action`, `since_hours` (1-720)
 
 **Public intake routing options:**
 - POST `/api/leads/intake/{org_id}`

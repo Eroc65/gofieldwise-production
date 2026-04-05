@@ -1,5 +1,5 @@
 from secrets import token_urlsafe
-from typing import Optional
+from typing import Optional, cast
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -11,11 +11,13 @@ from ..core.jwt import create_access_token, decode_access_token
 from ..models.core import Organization, User
 from ..schemas.organization import OrganizationOut
 from ..schemas.user import UserCreate, UserOut
+from ..schemas.user import UserRoleUpdate
 
 router = APIRouter()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 ALLOWED_USER_ROLES = {"owner", "admin", "dispatcher", "technician"}
+ROLE_MANAGE_ALLOWED = {"owner", "admin"}
 
 
 def _new_intake_key() -> str:
@@ -30,6 +32,16 @@ def normalize_user_role(role: str | None) -> str:
         valid = ", ".join(sorted(ALLOWED_USER_ROLES))
         raise HTTPException(status_code=422, detail=f"Invalid role '{role}'. Allowed roles: {valid}.")
     return normalized
+
+
+def _ensure_role_manager(current_user: User) -> None:
+    user_role = normalize_user_role(cast(str | None, current_user.role))
+    if user_role not in ROLE_MANAGE_ALLOWED:
+        allowed = ", ".join(sorted(ROLE_MANAGE_ALLOWED))
+        raise HTTPException(
+            status_code=403,
+            detail=f"Role '{user_role}' cannot manage user roles. Allowed roles: {allowed}.",
+        )
 
 def get_current_user(
     token: str = Depends(oauth2_scheme),
@@ -87,6 +99,46 @@ def login(
 @router.get("/me", response_model=UserOut)
 def me(current_user: User = Depends(get_current_user)):
     return current_user
+
+
+@router.get("/users", response_model=list[UserOut])
+def list_org_users(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ensure_role_manager(current_user)
+    return (
+        db.query(User)
+        .filter(User.organization_id == current_user.organization_id)
+        .order_by(User.id.asc())
+        .all()
+    )
+
+
+@router.patch("/users/{user_id}/role", response_model=UserOut)
+def update_user_role(
+    user_id: int,
+    payload: UserRoleUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ensure_role_manager(current_user)
+
+    target = (
+        db.query(User)
+        .filter(
+            User.id == user_id,
+            User.organization_id == current_user.organization_id,
+        )
+        .first()
+    )
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    target.role = normalize_user_role(payload.role)
+    db.commit()
+    db.refresh(target)
+    return target
 
 @router.get("/org", response_model=OrganizationOut)
 def current_org(

@@ -270,12 +270,39 @@ export async function getLeadConversionMetrics({ token, days = 7 }) {
   });
 }
 
-export async function getLeadActivity({ token, leadId }) {
-  return apiFetch(`/api/leads/${leadId}/activity`, {
+export async function getLeadActivity({ token, leadId, action, sinceHours }) {
+  const query = new URLSearchParams();
+  if (action) {
+    query.set("action", action);
+  }
+  if (sinceHours != null && sinceHours !== "") {
+    query.set("since_hours", String(sinceHours));
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiFetch(`/api/leads/${leadId}/activity${suffix}`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
     },
+  });
+}
+
+export async function listOrganizationUsers({ token }) {
+  return apiFetch("/api/auth/users", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export async function updateUserRole({ token, userId, role }) {
+  return apiFetch(`/api/auth/users/${userId}/role`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ role }),
   });
 }
 

@@ -48,3 +48,81 @@ def test_auth_signup_login_and_protected_routes(client) -> None:
 	assert org_resp.status_code == 200
 	assert org_resp.json()["name"] == org_name
 	assert org_resp.json().get("intake_key", "").startswith("org_")
+
+
+def test_user_role_management_endpoints(client) -> None:
+	org_name = f"RoleOrg-{uuid4().hex[:6]}"
+	owner_email = f"owner-{uuid4().hex[:6]}@example.com"
+	tech_email = f"tech-{uuid4().hex[:6]}@example.com"
+	admin_email = f"admin-{uuid4().hex[:6]}@example.com"
+	password = "testpass123"
+
+	owner_signup = client.post(
+		"/api/auth/signup",
+		json={
+			"email": owner_email,
+			"password": password,
+			"organization_name": org_name,
+			"role": "owner",
+		},
+	)
+	assert owner_signup.status_code == 200
+
+	tech_signup = client.post(
+		"/api/auth/signup",
+		json={
+			"email": tech_email,
+			"password": password,
+			"organization_name": org_name,
+			"role": "technician",
+		},
+	)
+	assert tech_signup.status_code == 200
+	tech_id = tech_signup.json()["id"]
+
+	admin_signup = client.post(
+		"/api/auth/signup",
+		json={
+			"email": admin_email,
+			"password": password,
+			"organization_name": org_name,
+			"role": "admin",
+		},
+	)
+	assert admin_signup.status_code == 200
+
+	owner_login = client.post("/api/auth/login", data={"username": owner_email, "password": password})
+	tech_login = client.post("/api/auth/login", data={"username": tech_email, "password": password})
+	admin_login = client.post("/api/auth/login", data={"username": admin_email, "password": password})
+	assert owner_login.status_code == 200
+	assert tech_login.status_code == 200
+	assert admin_login.status_code == 200
+
+	owner_headers = {"Authorization": f"Bearer {owner_login.json()['access_token']}"}
+	tech_headers = {"Authorization": f"Bearer {tech_login.json()['access_token']}"}
+	admin_headers = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
+
+	list_as_owner = client.get("/api/auth/users", headers=owner_headers)
+	assert list_as_owner.status_code == 200
+	emails = [u["email"] for u in list_as_owner.json()]
+	assert owner_email in emails
+	assert tech_email in emails
+	assert admin_email in emails
+
+	list_as_tech = client.get("/api/auth/users", headers=tech_headers)
+	assert list_as_tech.status_code == 403
+
+	update_as_admin = client.patch(
+		f"/api/auth/users/{tech_id}/role",
+		json={"role": "dispatcher"},
+		headers=admin_headers,
+	)
+	assert update_as_admin.status_code == 200
+	assert update_as_admin.json()["role"] == "dispatcher"
+
+	bad_role = client.patch(
+		f"/api/auth/users/{tech_id}/role",
+		json={"role": "superhero"},
+		headers=owner_headers,
+	)
+	assert bad_role.status_code == 422

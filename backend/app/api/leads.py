@@ -1,7 +1,7 @@
 from typing import List, cast
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from ..api.auth import get_current_user
@@ -318,6 +318,8 @@ def book_lead_api(
 @router.get("/leads/{lead_id}/activity", response_model=List[LeadActivityOut])
 def get_lead_activity_api(
     lead_id: int,
+    action: str | None = Query(None),
+    since_hours: int | None = Query(None, ge=1, le=720),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -325,4 +327,10 @@ def get_lead_activity_api(
     lead = get_lead(db, lead_id, org_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-    return list_lead_activities(db, lead_id, org_id)
+    return list_lead_activities(
+        db,
+        lead_id,
+        org_id,
+        action=action,
+        since_hours=since_hours,
+    )

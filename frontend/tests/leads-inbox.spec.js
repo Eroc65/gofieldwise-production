@@ -28,6 +28,25 @@ test("lead inbox flow works", async ({ page }) => {
     });
   });
 
+  await page.route("**/api/auth/users", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        { id: 7, email: "owner@example.com", role: "owner", organization_id: 11 },
+        { id: 8, email: "dispatcher@example.com", role: "dispatcher", organization_id: 11 },
+      ]),
+    });
+  });
+
+  await page.route("**/api/auth/users/8/role", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ id: 8, email: "dispatcher@example.com", role: "admin", organization_id: 11 }),
+    });
+  });
+
   await page.route("**/api/leads", async (route) => {
     await route.fulfill({
       status: 200,
@@ -102,7 +121,7 @@ test("lead inbox flow works", async ({ page }) => {
     });
   });
 
-  await page.route("**/api/leads/301/activity", async (route) => {
+  await page.route("**/api/leads/301/activity**", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -149,4 +168,8 @@ test("lead inbox flow works", async ({ page }) => {
   await page.getByRole("button", { name: "Book Lead" }).click();
   await expect(page.getByText("Lead booked. Job #880 scheduled")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Lead Activity Timeline" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Role Management" })).toBeVisible();
+  await page.locator("article:has-text('#8 dispatcher@example.com') select").selectOption("admin");
+  await page.locator("article:has-text('#8 dispatcher@example.com') button:has-text('Save Role')").click();
+  await expect(page.getByText("Updated role for user #8 to admin.")).toBeVisible();
 });

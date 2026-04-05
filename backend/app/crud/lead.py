@@ -3,7 +3,7 @@ from typing import Any, List, Optional, Tuple, cast
 
 from sqlalchemy.orm import Session
 
-from ..models.core import Customer, Job, Lead, LeadActivity, LEAD_VALID_TRANSITIONS, _utcnow
+from ..models.core import Customer, Job, Lead, LeadActivity, User, LEAD_VALID_TRANSITIONS, _utcnow
 
 
 def _as_opt_str(value: object) -> Optional[str]:
@@ -414,13 +414,56 @@ def book_lead(
     return lead, customer, dispatched, dismissed, None
 
 
-def list_lead_activities(db: Session, lead_id: int, organization_id: int) -> List[LeadActivity]:
-    return (
+def list_lead_activities(
+    db: Session,
+    lead_id: int,
+    organization_id: int,
+    action: Optional[str] = None,
+    since_hours: Optional[int] = None,
+) -> List[dict]:
+    query = (
         db.query(LeadActivity)
         .filter(
             LeadActivity.lead_id == lead_id,
             LeadActivity.organization_id == organization_id,
         )
-        .order_by(LeadActivity.created_at.desc(), LeadActivity.id.desc())
-        .all()
     )
+
+    if action:
+        query = query.filter(LeadActivity.action == action)
+    if since_hours is not None:
+        cutoff = _utcnow() - timedelta(hours=since_hours)
+        query = query.filter(LeadActivity.created_at >= cutoff)
+
+    events = query.order_by(LeadActivity.created_at.desc(), LeadActivity.id.desc()).all()
+    actor_ids = {int(cast(int, e.actor_user_id)) for e in events if e.actor_user_id is not None}
+    actor_email_by_id: dict[int, str] = {}
+    if actor_ids:
+        users = (
+            db.query(User)
+            .filter(
+                User.organization_id == organization_id,
+                User.id.in_(actor_ids),
+            )
+            .all()
+        )
+        actor_email_by_id = {int(cast(int, u.id)): str(cast(str, u.email)) for u in users}
+
+    out: list[dict] = []
+    for event in events:
+        actor_id = int(cast(int, event.actor_user_id)) if event.actor_user_id is not None else None
+        out.append(
+            {
+                "id": int(cast(int, event.id)),
+                "action": str(cast(str, event.action)),
+                "from_status": _as_opt_str(event.from_status),
+                "to_status": str(cast(str, event.to_status)),
+                "note": _as_opt_str(event.note),
+                "actor_user_id": actor_id,
+                "actor_email": actor_email_by_id.get(actor_id) if actor_id is not None else None,
+                "lead_id": int(cast(int, event.lead_id)),
+                "organization_id": int(cast(int, event.organization_id)),
+                "created_at": event.created_at,
+            }
+        )
+    return out
