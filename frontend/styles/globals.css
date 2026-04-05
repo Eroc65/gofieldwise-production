@@ -76,6 +76,60 @@ body {
   animation: rise-in 520ms ease-out both;
 }
 
+.offerings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.offering-card {
+  background: linear-gradient(160deg, #fffdfa, #fff5e8 60%, #f7efe4);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 18px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 10px;
+  animation: rise-in 560ms ease-out both;
+}
+
+.offering-card h2 {
+  margin: 0;
+  font-size: 1.35rem;
+  line-height: 1.2;
+}
+
+.offering-subtitle {
+  margin: 4px 0 0;
+  color: #214754;
+  font-weight: 700;
+}
+
+.offering-description {
+  margin: 0;
+  color: #35505b;
+}
+
+.offering-card h3 {
+  margin: 2px 0 0;
+  font-size: 0.96rem;
+  color: var(--info);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.offering-card ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+
+.ideal-for {
+  margin: 0;
+  color: #203941;
+}
+
 .dispatch-head h2 {
   margin: 0;
   font-size: 1.45rem;
@@ -200,6 +254,10 @@ button:disabled {
 }
 
 @media (max-width: 900px) {
+  .offerings {
+    grid-template-columns: 1fr;
+  }
+
   .results-grid {
     grid-template-columns: 1fr;
   }
