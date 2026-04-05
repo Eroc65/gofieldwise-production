@@ -35,6 +35,7 @@ And a Metrics page at `/metrics`:
 
 - daily intake, qualified, and booked conversion timeline
 - conversion rates for selected day range
+- recommended next action guidance from backend metrics
 
 ## Structure
 

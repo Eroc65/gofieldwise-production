@@ -55,6 +55,7 @@ POST `/api/leads/{lead_id}/book` (Bearer token) with `{ scheduled_time, technici
 
 **Operator metrics reporting:**
 - GET `/api/reports/lead-conversion?days=7` (auth required, days 1-30)
+	- includes `recommended_next_action` for operator prioritization
 
 **Schedule readiness workflow:**
 - GET `/api/jobs/scheduling/conflict` with query: `technician_id`, `scheduled_time`, optional `exclude_job_id`, `buffer_minutes`

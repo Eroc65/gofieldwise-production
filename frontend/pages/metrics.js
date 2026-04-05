@@ -95,6 +95,13 @@ export default function MetricsPage() {
 
       {metrics ? (
         <>
+          <section className="dispatch-card">
+            <header className="dispatch-head">
+              <h2>Recommended Next Action</h2>
+              <p>{metrics.recommended_next_action || "No recommendation available yet."}</p>
+            </header>
+          </section>
+
           <section className="results-grid">
             <article className="panel">
               <h3>Intakes</h3>

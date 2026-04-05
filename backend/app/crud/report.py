@@ -201,6 +201,19 @@ def get_lead_conversion_metrics(db, organization_id: int, days: int = 7) -> dict
     totals_intakes = sum(int(cast(int, row["intakes"])) for row in timeline)
     totals_qualified = sum(int(cast(int, row["qualified"])) for row in timeline)
     totals_booked = sum(int(cast(int, row["booked"])) for row in timeline)
+    qualification_rate = round((totals_qualified / totals_intakes * 100.0) if totals_intakes > 0 else 0.0, 1)
+    booking_rate = round((totals_booked / totals_intakes * 100.0) if totals_intakes > 0 else 0.0, 1)
+
+    if totals_intakes == 0:
+        recommended_action = "Drive more top-of-funnel intake volume this week."
+    elif qualification_rate < 40.0:
+        recommended_action = "Tighten first-response and qualification scripts to lift conversion quality."
+    elif booking_rate < 25.0:
+        recommended_action = "Focus on speed-to-booking for qualified leads and offer tighter appointment windows."
+    elif totals_booked < 3:
+        recommended_action = "Increase follow-up cadence for contacted leads to improve booked jobs."
+    else:
+        recommended_action = "Maintain current process and monitor booked volume for consistency."
 
     return {
         "organization_id": organization_id,
@@ -210,9 +223,10 @@ def get_lead_conversion_metrics(db, organization_id: int, days: int = 7) -> dict
             "intakes": totals_intakes,
             "qualified": totals_qualified,
             "booked": totals_booked,
-            "qualification_rate": round((totals_qualified / totals_intakes * 100.0) if totals_intakes > 0 else 0.0, 1),
-            "booking_rate": round((totals_booked / totals_intakes * 100.0) if totals_intakes > 0 else 0.0, 1),
+            "qualification_rate": qualification_rate,
+            "booking_rate": booking_rate,
         },
+        "recommended_next_action": recommended_action,
         "timeline": timeline,
     }
 

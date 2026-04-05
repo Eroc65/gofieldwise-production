@@ -51,6 +51,7 @@ test("lead inbox flow works", async ({ page }) => {
           qualification_rate: 70.0,
           booking_rate: 40.0,
         },
+        recommended_next_action: "Focus on speed-to-booking for qualified leads and offer tighter appointment windows.",
         timeline: [],
       }),
     });
@@ -102,6 +103,8 @@ test("lead inbox flow works", async ({ page }) => {
   await page.getByRole("button", { name: "Login" }).click();
 
   await expect(page.getByLabel("Pick Lead")).toContainText("#301 Leak Lead (new)");
+  await expect(page.getByRole("heading", { name: "Recommended Next Action" })).toBeVisible();
+  await expect(page.getByText("Focus on speed-to-booking for qualified leads and offer tighter appointment windows.")).toBeVisible();
   await expect(page.getByText("7 Day Intakes")).toBeVisible();
   await expect(page.getByText("10").first()).toBeVisible();
   await page.getByLabel("Pick Lead").selectOption("301");

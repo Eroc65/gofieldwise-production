@@ -24,6 +24,7 @@ test("metrics dashboard flow works", async ({ page }) => {
           qualification_rate: 75.0,
           booking_rate: 41.7,
         },
+        recommended_next_action: "Maintain current process and monitor booked volume for consistency.",
         timeline: [
           {
             date: "2026-04-01",
@@ -57,6 +58,8 @@ test("metrics dashboard flow works", async ({ page }) => {
   await page.getByLabel("Days").fill("7");
   await page.getByRole("button", { name: "Load Metrics" }).click();
 
+  await expect(page.getByRole("heading", { name: "Recommended Next Action" })).toBeVisible();
+  await expect(page.getByText("Maintain current process and monitor booked volume for consistency.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Daily Timeline" })).toBeVisible();
   await expect(page.getByText("Intakes").first()).toBeVisible();
   await expect(page.locator(".results-grid .panel").filter({ hasText: "Intakes" }).getByText("12", { exact: true })).toBeVisible();

@@ -191,28 +191,34 @@ export default function LeadInboxPage() {
         </header>
 
         {conversionSummary ? (
-          <div className="results-grid">
-            <article className="panel">
-              <h3>7 Day Intakes</h3>
-              <p>{conversionSummary.totals?.intakes ?? 0}</p>
-            </article>
-            <article className="panel">
-              <h3>7 Day Qualified</h3>
-              <p>{conversionSummary.totals?.qualified ?? 0}</p>
-            </article>
-            <article className="panel">
-              <h3>7 Day Booked</h3>
-              <p>{conversionSummary.totals?.booked ?? 0}</p>
-            </article>
-            <article className="panel">
-              <h3>Qualification Rate</h3>
-              <p>{conversionSummary.totals?.qualification_rate ?? 0}%</p>
-            </article>
-            <article className="panel">
-              <h3>Booking Rate</h3>
-              <p>{conversionSummary.totals?.booking_rate ?? 0}%</p>
-            </article>
-          </div>
+          <>
+            <div className="panel">
+              <h3>Recommended Next Action</h3>
+              <p>{conversionSummary.recommended_next_action || "No recommendation available yet."}</p>
+            </div>
+            <div className="results-grid">
+              <article className="panel">
+                <h3>7 Day Intakes</h3>
+                <p>{conversionSummary.totals?.intakes ?? 0}</p>
+              </article>
+              <article className="panel">
+                <h3>7 Day Qualified</h3>
+                <p>{conversionSummary.totals?.qualified ?? 0}</p>
+              </article>
+              <article className="panel">
+                <h3>7 Day Booked</h3>
+                <p>{conversionSummary.totals?.booked ?? 0}</p>
+              </article>
+              <article className="panel">
+                <h3>Qualification Rate</h3>
+                <p>{conversionSummary.totals?.qualification_rate ?? 0}%</p>
+              </article>
+              <article className="panel">
+                <h3>Booking Rate</h3>
+                <p>{conversionSummary.totals?.booking_rate ?? 0}%</p>
+              </article>
+            </div>
+          </>
         ) : null}
 
         <div className="form-grid">

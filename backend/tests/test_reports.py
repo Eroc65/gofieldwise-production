@@ -162,4 +162,6 @@ def test_lead_conversion_metrics_daily_series():
     assert body["totals"]["intakes"] >= 1
     assert body["totals"]["qualified"] >= 1
     assert body["totals"]["booked"] >= 1
+    assert isinstance(body["recommended_next_action"], str)
+    assert len(body["recommended_next_action"]) > 10
     assert len(body["timeline"]) == 7

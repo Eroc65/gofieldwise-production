@@ -32,6 +32,7 @@ class LeadConversionMetricsOut(BaseModel):
     timestamp: str
     days: int
     totals: dict
+    recommended_next_action: str
     timeline: list[LeadConversionDayOut]
 
 
