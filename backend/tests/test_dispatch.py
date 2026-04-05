@@ -472,3 +472,30 @@ def test_dispatch_respects_buffer_minutes_conflict(client, auth_headers):
     )
     assert second.status_code == 422
     assert "already has a job" in second.json()["detail"]
+
+
+def test_lifecycle_quick_actions_require_valid_order(client, auth_headers):
+    job_id, tech_id = _setup_job_and_tech(client, auth_headers)
+    when = _iso(16)
+
+    bad_start = client.patch(f"/api/jobs/{job_id}/start", headers=auth_headers)
+    assert bad_start.status_code == 422
+
+    dispatched = client.patch(
+        f"/api/jobs/{job_id}/dispatch",
+        json={"technician_id": tech_id, "scheduled_time": when},
+        headers=auth_headers,
+    )
+    assert dispatched.status_code == 200
+
+    on_my_way = client.patch(f"/api/jobs/{job_id}/on-my-way", headers=auth_headers)
+    assert on_my_way.status_code == 200
+    assert on_my_way.json()["status"] == "on_my_way"
+
+    started = client.patch(f"/api/jobs/{job_id}/start", headers=auth_headers)
+    assert started.status_code == 200
+    assert started.json()["status"] == "in_progress"
+
+    timeline = client.get(f"/api/jobs/{job_id}/timeline", headers=auth_headers)
+    assert timeline.status_code == 200
+    assert len(timeline.json()) >= 3

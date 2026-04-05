@@ -22,6 +22,7 @@ class Organization(Base):
     reminders = relationship("Reminder", back_populates="organization")
     notes = relationship("Note", back_populates="organization")
     leads = relationship("Lead", back_populates="organization")
+    job_activities = relationship("JobActivity", back_populates="organization")
 
 class User(Base):
     __tablename__ = "users"
@@ -44,10 +45,12 @@ class Customer(Base):
     reminders = relationship("Reminder", back_populates="customer")
 
 JOB_VALID_TRANSITIONS: dict[str, set[str]] = {
-    "pending": {"approved", "estimate_rejected"},
+    "pending": {"approved", "estimate_rejected", "dispatched"},
     "approved": {"dispatched"},
     "estimate_rejected": {"pending"},
-    "dispatched": {"completed"},
+    "dispatched": {"on_my_way", "in_progress", "completed"},
+    "on_my_way": {"in_progress", "completed"},
+    "in_progress": {"completed"},
     "completed": set(),
 }
 
@@ -59,6 +62,8 @@ class Job(Base):
     description = Column(Text)
     status = Column(String, default="pending")
     scheduled_time = Column(DateTime)
+    on_my_way_at = Column(DateTime)
+    started_at = Column(DateTime)
     completed_at = Column(DateTime)
     completion_notes = Column(Text)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
@@ -71,6 +76,22 @@ class Job(Base):
     invoices = relationship("Invoice", back_populates="job")
     reminders = relationship("Reminder", back_populates="job")
     notes = relationship("Note", back_populates="job")
+    activities = relationship("JobActivity", back_populates="job")
+
+
+class JobActivity(Base):
+    __tablename__ = "job_activities"
+    id = Column(Integer, primary_key=True, index=True)
+    action = Column(String, nullable=False)
+    from_status = Column(String)
+    to_status = Column(String, nullable=False)
+    note = Column(Text)
+    actor_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+    organization = relationship("Organization", back_populates="job_activities")
+    job = relationship("Job", back_populates="activities")
 
 class Technician(Base):
     __tablename__ = "technicians"

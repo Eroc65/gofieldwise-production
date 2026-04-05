@@ -31,6 +31,17 @@ class JobCompletionUpdate(BaseModel):
     completion_notes: Optional[str] = None
 
 
+class JobActivityOut(BaseModel):
+    id: int
+    action: str
+    from_status: Optional[str] = None
+    to_status: str
+    note: Optional[str] = None
+    actor_user_id: Optional[int] = None
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
 class JobDispatchConflictOut(BaseModel):
     conflict: bool
     conflicting_job_id: Optional[int] = None
@@ -48,6 +59,8 @@ class JobNextSlotOut(BaseModel):
 class JobOut(JobBase):
     id: int
     organization_id: int
+    on_my_way_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     completion_notes: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)

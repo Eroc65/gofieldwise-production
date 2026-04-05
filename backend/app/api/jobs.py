@@ -13,11 +13,15 @@ from ..crud.job import (
     find_next_available_slot,
     get_dispatch_conflict,
     get_job,
+    get_job_timeline,
     get_jobs,
+    mark_job_on_my_way,
+    start_job,
     update_job,
 )
 from ..models.core import User
 from ..schemas.job import (
+    JobActivityOut,
     JobCompletionUpdate,
     JobCreate,
     JobDispatchConflictOut,
@@ -170,10 +174,53 @@ def dispatch_job_api(
         update.technician_id,
         update.scheduled_time,
         buffer_minutes=buffer_minutes,
+        actor_user_id=int(cast(int, current_user.id)),
     )
     if error:
         raise HTTPException(status_code=422, detail=error)
     return dispatched
+
+
+@router.patch("/jobs/{job_id}/on-my-way", response_model=JobOut)
+def mark_job_on_my_way_api(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    job = get_job(db, job_id, current_user.organization_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    updated, error = mark_job_on_my_way(
+        db,
+        job,
+        current_user.organization_id,
+        actor_user_id=int(cast(int, current_user.id)),
+    )
+    if error:
+        raise HTTPException(status_code=422, detail=error)
+    return updated
+
+
+@router.patch("/jobs/{job_id}/start", response_model=JobOut)
+def start_job_api(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    job = get_job(db, job_id, current_user.organization_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    updated, error = start_job(
+        db,
+        job,
+        current_user.organization_id,
+        actor_user_id=int(cast(int, current_user.id)),
+    )
+    if error:
+        raise HTTPException(status_code=422, detail=error)
+    return updated
 
 
 @router.patch("/jobs/{job_id}/complete", response_model=JobOut)
@@ -192,7 +239,20 @@ def complete_job_api(
         job,
         current_user.organization_id,
         update.completion_notes,
+        actor_user_id=int(cast(int, current_user.id)),
     )
     if error:
         raise HTTPException(status_code=422, detail=error)
     return completed
+
+
+@router.get("/jobs/{job_id}/timeline", response_model=List[JobActivityOut])
+def list_job_timeline_api(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    job = get_job(db, job_id, current_user.organization_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return get_job_timeline(db, job_id, current_user.organization_id)

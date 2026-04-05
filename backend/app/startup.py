@@ -12,6 +12,10 @@ def _assert_schema_compatibility() -> None:
         "availability_end_hour_utc",
         "availability_weekdays",
     }
+    required_job_columns = {
+        "on_my_way_at",
+        "started_at",
+    }
 
     with engine.connect() as connection:
         inspector = inspect(connection)
@@ -26,6 +30,23 @@ def _assert_schema_compatibility() -> None:
             raise RuntimeError(
                 "Database schema mismatch for technicians table. "
                 f"Missing columns: {missing_text}. "
+                "Run `alembic upgrade head` (or reset local sqlite test.db) before starting the API."
+            )
+
+        if "jobs" in table_names:
+            job_columns = {column["name"] for column in inspector.get_columns("jobs")}
+            missing_job_columns = sorted(required_job_columns - job_columns)
+            if missing_job_columns:
+                missing_text = ", ".join(missing_job_columns)
+                raise RuntimeError(
+                    "Database schema mismatch for jobs table. "
+                    f"Missing columns: {missing_text}. "
+                    "Run `alembic upgrade head` (or reset local sqlite test.db) before starting the API."
+                )
+
+        if "job_activities" not in table_names:
+            raise RuntimeError(
+                "Database schema mismatch. Missing table: job_activities. "
                 "Run `alembic upgrade head` (or reset local sqlite test.db) before starting the API."
             )
 

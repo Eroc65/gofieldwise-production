@@ -75,6 +75,61 @@ test("dispatch assistant full flow works", async ({ page }) => {
     });
   });
 
+  await page.route("**/api/jobs/101/on-my-way", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: 101,
+        title: "Water Heater Replace",
+        status: "on_my_way",
+        technician_id: 7,
+      }),
+    });
+  });
+
+  await page.route("**/api/jobs/101/start", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: 101,
+        title: "Water Heater Replace",
+        status: "in_progress",
+        technician_id: 7,
+      }),
+    });
+  });
+
+  await page.route("**/api/jobs/101/complete", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: 101,
+        title: "Water Heater Replace",
+        status: "completed",
+        technician_id: 7,
+      }),
+    });
+  });
+
+  await page.route("**/api/jobs/101/timeline", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          id: 501,
+          action: "dispatched",
+          from_status: "approved",
+          to_status: "dispatched",
+          created_at: new Date().toISOString(),
+        },
+      ]),
+    });
+  });
+
   await page.goto("/");
 
   await expect(page.getByRole("heading", { name: "Dispatch With Less Chaos" })).toBeVisible();
@@ -99,4 +154,16 @@ test("dispatch assistant full flow works", async ({ page }) => {
   await page.getByRole("button", { name: "Dispatch At Suggested Time" }).click();
   await expect(page.getByText("Status: dispatched")).toBeVisible();
   await expect(page.getByText("Job ID: 101")).toBeVisible();
+
+  await page.getByRole("button", { name: "Mark On My Way" }).click();
+  await expect(page.getByText("Status: on_my_way")).toBeVisible();
+
+  await page.getByRole("button", { name: "Mark Started" }).click();
+  await expect(page.getByText("Status: in_progress")).toBeVisible();
+
+  await page.getByRole("button", { name: "Mark Completed" }).click();
+  await expect(page.getByText("Status: completed")).toBeVisible();
+
+  await page.getByRole("button", { name: "Load Timeline" }).click();
+  await expect(page.getByText("dispatched (approved to dispatched)")).toBeVisible();
 });

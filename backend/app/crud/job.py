@@ -4,7 +4,8 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
-from ..models.core import Customer, Estimate, Job, JOB_VALID_TRANSITIONS, Reminder, Technician
+from ..models.core import Customer, Estimate, Job, JobActivity, JOB_VALID_TRANSITIONS, Reminder, Technician
+from ..services.notifications import send_job_lifecycle_notification
 
 CENTRAL_TZ = ZoneInfo("America/Chicago")
 
@@ -52,6 +53,46 @@ def get_jobs(db: Session, organization_id: int) -> List[Job]:
 def get_job(db: Session, job_id: int, organization_id: int) -> Optional[Job]:
     return db.query(Job).filter(Job.id == job_id, Job.organization_id == organization_id).first()
 
+
+def get_job_timeline(db: Session, job_id: int, organization_id: int) -> list[JobActivity]:
+    return (
+        db.query(JobActivity)
+        .filter(
+            JobActivity.job_id == job_id,
+            JobActivity.organization_id == organization_id,
+        )
+        .order_by(JobActivity.created_at.desc(), JobActivity.id.desc())
+        .all()
+    )
+
+
+def _can_transition(from_status: str, to_status: str) -> bool:
+    return to_status in JOB_VALID_TRANSITIONS.get(from_status, set())
+
+
+def _record_job_activity(
+    db: Session,
+    *,
+    organization_id: int,
+    job_id: int,
+    action: str,
+    from_status: Optional[str],
+    to_status: str,
+    actor_user_id: Optional[int] = None,
+    note: Optional[str] = None,
+) -> None:
+    db.add(
+        JobActivity(
+            action=action,
+            from_status=from_status,
+            to_status=to_status,
+            actor_user_id=actor_user_id,
+            note=note,
+            job_id=job_id,
+            organization_id=organization_id,
+        )
+    )
+
 def create_job(db: Session, job: dict, organization_id: int) -> Job:
     customer_id = job.get("customer_id")
     customer = (
@@ -93,6 +134,7 @@ def dispatch_job(
     technician_id: int,
     scheduled_time,
     buffer_minutes: int = 0,
+    actor_user_id: Optional[int] = None,
 ) -> Tuple[Optional[Job], Optional[str]]:
     normalized_time = _normalize_schedule_time(scheduled_time)
 
@@ -118,9 +160,23 @@ def dispatch_job(
     if conflict:
         return None, "Technician already has a job scheduled at that time"
 
+    from_status = db_job.status
+    if not _can_transition(from_status, "dispatched"):
+        return None, f"Cannot dispatch job with status '{from_status}'."
+
     db_job.technician_id = technician_id
     db_job.scheduled_time = normalized_time
     db_job.status = "dispatched"
+    _record_job_activity(
+        db,
+        organization_id=organization_id,
+        job_id=int(db_job.id),
+        action="dispatched",
+        from_status=from_status,
+        to_status="dispatched",
+        actor_user_id=actor_user_id,
+        note=f"Scheduled for {normalized_time.isoformat()}",
+    )
     db.commit()
     db.refresh(db_job)
     
@@ -203,18 +259,38 @@ def complete_job(
     db_job: Job,
     organization_id: int,
     completion_notes: Optional[str] = None,
+    actor_user_id: Optional[int] = None,
 ) -> Tuple[Optional[Job], Optional[str]]:
-    """Mark a job as completed. Only valid from 'dispatched' status. Auto-creates follow-up reminder and invoice."""
+    """Mark a job as completed. Auto-creates follow-up reminder and invoice."""
     
     # Check state machine validity
     if db_job.status not in JOB_VALID_TRANSITIONS or "completed" not in JOB_VALID_TRANSITIONS[db_job.status]:
-        return None, f"Cannot complete job with status '{db_job.status}'. Must be 'dispatched'."
+        return None, f"Cannot complete job with status '{db_job.status}'."
     
+    from_status = db_job.status
     db_job.status = "completed"
     db_job.completed_at = _utcnow()
     db_job.completion_notes = completion_notes
+    _record_job_activity(
+        db,
+        organization_id=organization_id,
+        job_id=int(db_job.id),
+        action="completed",
+        from_status=from_status,
+        to_status="completed",
+        actor_user_id=actor_user_id,
+        note=completion_notes,
+    )
     db.commit()
     db.refresh(db_job)
+
+    send_job_lifecycle_notification(
+        db,
+        organization_id=organization_id,
+        customer_id=db_job.customer_id,
+        job_id=int(db_job.id),
+        to_status="completed",
+    )
     
     # Dismiss any pending completion reminders for this job (marked_complete reminders)
     completion_reminders = (
@@ -262,4 +338,72 @@ def complete_job(
         invoice, error = create_invoice_from_estimate(db, approved_estimates[0].id, organization_id)
         # Auto-invoice creation failed silently; job completion is not blocked
     
+    return db_job, None
+
+
+def mark_job_on_my_way(
+    db: Session,
+    db_job: Job,
+    organization_id: int,
+    actor_user_id: Optional[int] = None,
+) -> Tuple[Optional[Job], Optional[str]]:
+    from_status = db_job.status
+    if not _can_transition(from_status, "on_my_way"):
+        return None, f"Cannot mark on_my_way from status '{from_status}'."
+
+    db_job.status = "on_my_way"
+    db_job.on_my_way_at = _utcnow()
+    _record_job_activity(
+        db,
+        organization_id=organization_id,
+        job_id=int(db_job.id),
+        action="on_my_way",
+        from_status=from_status,
+        to_status="on_my_way",
+        actor_user_id=actor_user_id,
+    )
+    db.commit()
+    db.refresh(db_job)
+
+    send_job_lifecycle_notification(
+        db,
+        organization_id=organization_id,
+        customer_id=db_job.customer_id,
+        job_id=int(db_job.id),
+        to_status="on_my_way",
+    )
+    return db_job, None
+
+
+def start_job(
+    db: Session,
+    db_job: Job,
+    organization_id: int,
+    actor_user_id: Optional[int] = None,
+) -> Tuple[Optional[Job], Optional[str]]:
+    from_status = db_job.status
+    if not _can_transition(from_status, "in_progress"):
+        return None, f"Cannot mark in_progress from status '{from_status}'."
+
+    db_job.status = "in_progress"
+    db_job.started_at = _utcnow()
+    _record_job_activity(
+        db,
+        organization_id=organization_id,
+        job_id=int(db_job.id),
+        action="started",
+        from_status=from_status,
+        to_status="in_progress",
+        actor_user_id=actor_user_id,
+    )
+    db.commit()
+    db.refresh(db_job)
+
+    send_job_lifecycle_notification(
+        db,
+        organization_id=organization_id,
+        customer_id=db_job.customer_id,
+        job_id=int(db_job.id),
+        to_status="in_progress",
+    )
     return db_job, None

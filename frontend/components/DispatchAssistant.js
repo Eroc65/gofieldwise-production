@@ -2,12 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   checkSchedulingConflict,
+  completeJob,
   dispatchJob,
+  getJobTimeline,
   getApiBase,
   getNextSlot,
   listJobs,
   listTechnicians,
   login,
+  markJobOnMyWay,
+  markJobStarted,
   signup,
 } from "../lib/api";
 
@@ -41,6 +45,8 @@ export default function DispatchAssistant() {
   const [conflictResult, setConflictResult] = useState(null);
   const [slotResult, setSlotResult] = useState(null);
   const [dispatchResult, setDispatchResult] = useState(null);
+  const [timeline, setTimeline] = useState([]);
+  const [completionNotes, setCompletionNotes] = useState("");
   const [error, setError] = useState("");
   const [busyAction, setBusyAction] = useState("");
 
@@ -185,8 +191,57 @@ export default function DispatchAssistant() {
         scheduledTime: chosenTime,
       });
       setDispatchResult(result);
+      await refreshLookups();
+      await loadTimeline(Number(jobId));
     });
   }
+
+  async function loadTimeline(targetJobId) {
+    if (!targetJobId) {
+      setTimeline([]);
+      return;
+    }
+    const result = await getJobTimeline({ token, jobId: targetJobId });
+    setTimeline(Array.isArray(result) ? result : []);
+  }
+
+  async function onMarkOnMyWay() {
+    await withAction("onmyway", async () => {
+      const result = await markJobOnMyWay({ token, jobId: Number(jobId) });
+      setDispatchResult(result);
+      await refreshLookups();
+      await loadTimeline(Number(jobId));
+    });
+  }
+
+  async function onMarkStarted() {
+    await withAction("started", async () => {
+      const result = await markJobStarted({ token, jobId: Number(jobId) });
+      setDispatchResult(result);
+      await refreshLookups();
+      await loadTimeline(Number(jobId));
+    });
+  }
+
+  async function onCompleteJob() {
+    await withAction("complete", async () => {
+      const result = await completeJob({
+        token,
+        jobId: Number(jobId),
+        completionNotes,
+      });
+      setDispatchResult(result);
+      await refreshLookups();
+      await loadTimeline(Number(jobId));
+    });
+  }
+
+  const selectedJob = useMemo(
+    () => jobs.find((job) => String(job.id) === String(jobId)),
+    [jobs, jobId],
+  );
+
+  const jobStatus = dispatchResult?.status || selectedJob?.status || "";
 
   return (
     <section className="dispatch-card">
@@ -339,6 +394,13 @@ export default function DispatchAssistant() {
         >
           {busyAction === "lookup" ? "Refreshing..." : "Refresh Jobs + Techs"}
         </button>
+        <button
+          type="button"
+          onClick={() => loadTimeline(Number(jobId))}
+          disabled={busyAction !== "" || !token || !jobId}
+        >
+          {busyAction === "timeline" ? "Loading..." : "Load Timeline"}
+        </button>
         <button type="button" onClick={onCheckConflict} disabled={busyAction !== "" || !token || !technicianId}>
           {busyAction === "conflict" ? "Checking..." : "Check Conflict"}
         </button>
@@ -359,7 +421,37 @@ export default function DispatchAssistant() {
         >
           {busyAction === "dispatch" ? "Dispatching..." : "Dispatch At Suggested Time"}
         </button>
+        <button
+          type="button"
+          onClick={onMarkOnMyWay}
+          disabled={busyAction !== "" || !token || !jobId || !["dispatched"].includes(jobStatus)}
+        >
+          {busyAction === "onmyway" ? "Updating..." : "Mark On My Way"}
+        </button>
+        <button
+          type="button"
+          onClick={onMarkStarted}
+          disabled={busyAction !== "" || !token || !jobId || !["dispatched", "on_my_way"].includes(jobStatus)}
+        >
+          {busyAction === "started" ? "Updating..." : "Mark Started"}
+        </button>
+        <button
+          type="button"
+          onClick={onCompleteJob}
+          disabled={busyAction !== "" || !token || !jobId || !["dispatched", "on_my_way", "in_progress"].includes(jobStatus)}
+        >
+          {busyAction === "complete" ? "Completing..." : "Mark Completed"}
+        </button>
       </div>
+
+      <label>
+        Completion Notes
+        <input
+          value={completionNotes}
+          onChange={(e) => setCompletionNotes(e.target.value)}
+          placeholder="Optional completion notes"
+        />
+      </label>
 
       {error ? <div className="panel error">{error}</div> : null}
 
@@ -401,6 +493,21 @@ export default function DispatchAssistant() {
             </ul>
           ) : (
             <p>No dispatch yet.</p>
+          )}
+        </article>
+
+        <article className="panel">
+          <h3>Job Timeline</h3>
+          {timeline.length > 0 ? (
+            <ul>
+              {timeline.slice(0, 6).map((event) => (
+                <li key={event.id}>
+                  {event.action} ({event.from_status || "-"} to {event.to_status}) at {prettyDate(event.created_at)}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>No timeline loaded.</p>
           )}
         </article>
       </div>

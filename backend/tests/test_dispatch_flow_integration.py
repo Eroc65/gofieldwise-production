@@ -140,3 +140,34 @@ def test_dispatch_flow_conflict_next_slot_then_dispatch() -> None:
     dispatched = second_dispatch.json()
     assert dispatched["status"] == "dispatched"
     assert dispatched["technician_id"] == technician_id
+
+    on_my_way = client.patch(
+        f"/api/jobs/{job2_id}/on-my-way",
+        headers=headers,
+    )
+    assert on_my_way.status_code == 200
+    assert on_my_way.json()["status"] == "on_my_way"
+
+    started = client.patch(
+        f"/api/jobs/{job2_id}/start",
+        headers=headers,
+    )
+    assert started.status_code == 200
+    assert started.json()["status"] == "in_progress"
+
+    completed = client.patch(
+        f"/api/jobs/{job2_id}/complete",
+        json={"completion_notes": "done"},
+        headers=headers,
+    )
+    assert completed.status_code == 200
+    assert completed.json()["status"] == "completed"
+
+    timeline = client.get(f"/api/jobs/{job2_id}/timeline", headers=headers)
+    assert timeline.status_code == 200
+    events = timeline.json()
+    actions = [event["action"] for event in events]
+    assert "dispatched" in actions
+    assert "on_my_way" in actions
+    assert "started" in actions
+    assert "completed" in actions

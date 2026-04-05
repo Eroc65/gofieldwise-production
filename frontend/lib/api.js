@@ -130,6 +130,43 @@ export async function dispatchJob({ token, jobId, technicianId, scheduledTime })
   });
 }
 
+export async function markJobOnMyWay({ token, jobId }) {
+  return apiFetch(`/api/jobs/${jobId}/on-my-way`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export async function markJobStarted({ token, jobId }) {
+  return apiFetch(`/api/jobs/${jobId}/start`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export async function completeJob({ token, jobId, completionNotes }) {
+  return apiFetch(`/api/jobs/${jobId}/complete`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ completion_notes: completionNotes || null }),
+  });
+}
+
+export async function getJobTimeline({ token, jobId }) {
+  return apiFetch(`/api/jobs/${jobId}/timeline`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
 export async function listJobs({ token }) {
   return apiFetch("/api/jobs", {
     method: "GET",
