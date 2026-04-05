@@ -75,3 +75,4 @@ And a Metrics page at `/metrics`:
 - `npm run test:e2e`
 - PowerShell fallback: `& "C:\Program Files\nodejs\npm.cmd" run test:e2e`
 - Lead inbox only: `npx playwright test tests/leads-inbox.spec.js`
+- Metrics only: `npx playwright test tests/metrics.spec.js`
