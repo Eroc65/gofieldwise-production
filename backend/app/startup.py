@@ -16,6 +16,9 @@ def _assert_schema_compatibility() -> None:
         "on_my_way_at",
         "started_at",
     }
+    required_organization_columns = {
+        "intake_key",
+    }
 
     with engine.connect() as connection:
         inspector = inspect(connection)
@@ -49,6 +52,17 @@ def _assert_schema_compatibility() -> None:
                 "Database schema mismatch. Missing table: job_activities. "
                 "Run `alembic upgrade head` (or reset local sqlite test.db) before starting the API."
             )
+
+        if "organizations" in table_names:
+            organization_columns = {column["name"] for column in inspector.get_columns("organizations")}
+            missing_org_columns = sorted(required_organization_columns - organization_columns)
+            if missing_org_columns:
+                missing_text = ", ".join(missing_org_columns)
+                raise RuntimeError(
+                    "Database schema mismatch for organizations table. "
+                    f"Missing columns: {missing_text}. "
+                    "Run `alembic upgrade head` (or reset local sqlite test.db) before starting the API."
+                )
 
 
 async def startup_services(app: FastAPI) -> None:

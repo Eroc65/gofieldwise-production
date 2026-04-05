@@ -34,23 +34,20 @@ from ..schemas.lead import (
 router = APIRouter()
 
 
-# ---------------------------------------------------------------------------
-# Public intake — no auth required.
-# org_id routes the lead to the correct organization (e.g. from a web form
-# embed or missed-call webhook). In production, harden with a per-org
-# webhook token; for now org_id is the routing key.
-# ---------------------------------------------------------------------------
+def _resolve_org_for_intake(db: Session, *, org_id: int | None = None, intake_key: str | None = None) -> Organization:
+    query = db.query(Organization)
+    organization = None
+    if org_id is not None:
+        organization = query.filter(Organization.id == org_id).first()
+    elif intake_key is not None:
+        organization = query.filter(Organization.intake_key == intake_key).first()
 
-@router.post(
-    "/leads/intake/{org_id}",
-    response_model=LeadOut,
-    status_code=status.HTTP_201_CREATED,
-    tags=["intake"],
-)
-def intake(org_id: int, payload: LeadIntake, db: Session = Depends(get_db)):
-    org = db.query(Organization).filter(Organization.id == org_id).first()
-    if not org:
+    if not organization:
         raise HTTPException(status_code=404, detail="Organization not found")
+    return organization
+
+
+def _create_intake_lead(db: Session, payload: LeadIntake, org_id: int):
     data = payload.model_dump()
     lead = create_lead(db, data, org_id)
     # Auto-schedule a follow-up reminder so the lead doesn't slip through the cracks.
@@ -63,22 +60,7 @@ def intake(org_id: int, payload: LeadIntake, db: Session = Depends(get_db)):
     return lead
 
 
-@router.post(
-    "/leads/intake/missed-call/{org_id}",
-    response_model=MissedCallRecoveryOut,
-    status_code=status.HTTP_200_OK,
-    tags=["intake"],
-)
-def intake_missed_call(
-    org_id: int,
-    payload: MissedCallIntake,
-    db: Session = Depends(get_db),
-):
-    """Recover missed calls quickly with dedupe to avoid duplicate lead spam."""
-    org = db.query(Organization).filter(Organization.id == org_id).first()
-    if not org:
-        raise HTTPException(status_code=404, detail="Organization not found")
-
+def _recover_missed_call_lead(db: Session, payload: MissedCallIntake, org_id: int) -> MissedCallRecoveryOut:
     raw_message = payload.raw_message
     if payload.call_sid:
         sid_line = f"Call SID: {payload.call_sid}"
@@ -108,6 +90,66 @@ def intake_missed_call(
         deduplicated=not created_new,
         reminder_created=reminder_created,
     )
+
+
+# ---------------------------------------------------------------------------
+# Public intake — no auth required.
+# org_id routes the lead to the correct organization (e.g. from a web form
+# embed or missed-call webhook). In production, harden with a per-org
+# webhook token; for now org_id is the routing key.
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/leads/intake/{org_id}",
+    response_model=LeadOut,
+    status_code=status.HTTP_201_CREATED,
+    tags=["intake"],
+)
+def intake(org_id: int, payload: LeadIntake, db: Session = Depends(get_db)):
+    org = _resolve_org_for_intake(db, org_id=org_id)
+    return _create_intake_lead(db, payload, int(cast(int, org.id)))
+
+
+@router.post(
+    "/leads/intake/by-key/{intake_key}",
+    response_model=LeadOut,
+    status_code=status.HTTP_201_CREATED,
+    tags=["intake"],
+)
+def intake_by_key(intake_key: str, payload: LeadIntake, db: Session = Depends(get_db)):
+    org = _resolve_org_for_intake(db, intake_key=intake_key)
+    return _create_intake_lead(db, payload, int(cast(int, org.id)))
+
+
+@router.post(
+    "/leads/intake/missed-call/{org_id}",
+    response_model=MissedCallRecoveryOut,
+    status_code=status.HTTP_200_OK,
+    tags=["intake"],
+)
+def intake_missed_call(
+    org_id: int,
+    payload: MissedCallIntake,
+    db: Session = Depends(get_db),
+):
+    """Recover missed calls quickly with dedupe to avoid duplicate lead spam."""
+    org = _resolve_org_for_intake(db, org_id=org_id)
+    return _recover_missed_call_lead(db, payload, int(cast(int, org.id)))
+
+
+@router.post(
+    "/leads/intake/missed-call/by-key/{intake_key}",
+    response_model=MissedCallRecoveryOut,
+    status_code=status.HTTP_200_OK,
+    tags=["intake"],
+)
+def intake_missed_call_by_key(
+    intake_key: str,
+    payload: MissedCallIntake,
+    db: Session = Depends(get_db),
+):
+    org = _resolve_org_for_intake(db, intake_key=intake_key)
+    return _recover_missed_call_lead(db, payload, int(cast(int, org.id)))
 
 
 # ---------------------------------------------------------------------------

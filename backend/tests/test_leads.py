@@ -73,6 +73,17 @@ def org_id():
 
 
 @pytest.fixture(scope="module")
+def org_intake_key():
+    db: Session = SessionLocal()
+    try:
+        org = db.query(Organization).filter(Organization.name == _ORG_NAME).first()
+        assert org is not None
+        return str(cast(str, org.intake_key))
+    finally:
+        db.close()
+
+
+@pytest.fixture(scope="module")
 def other_org_id():
     db: Session = SessionLocal()
     try:
@@ -137,6 +148,25 @@ def test_public_intake_no_auth_needed(client, org_id):
         json={"phone": "555-0101", "source": "missed_call"},
     )
     assert resp.status_code == 201
+
+
+def test_public_intake_by_key_creates_lead(client, org_intake_key):
+    resp = client.post(
+        f"/api/leads/intake/by-key/{org_intake_key}",
+        json={"name": "Key Routed", "phone": "555-0199", "source": "web_form"},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["status"] == "new"
+    assert body["name"] == "Key Routed"
+
+
+def test_public_intake_by_key_unknown_org_returns_404(client):
+    resp = client.post(
+        "/api/leads/intake/by-key/org_missing_key",
+        json={"name": "Ghost", "source": "web_form"},
+    )
+    assert resp.status_code == 404
 
 
 # ---------------------------------------------------------------------------

@@ -46,6 +46,13 @@ GET `/api/protected` (Bearer token)
 **Lead booking workflow:**
 POST `/api/leads/{lead_id}/book` (Bearer token) with `{ scheduled_time, technician_id }`
 
+**Public intake routing options:**
+- POST `/api/leads/intake/{org_id}`
+- POST `/api/leads/intake/by-key/{intake_key}`
+- POST `/api/leads/intake/missed-call/{org_id}`
+- POST `/api/leads/intake/missed-call/by-key/{intake_key}`
+- GET `/api/auth/org` returns `intake_key` for authenticated org admins
+
 **Schedule readiness workflow:**
 - GET `/api/jobs/scheduling/conflict` with query: `technician_id`, `scheduled_time`, optional `exclude_job_id`, `buffer_minutes`
 - GET `/api/jobs/scheduling/next-slot` with query: `technician_id`, `requested_time`, optional `search_hours`, `step_minutes`, `exclude_job_id`, `buffer_minutes`

@@ -1,3 +1,4 @@
+from secrets import token_urlsafe
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,6 +15,10 @@ from ..schemas.user import UserCreate, UserOut
 router = APIRouter()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+
+
+def _new_intake_key() -> str:
+    return f"org_{token_urlsafe(12)}"
 
 def get_current_user(
     token: str = Depends(oauth2_scheme),
@@ -42,7 +47,7 @@ def signup(user: UserCreate, db: Session = Depends(get_db)):
         .first()
     )
     if organization is None:
-        organization = Organization(name=user.organization_name)
+        organization = Organization(name=user.organization_name, intake_key=_new_intake_key())
         db.add(organization)
         db.flush()
 

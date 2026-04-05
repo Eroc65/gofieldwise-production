@@ -1,5 +1,12 @@
 from uuid import uuid4
 
+from app.core.db import Base, engine
+
+
+def setup_module() -> None:
+	Base.metadata.drop_all(bind=engine)
+	Base.metadata.create_all(bind=engine)
+
 def test_auth_signup_login_and_protected_routes(client) -> None:
 
 	email = f"testclientuser-{uuid4().hex[:8]}@example.com"
@@ -39,3 +46,4 @@ def test_auth_signup_login_and_protected_routes(client) -> None:
 	org_resp = client.get("/api/auth/org", headers=headers)
 	assert org_resp.status_code == 200
 	assert org_resp.json()["name"] == org_name
+	assert org_resp.json().get("intake_key", "").startswith("org_")

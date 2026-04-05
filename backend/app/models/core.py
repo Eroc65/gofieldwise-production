@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from secrets import token_urlsafe
 
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
@@ -9,10 +10,15 @@ from ..core.db import Base
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
+
+def _new_intake_key() -> str:
+    return f"org_{token_urlsafe(12)}"
+
 class Organization(Base):
     __tablename__ = "organizations"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True, nullable=False)
+    intake_key = Column(String, unique=True, index=True, nullable=False, default=_new_intake_key)
     users = relationship("User", back_populates="organization")
     customers = relationship("Customer", back_populates="organization")
     jobs = relationship("Job", back_populates="organization")
