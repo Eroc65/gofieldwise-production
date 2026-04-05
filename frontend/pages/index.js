@@ -176,6 +176,9 @@ export default function HomePage() {
           <a className="ghost-link" href={BOOKING_URL} target="_blank" rel="noreferrer">
             Book A Demo Call
           </a>
+          <a className="ghost-link" href="/leads">
+            Open Lead Inbox
+          </a>
         </div>
       </section>
 

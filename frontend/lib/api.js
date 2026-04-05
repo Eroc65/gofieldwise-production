@@ -197,6 +197,60 @@ export async function submitPublicLeadIntake({
   });
 }
 
+export async function listLeads({ token }) {
+  return apiFetch("/api/leads", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export async function updateLeadStatus({ token, leadId, status }) {
+  return apiFetch(`/api/leads/${leadId}/status`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function qualifyLead({
+  token,
+  leadId,
+  emergency,
+  budgetConfirmed,
+  requestedWithin48h,
+  serviceCategory,
+}) {
+  return apiFetch(`/api/leads/${leadId}/qualify`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      emergency: Boolean(emergency),
+      budget_confirmed: Boolean(budgetConfirmed),
+      requested_within_48h: Boolean(requestedWithin48h),
+      service_category: serviceCategory || null,
+    }),
+  });
+}
+
+export async function bookLead({ token, leadId, technicianId, scheduledTime }) {
+  return apiFetch(`/api/leads/${leadId}/book`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      technician_id: Number(technicianId),
+      scheduled_time: scheduledTime,
+    }),
+  });
+}
+
 export async function listJobs({ token }) {
   return apiFetch("/api/jobs", {
     method: "GET",

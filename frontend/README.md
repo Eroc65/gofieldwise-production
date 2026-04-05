@@ -24,9 +24,17 @@ Business-hours note shown in the UI:
 
 - default technician window is 8:00 AM to 7:00 PM Central, Monday to Friday
 
+The frontend also includes a Lead Inbox page at `/leads`:
+
+- list leads by organization
+- mark lead contacted
+- qualify lead with quick defaults
+- book qualified leads to a technician/time
+
 ## Structure
 
 - `pages/` — routes (`index.js`, `_app.js`)
+	- includes `leads.js` for operator lead queue workflow
 - `components/` — UI (`DispatchAssistant.js`)
 - `lib/` — API helpers (`api.js`)
 - `styles/` — global styles (`globals.css`)

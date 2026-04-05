@@ -247,6 +247,12 @@ textarea {
   color: var(--error);
 }
 
+.lead-list {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .dispatch-head h2 {
   margin: 0;
   font-size: 1.45rem;
@@ -380,6 +386,10 @@ button:disabled {
   }
 
   .results-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lead-list {
     grid-template-columns: 1fr;
   }
 }
