@@ -62,6 +62,12 @@ def _assert_schema_compatibility() -> None:
                 "Run `alembic upgrade head` (or reset local sqlite test.db) before starting the API."
             )
 
+        if "user_role_audit_events" not in table_names:
+            raise RuntimeError(
+                "Database schema mismatch. Missing table: user_role_audit_events. "
+                "Run `alembic upgrade head` (or reset local sqlite test.db) before starting the API."
+            )
+
         if "organizations" in table_names:
             organization_columns = {column["name"] for column in inspector.get_columns("organizations")}
             missing_org_columns = sorted(required_organization_columns - organization_columns)

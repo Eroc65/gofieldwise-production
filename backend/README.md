@@ -42,6 +42,10 @@ GET `/api/auth/me` (Bearer token)
 - GET `/api/auth/users` (Bearer token; owner/admin only)
 - PATCH `/api/auth/users/{user_id}/role` with `{ role }` (owner/admin only)
 	- safety guard: cannot demote the last `owner` in an organization
+- GET `/api/auth/users/role-audit` (Bearer token; owner/admin only)
+	- supports filters: `limit`, `actor_user_id`, `target_user_id`, `days`
+- GET `/api/auth/users/role-audit/export.csv` (Bearer token; owner/admin only)
+	- CSV export with the same filters for compliance/audit handoff
 
 **Get current org:**
 GET `/api/auth/org` (Bearer token)

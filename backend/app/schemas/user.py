@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, EmailStr
 from typing import Optional
 
@@ -21,3 +23,22 @@ class UserOut(BaseModel):
     role: str
     organization_id: Optional[int]
     model_config = ConfigDict(from_attributes=True)
+
+
+class UserRoleAuditEventOut(BaseModel):
+    id: int
+    actor_user_id: int
+    actor_email: Optional[EmailStr] = None
+    target_user_id: int
+    target_email: Optional[EmailStr] = None
+    from_role: str
+    to_role: str
+    note: Optional[str] = None
+    organization_id: int
+    created_at: datetime
+
+
+class UserRoleAuditListOut(BaseModel):
+    organization_id: int
+    total: int
+    events: list[UserRoleAuditEventOut]

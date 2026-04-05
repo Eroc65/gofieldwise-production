@@ -1,0 +1,28 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches:
+      - chore/scheduling-release-hardening
+  workflow_dispatch:
+
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate staging deploy hook secrets
+        run: |
+          if [ -z "${{ secrets.RENDER_STAGING_FRONTEND_DEPLOY_HOOK_URL }}" ]; then
+            echo "Missing secret: RENDER_STAGING_FRONTEND_DEPLOY_HOOK_URL"
+            exit 1
+          fi
+          if [ -z "${{ secrets.RENDER_STAGING_BACKEND_DEPLOY_HOOK_URL }}" ]; then
+            echo "Missing secret: RENDER_STAGING_BACKEND_DEPLOY_HOOK_URL"
+            exit 1
+          fi
+
+      - name: Trigger frontend staging deploy
+        run: curl -fsS -X POST "${{ secrets.RENDER_STAGING_FRONTEND_DEPLOY_HOOK_URL }}"
+
+      - name: Trigger backend staging deploy
+        run: curl -fsS -X POST "${{ secrets.RENDER_STAGING_BACKEND_DEPLOY_HOOK_URL }}"

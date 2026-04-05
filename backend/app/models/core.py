@@ -30,6 +30,7 @@ class Organization(Base):
     leads = relationship("Lead", back_populates="organization")
     job_activities = relationship("JobActivity", back_populates="organization")
     lead_activities = relationship("LeadActivity", back_populates="organization")
+    user_role_events = relationship("UserRoleAuditEvent", back_populates="organization")
 
 class User(Base):
     __tablename__ = "users"
@@ -226,3 +227,16 @@ class LeadActivity(Base):
     created_at = Column(DateTime, default=_utcnow, nullable=False)
     organization = relationship("Organization", back_populates="lead_activities")
     lead = relationship("Lead", back_populates="activities")
+
+
+class UserRoleAuditEvent(Base):
+    __tablename__ = "user_role_audit_events"
+    id = Column(Integer, primary_key=True, index=True)
+    actor_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    target_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    from_role = Column(String, nullable=False)
+    to_role = Column(String, nullable=False)
+    note = Column(Text)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+    organization = relationship("Organization", back_populates="user_role_events")

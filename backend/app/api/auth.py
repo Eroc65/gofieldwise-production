@@ -1,16 +1,21 @@
 from secrets import token_urlsafe
+import csv
+import io
+from datetime import timedelta
 from typing import Optional, cast
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from ..core.auth import hash_password, verify_password
 from ..core.db import get_db
 from ..core.jwt import create_access_token, decode_access_token
-from ..models.core import Organization, User
+from ..models.core import Organization, User, UserRoleAuditEvent, _utcnow
 from ..schemas.organization import OrganizationOut
 from ..schemas.user import UserCreate, UserOut
+from ..schemas.user import UserRoleAuditListOut
 from ..schemas.user import UserRoleUpdate
 
 router = APIRouter()
@@ -62,6 +67,85 @@ def _ensure_not_last_owner_demotion(db: Session, current_user: User, target: Use
             status_code=422,
             detail="Cannot demote the last owner in the organization.",
         )
+
+
+def _record_role_change_event(
+    db: Session,
+    *,
+    actor_user_id: int,
+    target_user_id: int,
+    from_role: str,
+    to_role: str,
+    organization_id: int,
+    note: str | None = None,
+) -> None:
+    event = UserRoleAuditEvent(
+        actor_user_id=actor_user_id,
+        target_user_id=target_user_id,
+        from_role=from_role,
+        to_role=to_role,
+        note=note,
+        organization_id=organization_id,
+    )
+    db.add(event)
+
+
+def _load_role_audit_rows(
+    db: Session,
+    *,
+    organization_id: int,
+    limit: int,
+    actor_user_id: int | None = None,
+    target_user_id: int | None = None,
+    days: int | None = None,
+) -> list[dict]:
+    query = (
+        db.query(UserRoleAuditEvent)
+        .filter(UserRoleAuditEvent.organization_id == organization_id)
+    )
+    if actor_user_id is not None:
+        query = query.filter(UserRoleAuditEvent.actor_user_id == actor_user_id)
+    if target_user_id is not None:
+        query = query.filter(UserRoleAuditEvent.target_user_id == target_user_id)
+    if days is not None:
+        cutoff = _utcnow() - timedelta(days=days)
+        query = query.filter(UserRoleAuditEvent.created_at >= cutoff)
+
+    events = (
+        query.order_by(UserRoleAuditEvent.created_at.desc(), UserRoleAuditEvent.id.desc())
+        .limit(limit)
+        .all()
+    )
+    user_ids = {int(cast(int, e.actor_user_id)) for e in events}
+    user_ids.update({int(cast(int, e.target_user_id)) for e in events})
+    users = (
+        db.query(User)
+        .filter(User.organization_id == organization_id, User.id.in_(user_ids))
+        .all()
+        if user_ids
+        else []
+    )
+    email_by_id = {int(cast(int, u.id)): str(cast(str, u.email)) for u in users}
+
+    out: list[dict] = []
+    for event in events:
+        actor_id = int(cast(int, event.actor_user_id))
+        target_id = int(cast(int, event.target_user_id))
+        out.append(
+            {
+                "id": int(cast(int, event.id)),
+                "actor_user_id": actor_id,
+                "actor_email": email_by_id.get(actor_id),
+                "target_user_id": target_id,
+                "target_email": email_by_id.get(target_id),
+                "from_role": str(cast(str, event.from_role)),
+                "to_role": str(cast(str, event.to_role)),
+                "note": event.note,
+                "organization_id": int(cast(int, event.organization_id)),
+                "created_at": event.created_at,
+            }
+        )
+    return out
 
 def get_current_user(
     token: str = Depends(oauth2_scheme),
@@ -156,11 +240,111 @@ def update_user_role(
         raise HTTPException(status_code=404, detail="User not found")
 
     new_role = normalize_user_role(payload.role)
+    prior_role = normalize_user_role(cast(str | None, target.role))
     _ensure_not_last_owner_demotion(db, current_user, target, new_role)
+    if prior_role == new_role:
+        return target
+
     target.role = new_role
+    _record_role_change_event(
+        db,
+        actor_user_id=int(cast(int, current_user.id)),
+        target_user_id=int(cast(int, target.id)),
+        from_role=prior_role,
+        to_role=new_role,
+        organization_id=int(cast(int, current_user.organization_id)),
+        note="Role updated via /api/auth/users/{user_id}/role",
+    )
     db.commit()
     db.refresh(target)
     return target
+
+
+@router.get("/users/role-audit", response_model=UserRoleAuditListOut)
+def role_audit_log(
+    limit: int = Query(100, ge=1, le=500),
+    actor_user_id: int | None = Query(None),
+    target_user_id: int | None = Query(None),
+    days: int | None = Query(None, ge=1, le=365),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ensure_role_manager(current_user)
+    organization_id = int(cast(int, current_user.organization_id))
+    events = _load_role_audit_rows(
+        db,
+        organization_id=organization_id,
+        limit=limit,
+        actor_user_id=actor_user_id,
+        target_user_id=target_user_id,
+        days=days,
+    )
+    return {
+        "organization_id": organization_id,
+        "total": len(events),
+        "events": events,
+    }
+
+
+@router.get("/users/role-audit/export.csv")
+def role_audit_export_csv(
+    limit: int = Query(500, ge=1, le=5000),
+    actor_user_id: int | None = Query(None),
+    target_user_id: int | None = Query(None),
+    days: int | None = Query(None, ge=1, le=365),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ensure_role_manager(current_user)
+    organization_id = int(cast(int, current_user.organization_id))
+    rows = _load_role_audit_rows(
+        db,
+        organization_id=organization_id,
+        limit=limit,
+        actor_user_id=actor_user_id,
+        target_user_id=target_user_id,
+        days=days,
+    )
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "id",
+            "created_at",
+            "organization_id",
+            "actor_user_id",
+            "actor_email",
+            "target_user_id",
+            "target_email",
+            "from_role",
+            "to_role",
+            "note",
+        ]
+    )
+    for row in rows:
+        created_at = row["created_at"]
+        writer.writerow(
+            [
+                row["id"],
+                created_at.isoformat() if created_at is not None else "",
+                row["organization_id"],
+                row["actor_user_id"],
+                row["actor_email"] or "",
+                row["target_user_id"],
+                row["target_email"] or "",
+                row["from_role"],
+                row["to_role"],
+                row["note"] or "",
+            ]
+        )
+
+    csv_body = buffer.getvalue()
+    return Response(
+        content=csv_body,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=role_audit_events.csv"},
+    )
 
 @router.get("/org", response_model=OrganizationOut)
 def current_org(

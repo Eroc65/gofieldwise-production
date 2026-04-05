@@ -1,0 +1,28 @@
+name: Deploy Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy-production:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate production deploy hook secrets
+        run: |
+          if [ -z "${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK_URL }}" ]; then
+            echo "Missing secret: RENDER_FRONTEND_DEPLOY_HOOK_URL"
+            exit 1
+          fi
+          if [ -z "${{ secrets.RENDER_BACKEND_DEPLOY_HOOK_URL }}" ]; then
+            echo "Missing secret: RENDER_BACKEND_DEPLOY_HOOK_URL"
+            exit 1
+          fi
+
+      - name: Trigger frontend production deploy
+        run: curl -fsS -X POST "${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK_URL }}"
+
+      - name: Trigger backend production deploy
+        run: curl -fsS -X POST "${{ secrets.RENDER_BACKEND_DEPLOY_HOOK_URL }}"

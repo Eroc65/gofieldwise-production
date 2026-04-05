@@ -156,3 +156,56 @@ def test_cannot_demote_last_owner(client) -> None:
 	)
 	assert resp.status_code == 422
 	assert "last owner" in resp.json()["detail"].lower()
+
+
+def test_role_audit_log_and_csv_export(client) -> None:
+	org_name = f"AuditOrg-{uuid4().hex[:6]}"
+	owner_email = f"audit-owner-{uuid4().hex[:6]}@example.com"
+	dispatcher_email = f"audit-disp-{uuid4().hex[:6]}@example.com"
+	password = "testpass123"
+
+	owner_signup = client.post(
+		"/api/auth/signup",
+		json={
+			"email": owner_email,
+			"password": password,
+			"organization_name": org_name,
+			"role": "owner",
+		},
+	)
+	assert owner_signup.status_code == 200
+
+	dispatcher_signup = client.post(
+		"/api/auth/signup",
+		json={
+			"email": dispatcher_email,
+			"password": password,
+			"organization_name": org_name,
+			"role": "dispatcher",
+		},
+	)
+	assert dispatcher_signup.status_code == 200
+	dispatcher_id = dispatcher_signup.json()["id"]
+
+	owner_login = client.post("/api/auth/login", data={"username": owner_email, "password": password})
+	assert owner_login.status_code == 200
+	headers = {"Authorization": f"Bearer {owner_login.json()['access_token']}"}
+
+	change = client.patch(
+		f"/api/auth/users/{dispatcher_id}/role",
+		json={"role": "admin"},
+		headers=headers,
+	)
+	assert change.status_code == 200
+
+	log_resp = client.get("/api/auth/users/role-audit?limit=20", headers=headers)
+	assert log_resp.status_code == 200
+	log_body = log_resp.json()
+	assert log_body["total"] >= 1
+	assert any(evt["target_email"] == dispatcher_email and evt["to_role"] == "admin" for evt in log_body["events"])
+
+	csv_resp = client.get("/api/auth/users/role-audit/export.csv?limit=20", headers=headers)
+	assert csv_resp.status_code == 200
+	assert csv_resp.headers["content-type"].startswith("text/csv")
+	assert "target_email" in csv_resp.text
+	assert dispatcher_email in csv_resp.text
