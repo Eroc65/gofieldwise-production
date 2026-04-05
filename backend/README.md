@@ -62,6 +62,7 @@ POST `/api/leads/{lead_id}/book` (Bearer token) with `{ scheduled_time, technici
 - `pytest -q`
 - `python scripts/smoke_auth.py`
 - `python scripts/smoke_schedule_readiness.py`
+- `python scripts/smoke_collections_readiness.py`
 
 ## Agent Runtime Invocation
 - Runtime entrypoints:
