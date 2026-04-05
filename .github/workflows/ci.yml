@@ -52,6 +52,8 @@ jobs:
         run: pytest -q tests/test_dispatch_flow_integration.py
       - name: Run lifecycle quick-actions test (fast gate)
         run: pytest -q tests/test_dispatch.py -k lifecycle_quick_actions_require_valid_order
+      - name: Run lead conversion metrics fast gate
+        run: pytest -q tests/test_reports.py -k lead_conversion_metrics_daily_series
       - name: Run Python tests
         run: pytest -q
 
