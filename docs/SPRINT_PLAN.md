@@ -1,5 +1,96 @@
 # FrontDesk Pro — Sprint Plan (v1)
 
+## Next 2 Sprints — GoFieldWise Execution Plan
+
+Execution artifacts for Sprint A:
+- [ISSUES_IMPORT_SPRINT_A.csv](../.github/ISSUES_IMPORT_SPRINT_A.csv)
+- [ISSUE_BODIES_SPRINT_A.md](../.github/ISSUE_BODIES_SPRINT_A.md)
+
+### Sprint A (2 weeks) — Dispatch to Completion Reliability
+Goal: close the loop from assignment to completed work with customer-visible status and auditability.
+
+Scope:
+- Job lifecycle events: `on_my_way`, `started`, `completed` timestamps.
+- Technician quick actions API for status transitions.
+- Customer notification hooks for status changes (internal first, pluggable SMS/email adapter).
+- Job activity timeline (who changed what and when).
+- Mobile-first action flow for technician job card.
+
+Stories:
+- As an owner, I can see when a technician is en route, has started, and has completed a job.
+- As a technician, I can update status in one tap from mobile.
+- As a customer, I receive clear status updates during service.
+- As an admin, I can audit all dispatch/status changes by user and timestamp.
+
+Acceptance Criteria:
+- Status transition rules are enforced server-side.
+- Protected routes reject cross-organization access for all lifecycle endpoints.
+- Activity timeline includes actor, action, previous state, new state, timestamp.
+- Mobile flow supports complete lifecycle in <=3 taps from job detail.
+- Regression tests cover success/failure transitions and org scoping.
+
+Validation:
+- Backend tests for lifecycle transitions and audit events.
+- API smoke script for end-to-end dispatch -> complete flow.
+- Frontend e2e for technician action flow on mobile viewport.
+
+Definition of Done:
+- Feature behind no manual DB patching.
+- Migration path validated on fresh and existing DB.
+- CI green with targeted and full regression tests.
+
+### Sprint B (2 weeks) — Invoice & Collections Automation
+Goal: reduce missed revenue by automating invoice issuance and collection follow-up.
+
+Scope:
+- Auto-generate invoice on job completion when eligible.
+- Payment-link field and status tracking (`unpaid`, `paid`, `void`, `overdue`).
+- Reminder escalation cadence (day 0, day 3, day 7, day 14).
+- Dashboard cards: unpaid total, overdue count, aging buckets.
+- Collection reminder suppression when invoice is paid.
+
+Stories:
+- As an owner, I get an invoice out immediately after work is complete.
+- As an owner, I can see what is overdue and what to chase first.
+- As a team member, reminders stop automatically when payment arrives.
+
+Acceptance Criteria:
+- Completion triggers invoice creation exactly once per eligible job.
+- Reminder escalation is deterministic and idempotent.
+- Re-opened invoices reactivate collection reminders.
+- Dashboard metrics match underlying invoice/reminder state.
+- All invoice/reminder queries are organization-scoped.
+
+Validation:
+- Unit + integration tests for auto-invoice and escalation logic.
+- Deterministic smoke script for completion -> invoice -> escalation -> paid suppression.
+- CI job includes focused collections regression gate before full suite.
+
+Definition of Done:
+- No duplicate invoices from repeated completion actions.
+- Reminder lifecycle verified across paid/unpaid transitions.
+- Release notes updated with operational behavior and rollback notes.
+
+### Dependencies and Sequence
+1. Finish Sprint A schema + API first.
+2. Ship Sprint A UI and timeline.
+3. Implement Sprint B invoice automation.
+4. Implement Sprint B reminder escalation + dashboard.
+
+### Risks and Mitigations
+- Risk: stale local schema causes runtime failures.
+	Mitigation: keep idempotent migrations and startup schema checks.
+- Risk: notification provider instability.
+	Mitigation: adapter interface + retry-safe internal queue.
+- Risk: mobile UX friction slows adoption.
+	Mitigation: mobile viewport e2e and tap-count acceptance checks.
+
+### Exit Metrics
+- Dispatch-to-complete timestamp coverage >= 95% of dispatched jobs.
+- Auto-invoice rate >= 90% of completed eligible jobs.
+- Overdue reminder send success >= 99% (internal channel baseline).
+- Median time-to-dispatch update from technician < 2 minutes.
+
 ## Sprint 0 — Foundation
 - Monorepo structure
 - GitHub repo config
