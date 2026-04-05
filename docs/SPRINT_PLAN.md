@@ -6,6 +6,10 @@ Execution artifacts for Sprint A:
 - [ISSUES_IMPORT_SPRINT_A.csv](../.github/ISSUES_IMPORT_SPRINT_A.csv)
 - [ISSUE_BODIES_SPRINT_A.md](../.github/ISSUE_BODIES_SPRINT_A.md)
 
+Execution artifacts for Sprint B:
+- [ISSUES_IMPORT_SPRINT_B.csv](../.github/ISSUES_IMPORT_SPRINT_B.csv)
+- [ISSUE_BODIES_SPRINT_B.md](../.github/ISSUE_BODIES_SPRINT_B.md)
+
 ### Sprint A (2 weeks) — Dispatch to Completion Reliability
 Goal: close the loop from assignment to completed work with customer-visible status and auditability.
 

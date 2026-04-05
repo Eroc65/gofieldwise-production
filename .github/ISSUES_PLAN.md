@@ -5,6 +5,8 @@ This file maps sprints and epics to actionable GitHub issues for the build queue
 ## Current Priority Backlog (GoFieldWise)
 - Import-ready Sprint A tickets: [ISSUES_IMPORT_SPRINT_A.csv](ISSUES_IMPORT_SPRINT_A.csv)
 - Full issue bodies: [ISSUE_BODIES_SPRINT_A.md](ISSUE_BODIES_SPRINT_A.md)
+- Import-ready Sprint B tickets: [ISSUES_IMPORT_SPRINT_B.csv](ISSUES_IMPORT_SPRINT_B.csv)
+- Full issue bodies: [ISSUE_BODIES_SPRINT_B.md](ISSUE_BODIES_SPRINT_B.md)
 
 ## Sprint 0 — Foundation
 - [ ] Monorepo structure
