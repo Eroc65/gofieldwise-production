@@ -9,6 +9,8 @@ on:
 jobs:
   frontend-build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: frontend
@@ -29,6 +31,8 @@ jobs:
 
   backend-tests:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: backend
@@ -50,6 +54,8 @@ jobs:
   backend-schedule-smoke:
     runs-on: ubuntu-latest
     needs: backend-tests
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: backend
