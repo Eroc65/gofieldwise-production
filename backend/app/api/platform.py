@@ -321,6 +321,19 @@ def twilio_message_status(
             setattr(reminder, "delivered_at", cast(object, reminder.sent_at) or _utcnow())
     if status in {"failed", "undelivered"}:
         setattr(reminder, "last_dispatch_error", f"delivery_status={status}")
+        db.add(
+            Reminder(
+                message=(
+                    f"ALERT: Twilio delivery failed for reminder #{int(cast(int, reminder.id))} "
+                    f"with status={status}"
+                ),
+                channel="internal",
+                status="pending",
+                due_at=_utcnow(),
+                organization_id=int(cast(int, reminder.organization_id)),
+                customer_id=cast(int | None, reminder.customer_id),
+            )
+        )
     if status in {"received", "read"}:
         if cast(object, reminder.responded_at) is None:
             setattr(reminder, "responded_at", cast(object, reminder.sent_at) or _utcnow())

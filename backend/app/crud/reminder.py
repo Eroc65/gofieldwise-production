@@ -333,6 +333,18 @@ def _is_sms_opted_out(db: Session, organization_id: int, phone: str | None) -> b
     return row is not None
 
 
+def _create_internal_alert(db: Session, organization_id: int, message: str) -> None:
+    db.add(
+        Reminder(
+            message=f"ALERT: {message}",
+            channel="internal",
+            status="pending",
+            due_at=_utcnow(),
+            organization_id=organization_id,
+        )
+    )
+
+
 def dispatch_due_reminders(
     db: Session,
     organization_id: int,
@@ -381,6 +393,11 @@ def dispatch_due_reminders(
             reminder_obj.status = "dismissed"
             reminder_obj.last_dispatch_error = "Suppressed due to SMS opt-out"
             reminder_obj.updated_at = now
+            _create_internal_alert(
+                db,
+                organization_id,
+                f"SMS reminder #{int(cast(int, reminder.id))} suppressed because destination is opted out",
+            )
             failed.append({"id": int(cast(int, reminder.id)), "error": str(cast(str, reminder_obj.last_dispatch_error))})
             continue
 
@@ -394,6 +411,11 @@ def dispatch_due_reminders(
             if not ok:
                 reminder_obj.last_dispatch_error = sms_error or "SMS dispatch failed"
                 reminder_obj.updated_at = now
+                _create_internal_alert(
+                    db,
+                    organization_id,
+                    f"SMS reminder #{int(cast(int, reminder.id))} failed to send: {reminder_obj.last_dispatch_error}",
+                )
                 failed.append({"id": int(cast(int, reminder.id)), "error": str(cast(str, reminder_obj.last_dispatch_error))})
                 continue
             reminder_obj.external_message_id = external_message_id

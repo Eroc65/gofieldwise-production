@@ -55,7 +55,11 @@ def send_sms_message(
     messaging_service_sid = (profile.get("messaging_service_sid") or "").strip()
     from_phone = (profile.get("from_phone") or "").strip()
 
+    strict_real_delivery = os.getenv("REQUIRE_REAL_SMS_DELIVERY", "").strip().lower() in {"1", "true", "yes", "on"}
+
     if not account_sid or not auth_token or (not messaging_service_sid and not from_phone):
+        if strict_real_delivery:
+            return False, None, "REQUIRE_REAL_SMS_DELIVERY is enabled but Twilio credentials are not configured"
         simulated_id = f"simulated-{organization_id}-{int(_utcnow().timestamp())}"
         return True, simulated_id, None
 

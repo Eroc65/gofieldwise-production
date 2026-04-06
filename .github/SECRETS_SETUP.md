@@ -62,5 +62,15 @@ Examples:
 - Smoke user should be an owner/admin account in the target organization.
 - Deploy hook secrets must be Render deploy hook `https://` URLs. Do not use database URLs (for example `postgresql://...`) in deploy hook secrets.
 
+## Activation Controls
+- Optional strict messaging mode:
+	- `REQUIRE_REAL_SMS_DELIVERY=true`
+	- When enabled, SMS dispatch fails if Twilio credentials are not configured (no simulation fallback).
+- Tenant-level communication credentials are managed in the Platform Console (`/platform`) via `Communication Tenant Profile`.
+
+## Live Activation Checklist Script
+Run this from `backend/` to verify production readiness for AI guide + comm profile + reactivation:
+- `ACTIVATION_API_BASE_URL=<https url> ACTIVATION_EMAIL=<owner/admin email> ACTIVATION_PASSWORD=<password> python scripts/activation_checklist.py`
+
 ## Why this file exists
 This workspace is GitHub CLI-ready and includes repeatable `gh` operations for secrets and deploy workflow control.
