@@ -33,6 +33,11 @@ AI-first front desk software for small trades businesses.
 
 ## CI/CD
 - GitHub Actions: `.github/workflows/ci.yml` runs backend tests from `backend/` on pushes and pull requests to `main`.
+- `.github/workflows/deploy-staging.yml` triggers staging deploy hooks from the release-hardening branch.
+- `.github/workflows/deploy-production.yml` triggers production deploy hooks from `main`.
+- `.github/workflows/post-deploy-smoke.yml` runs live post-deploy API smoke checks.
+- `.github/workflows/deploy-guardrails.yml` opens incident issues on deploy workflow failures.
+- Required secrets are listed in `.github/SECRETS_SETUP.md`.
 
 ## VS Code Tasks
 - `backend: test (backend dir)` runs the backend pytest suite from the correct working directory.

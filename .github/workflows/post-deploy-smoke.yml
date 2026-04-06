@@ -1,0 +1,41 @@
+name: Post Deploy Smoke
+
+on:
+  workflow_run:
+    workflows: ["Deploy Staging", "Deploy Production"]
+    types: [completed]
+
+jobs:
+  smoke:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Configure target environment
+        run: |
+          if [ "${{ github.event.workflow_run.name }}" = "Deploy Staging" ]; then
+            echo "SMOKE_API_BASE_URL=${{ secrets.STAGING_API_BASE_URL }}" >> $GITHUB_ENV
+            echo "SMOKE_EMAIL=${{ secrets.STAGING_SMOKE_EMAIL }}" >> $GITHUB_ENV
+            echo "SMOKE_PASSWORD=${{ secrets.STAGING_SMOKE_PASSWORD }}" >> $GITHUB_ENV
+          else
+            echo "SMOKE_API_BASE_URL=${{ secrets.PRODUCTION_API_BASE_URL }}" >> $GITHUB_ENV
+            echo "SMOKE_EMAIL=${{ secrets.PRODUCTION_SMOKE_EMAIL }}" >> $GITHUB_ENV
+            echo "SMOKE_PASSWORD=${{ secrets.PRODUCTION_SMOKE_PASSWORD }}" >> $GITHUB_ENV
+          fi
+
+      - name: Run release smoke checks
+        run: python scripts/smoke_deploy_release.py

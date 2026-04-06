@@ -306,6 +306,40 @@ export async function updateUserRole({ token, userId, role }) {
   });
 }
 
+export async function getRoleAuditLog({ token, limit = 100, actorUserId, targetUserId, days }) {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (actorUserId != null && actorUserId !== "") {
+    query.set("actor_user_id", String(actorUserId));
+  }
+  if (targetUserId != null && targetUserId !== "") {
+    query.set("target_user_id", String(targetUserId));
+  }
+  if (days != null && days !== "") {
+    query.set("days", String(days));
+  }
+
+  return apiFetch(`/api/auth/users/role-audit?${query.toString()}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function getRoleAuditExportUrl({ limit = 500, actorUserId, targetUserId, days }) {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (actorUserId != null && actorUserId !== "") {
+    query.set("actor_user_id", String(actorUserId));
+  }
+  if (targetUserId != null && targetUserId !== "") {
+    query.set("target_user_id", String(targetUserId));
+  }
+  if (days != null && days !== "") {
+    query.set("days", String(days));
+  }
+  return `${API_BASE}/api/auth/users/role-audit/export.csv?${query.toString()}`;
+}
+
 export async function listJobs({ token }) {
   return apiFetch("/api/jobs", {
     method: "GET",

@@ -39,6 +39,31 @@ test("lead inbox flow works", async ({ page }) => {
     });
   });
 
+  await page.route("**/api/auth/users/role-audit**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        organization_id: 11,
+        total: 1,
+        events: [
+          {
+            id: 50,
+            actor_user_id: 7,
+            actor_email: "owner@example.com",
+            target_user_id: 8,
+            target_email: "dispatcher@example.com",
+            from_role: "dispatcher",
+            to_role: "admin",
+            note: "Role updated via /api/auth/users/{user_id}/role",
+            organization_id: 11,
+            created_at: new Date().toISOString(),
+          },
+        ],
+      }),
+    });
+  });
+
   await page.route("**/api/auth/users/8/role", async (route) => {
     await route.fulfill({
       status: 200,
@@ -169,6 +194,8 @@ test("lead inbox flow works", async ({ page }) => {
   await expect(page.getByText("Lead booked. Job #880 scheduled")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Lead Activity Timeline" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Role Management" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Role Audit History" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Export Role Audit CSV" })).toBeVisible();
   await page.locator("article:has-text('#8 dispatcher@example.com') select").selectOption("admin");
   await page.locator("article:has-text('#8 dispatcher@example.com') button:has-text('Save Role')").click();
   await expect(page.getByText("Updated role for user #8 to admin.")).toBeVisible();

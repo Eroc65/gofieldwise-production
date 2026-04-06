@@ -15,3 +15,10 @@
 ## Risk
 - [ ] Backward compatibility reviewed
 - [ ] Operational impact reviewed
+
+## Production Promotion Checklist
+- [ ] Staging deploy completed successfully
+- [ ] Post-deploy staging smoke completed successfully
+- [ ] Role management flows validated
+- [ ] Role audit JSON and CSV validated
+- [ ] Rollback trigger and owner assigned

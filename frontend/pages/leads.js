@@ -4,6 +4,8 @@ import {
   bookLead,
   getCurrentUser,
   getLeadActivity,
+  getRoleAuditExportUrl,
+  getRoleAuditLog,
   getLeadConversionMetrics,
   listLeads,
   listOrganizationUsers,
@@ -39,6 +41,10 @@ export default function LeadInboxPage() {
   const [activityActionFilter, setActivityActionFilter] = useState("");
   const [activityWindowHours, setActivityWindowHours] = useState("168");
   const [roleDrafts, setRoleDrafts] = useState({});
+  const [roleAuditEvents, setRoleAuditEvents] = useState([]);
+  const [roleAuditActorFilter, setRoleAuditActorFilter] = useState("");
+  const [roleAuditTargetFilter, setRoleAuditTargetFilter] = useState("");
+  const [roleAuditDays, setRoleAuditDays] = useState("30");
   const [conversionSummary, setConversionSummary] = useState(null);
   const [selectedLeadId, setSelectedLeadId] = useState("");
   const [serviceCategory, setServiceCategory] = useState("");
@@ -113,11 +119,22 @@ export default function LeadInboxPage() {
             }
             return next;
           });
+
+          const audit = await getRoleAuditLog({
+            token,
+            limit: 100,
+            actorUserId: roleAuditActorFilter || undefined,
+            targetUserId: roleAuditTargetFilter || undefined,
+            days: Number(roleAuditDays || "30"),
+          });
+          setRoleAuditEvents(Array.isArray(audit?.events) ? audit.events : []);
         } catch {
           setOrgUsers([]);
+          setRoleAuditEvents([]);
         }
       } else {
         setOrgUsers([]);
+        setRoleAuditEvents([]);
       }
       if (!selectedLeadId && Array.isArray(leadRows) && leadRows.length > 0) {
         setSelectedLeadId(String(leadRows[0].id));
@@ -185,6 +202,35 @@ export default function LeadInboxPage() {
   const canBook = ["owner", "admin", "dispatcher"].includes(role);
   const canManageRoles = ["owner", "admin"].includes(role);
 
+  useEffect(() => {
+    if (!token || !canManageRoles) {
+      return;
+    }
+    let cancelled = false;
+    async function loadRoleAudit() {
+      try {
+        const audit = await getRoleAuditLog({
+          token,
+          limit: 100,
+          actorUserId: roleAuditActorFilter || undefined,
+          targetUserId: roleAuditTargetFilter || undefined,
+          days: Number(roleAuditDays || "30"),
+        });
+        if (!cancelled) {
+          setRoleAuditEvents(Array.isArray(audit?.events) ? audit.events : []);
+        }
+      } catch {
+        if (!cancelled) {
+          setRoleAuditEvents([]);
+        }
+      }
+    }
+    void loadRoleAudit();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, canManageRoles, roleAuditActorFilter, roleAuditTargetFilter, roleAuditDays]);
+
   async function onUpdateUserRole(userId) {
     await withAction(`role-${userId}`, async () => {
       const roleValue = roleDrafts[userId];
@@ -194,6 +240,8 @@ export default function LeadInboxPage() {
       await updateUserRole({ token, userId: Number(userId), role: roleValue });
       const users = await listOrganizationUsers({ token });
       setOrgUsers(Array.isArray(users) ? users : []);
+      const audit = await getRoleAuditLog({ token, limit: 100, days: Number(roleAuditDays || "30") });
+      setRoleAuditEvents(Array.isArray(audit?.events) ? audit.events : []);
       setActionResult(`Updated role for user #${userId} to ${roleValue}.`);
     });
   }
@@ -484,6 +532,66 @@ export default function LeadInboxPage() {
                       {busyAction === `role-${user.id}` ? "Saving..." : "Save Role"}
                     </button>
                   </div>
+                </article>
+              ))
+            )}
+          </div>
+        </section>
+      ) : null}
+
+      {canManageRoles ? (
+        <section className="dispatch-card">
+          <header className="dispatch-head">
+            <h2>Role Audit History</h2>
+            <p>Review role changes and export CSV for compliance records.</p>
+          </header>
+          <div className="form-grid">
+            <label>
+              Actor User ID
+              <input value={roleAuditActorFilter} onChange={(e) => setRoleAuditActorFilter(e.target.value)} placeholder="optional" />
+            </label>
+            <label>
+              Target User ID
+              <input value={roleAuditTargetFilter} onChange={(e) => setRoleAuditTargetFilter(e.target.value)} placeholder="optional" />
+            </label>
+            <label>
+              Days
+              <select value={roleAuditDays} onChange={(e) => setRoleAuditDays(e.target.value)}>
+                <option value="7">Last 7 days</option>
+                <option value="30">Last 30 days</option>
+                <option value="90">Last 90 days</option>
+                <option value="365">Last 365 days</option>
+              </select>
+            </label>
+          </div>
+          <div className="actions">
+            <a
+              className="ghost-link"
+              href={getRoleAuditExportUrl({
+                limit: 500,
+                actorUserId: roleAuditActorFilter || undefined,
+                targetUserId: roleAuditTargetFilter || undefined,
+                days: Number(roleAuditDays || "30"),
+              })}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Export Role Audit CSV
+            </a>
+          </div>
+          <div className="lead-list">
+            {roleAuditEvents.length === 0 ? (
+              <p>No role audit events found for the selected filter.</p>
+            ) : (
+              roleAuditEvents.map((event) => (
+                <article key={event.id} className="panel">
+                  <h3>#{event.id} {event.from_role} → {event.to_role}</h3>
+                  <ul>
+                    <li>Actor: {event.actor_email || `user #${event.actor_user_id}`}</li>
+                    <li>Target: {event.target_email || `user #${event.target_user_id}`}</li>
+                    <li>When: {prettyDate(event.created_at)}</li>
+                    <li>Note: {event.note || "-"}</li>
+                  </ul>
                 </article>
               ))
             )}

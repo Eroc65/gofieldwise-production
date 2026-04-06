@@ -34,6 +34,7 @@ The frontend also includes a Lead Inbox page at `/leads`:
 - lead activity timeline via `/api/leads/{lead_id}/activity`
 - activity filters by action and rolling time window
 - owner/admin role management panel backed by `/api/auth/users` and `/api/auth/users/{user_id}/role`
+- role audit history panel with JSON filtering and CSV export
 
 And a Metrics page at `/metrics`:
 
