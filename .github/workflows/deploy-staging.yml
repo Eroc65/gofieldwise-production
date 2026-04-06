@@ -12,17 +12,35 @@ jobs:
     steps:
       - name: Validate staging deploy hook secrets
         run: |
-          if [ -z "${{ secrets.RENDER_STAGING_FRONTEND_DEPLOY_HOOK_URL }}" ]; then
+          FRONTEND_HOOK="${{ secrets.RENDER_STAGING_FRONTEND_DEPLOY_HOOK_URL }}"
+          BACKEND_HOOK="${{ secrets.RENDER_STAGING_BACKEND_DEPLOY_HOOK_URL }}"
+
+          if [ -z "$FRONTEND_HOOK" ]; then
             echo "Missing secret: RENDER_STAGING_FRONTEND_DEPLOY_HOOK_URL"
             exit 1
           fi
-          if [ -z "${{ secrets.RENDER_STAGING_BACKEND_DEPLOY_HOOK_URL }}" ]; then
+
+          case "$FRONTEND_HOOK" in
+            http://*|https://*) ;;
+            *)
+              echo "RENDER_STAGING_FRONTEND_DEPLOY_HOOK_URL must be an http(s) URL"
+              exit 1
+              ;;
+          esac
+
+          if [ -z "$BACKEND_HOOK" ]; then
             echo "Missing secret: RENDER_STAGING_BACKEND_DEPLOY_HOOK_URL"
             exit 1
+          fi
+
+          if [[ "$BACKEND_HOOK" != http://* && "$BACKEND_HOOK" != https://* ]]; then
+            echo "warning: RENDER_STAGING_BACKEND_DEPLOY_HOOK_URL is not an http(s) URL; backend staging trigger will be skipped"
+            echo "SKIP_BACKEND_TRIGGER=true" >> "$GITHUB_ENV"
           fi
 
       - name: Trigger frontend staging deploy
         run: curl -fsS -X POST "${{ secrets.RENDER_STAGING_FRONTEND_DEPLOY_HOOK_URL }}"
 
       - name: Trigger backend staging deploy
+        if: env.SKIP_BACKEND_TRIGGER != 'true'
         run: curl -fsS -X POST "${{ secrets.RENDER_STAGING_BACKEND_DEPLOY_HOOK_URL }}"
