@@ -7,7 +7,7 @@ from app.main import app
 from app.models.core import Organization, User
 
 
-_AUTH_EMAIL = "platform-owner@example.com"
+_AUTH_EMAIL = "support@frontdeskpro.com"
 _AUTH_PASSWORD = "platformpass"
 _AUTH_ORG = "Platform Features Org"
 

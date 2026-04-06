@@ -4,7 +4,7 @@ from typing import cast
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from ..api.auth import get_current_user, normalize_user_role
+from ..api.auth import get_current_user
 from ..core.db import get_db
 from ..models.core import CoachingSnippet, CommunicationTenantProfile, HelpArticle, Organization, Reminder, SmsOptOut, User
 from ..schemas.platform import (
@@ -23,7 +23,7 @@ from ..schemas.platform import (
 
 router = APIRouter()
 
-_ALLOWED_ADMIN_ROLES = {"owner", "admin"}
+_REQUIRED_ADMIN_EMAIL = "support@frontdeskpro.com"
 
 
 def _utcnow() -> datetime:
@@ -31,9 +31,12 @@ def _utcnow() -> datetime:
 
 
 def _ensure_admin(user: User) -> None:
-    role = normalize_user_role(cast(str | None, user.role))
-    if role not in _ALLOWED_ADMIN_ROLES:
-        raise HTTPException(status_code=403, detail="Role cannot manage platform settings")
+    normalized_email = str(cast(str, user.email)).strip().lower().replace(",", ".")
+    if normalized_email != _REQUIRED_ADMIN_EMAIL:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Admin login requires email {_REQUIRED_ADMIN_EMAIL}",
+        )
 
 
 @router.get("/status")
@@ -55,6 +58,7 @@ def get_ai_guide_settings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _ensure_admin(current_user)
     org = (
         db.query(Organization)
         .filter(Organization.id == current_user.organization_id)
@@ -102,6 +106,7 @@ def list_help_articles(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _ensure_admin(current_user)
     q = db.query(HelpArticle).filter(HelpArticle.organization_id == current_user.organization_id)
     if context_key:
         q = q.filter(HelpArticle.context_key == context_key)
@@ -148,6 +153,7 @@ def list_coaching_snippets(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _ensure_admin(current_user)
     q = db.query(CoachingSnippet).filter(CoachingSnippet.organization_id == current_user.organization_id)
     if trade:
         q = q.filter(CoachingSnippet.trade == trade.strip().lower())
@@ -179,7 +185,7 @@ def create_coaching_snippet(
 def list_marketing_service_packages(
     current_user: User = Depends(get_current_user),
 ):
-    _ = current_user
+    _ensure_admin(current_user)
     return [
         {
             "code": "phase_b_starter",
@@ -211,6 +217,7 @@ def get_comm_profile(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _ensure_admin(current_user)
     profile = (
         db.query(CommunicationTenantProfile)
         .filter(CommunicationTenantProfile.organization_id == current_user.organization_id)

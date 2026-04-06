@@ -9,7 +9,7 @@ from app.main import app
 from app.models.core import Customer, Organization, Reminder, User, _utcnow
 
 
-_AUTH_EMAIL = "sms-owner@example.com"
+_AUTH_EMAIL = "support@frontdeskpro.com"
 _AUTH_PASSWORD = "smsownerpass"
 _AUTH_ORG = "SMS Suppression Org"
 
