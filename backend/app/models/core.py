@@ -37,6 +37,8 @@ class Organization(Base):
     marketing_campaign_recipients = relationship("MarketingCampaignRecipient", back_populates="organization")
     help_articles = relationship("HelpArticle", back_populates="organization")
     coaching_snippets = relationship("CoachingSnippet", back_populates="organization")
+    comm_profile = relationship("CommunicationTenantProfile", back_populates="organization", uselist=False)
+    sms_opt_outs = relationship("SmsOptOut", back_populates="organization")
 
 class User(Base):
     __tablename__ = "users"
@@ -160,6 +162,9 @@ class Reminder(Base):
     status = Column(String, nullable=False, default="pending")    # pending | sent | dismissed
     due_at = Column(DateTime, nullable=False, index=True)          # when the follow-up is due
     sent_at = Column(DateTime)                                     # set when status → sent
+    delivered_at = Column(DateTime)
+    responded_at = Column(DateTime)
+    external_message_id = Column(String)
     dispatch_attempts = Column(Integer, nullable=False, default=0)
     last_dispatch_error = Column(Text)
     # Optional context links — a reminder may be for a lead, job, or standalone
@@ -312,3 +317,29 @@ class CoachingSnippet(Base):
     created_at = Column(DateTime, default=_utcnow, nullable=False)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
     organization = relationship("Organization", back_populates="coaching_snippets")
+
+
+class CommunicationTenantProfile(Base):
+    __tablename__ = "communication_tenant_profiles"
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, unique=True)
+    active = Column(Integer, nullable=False, default=1)
+    twilio_account_sid = Column(String)
+    twilio_auth_token = Column(String)
+    twilio_messaging_service_sid = Column(String)
+    twilio_phone_number = Column(String)
+    retell_agent_id = Column(String)
+    retell_phone_number = Column(String)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
+    organization = relationship("Organization", back_populates="comm_profile")
+
+
+class SmsOptOut(Base):
+    __tablename__ = "sms_opt_outs"
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    phone = Column(String, nullable=False, index=True)
+    source = Column(String, nullable=False, default="customer_reply")
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+    organization = relationship("Organization", back_populates="sms_opt_outs")

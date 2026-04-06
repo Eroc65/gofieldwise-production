@@ -357,3 +357,92 @@ export async function listTechnicians({ token }) {
     },
   });
 }
+
+export async function getAIGuideSettings({ token }) {
+  return apiFetch("/api/org/ai-guide", {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function updateAIGuideSettings({ token, enabled, stage }) {
+  return apiFetch("/api/org/ai-guide", {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ enabled: Boolean(enabled), stage }),
+  });
+}
+
+export async function listHelpArticles({ token, contextKey }) {
+  const query = new URLSearchParams();
+  if (contextKey) {
+    query.set("context_key", contextKey);
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiFetch(`/api/help/articles${suffix}`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function createHelpArticle({ token, payload }) {
+  return apiFetch("/api/help/articles", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listCoachingSnippets({ token, trade }) {
+  const query = new URLSearchParams();
+  if (trade) {
+    query.set("trade", trade);
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiFetch(`/api/coaching/snippets${suffix}`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function createCoachingSnippet({ token, payload }) {
+  return apiFetch("/api/coaching/snippets", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listMarketingServicePackages({ token }) {
+  return apiFetch("/api/marketing/service-packages", {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function runReactivationEngine({ token, lookbackDays = 180, limit = 250, dryRun = false }) {
+  return apiFetch("/api/marketing/reactivation/run", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ lookback_days: lookbackDays, limit, dry_run: dryRun }),
+  });
+}
+
+export async function getCommProfile({ token }) {
+  return apiFetch("/api/org/comm-profile", {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function updateCommProfile({ token, payload }) {
+  return apiFetch("/api/org/comm-profile", {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getPublicStatus() {
+  return apiFetch("/api/status", { method: "GET" });
+}

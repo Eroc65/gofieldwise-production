@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -5,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..api.auth import get_current_user, normalize_user_role
 from ..core.db import get_db
-from ..models.core import CoachingSnippet, HelpArticle, Organization, User
+from ..models.core import CoachingSnippet, CommunicationTenantProfile, HelpArticle, Organization, Reminder, SmsOptOut, User
 from ..schemas.platform import (
     AIGuideSettingsOut,
     AIGuideSettingsUpdate,
@@ -14,11 +15,19 @@ from ..schemas.platform import (
     HelpArticleCreate,
     HelpArticleOut,
     MarketingServicePackageOut,
+    CommunicationTenantProfileOut,
+    CommunicationTenantProfileUpdate,
+    TwilioInboundMessageIn,
+    TwilioStatusEventIn,
 )
 
 router = APIRouter()
 
 _ALLOWED_ADMIN_ROLES = {"owner", "admin"}
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _ensure_admin(user: User) -> None:
@@ -195,3 +204,125 @@ def list_marketing_service_packages(
             ],
         },
     ]
+
+
+@router.get("/org/comm-profile", response_model=CommunicationTenantProfileOut)
+def get_comm_profile(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    profile = (
+        db.query(CommunicationTenantProfile)
+        .filter(CommunicationTenantProfile.organization_id == current_user.organization_id)
+        .first()
+    )
+    if not profile:
+        return {
+            "organization_id": int(cast(int, current_user.organization_id)),
+            "active": False,
+            "twilio_account_sid": None,
+            "twilio_messaging_service_sid": None,
+            "twilio_phone_number": None,
+            "retell_agent_id": None,
+            "retell_phone_number": None,
+        }
+    return {
+        "organization_id": int(cast(int, profile.organization_id)),
+        "active": bool(int(cast(int, profile.active))),
+        "twilio_account_sid": cast(str | None, profile.twilio_account_sid),
+        "twilio_messaging_service_sid": cast(str | None, profile.twilio_messaging_service_sid),
+        "twilio_phone_number": cast(str | None, profile.twilio_phone_number),
+        "retell_agent_id": cast(str | None, profile.retell_agent_id),
+        "retell_phone_number": cast(str | None, profile.retell_phone_number),
+    }
+
+
+@router.patch("/org/comm-profile", response_model=CommunicationTenantProfileOut)
+def update_comm_profile(
+    payload: CommunicationTenantProfileUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ensure_admin(current_user)
+    org_id = int(cast(int, current_user.organization_id))
+
+    profile = (
+        db.query(CommunicationTenantProfile)
+        .filter(CommunicationTenantProfile.organization_id == org_id)
+        .first()
+    )
+    if not profile:
+        profile = CommunicationTenantProfile(organization_id=org_id)
+        db.add(profile)
+        db.flush()
+
+    setattr(profile, "active", 1 if payload.active else 0)
+    setattr(profile, "twilio_account_sid", payload.twilio_account_sid)
+    setattr(profile, "twilio_auth_token", payload.twilio_auth_token)
+    setattr(profile, "twilio_messaging_service_sid", payload.twilio_messaging_service_sid)
+    setattr(profile, "twilio_phone_number", payload.twilio_phone_number)
+    setattr(profile, "retell_agent_id", payload.retell_agent_id)
+    setattr(profile, "retell_phone_number", payload.retell_phone_number)
+    db.commit()
+    db.refresh(profile)
+
+    return {
+        "organization_id": int(cast(int, profile.organization_id)),
+        "active": bool(int(cast(int, profile.active))),
+        "twilio_account_sid": cast(str | None, profile.twilio_account_sid),
+        "twilio_messaging_service_sid": cast(str | None, profile.twilio_messaging_service_sid),
+        "twilio_phone_number": cast(str | None, profile.twilio_phone_number),
+        "retell_agent_id": cast(str | None, profile.retell_agent_id),
+        "retell_phone_number": cast(str | None, profile.retell_phone_number),
+    }
+
+
+@router.post("/integrations/twilio/inbound/{org_id}")
+def twilio_inbound_message(
+    org_id: int,
+    payload: TwilioInboundMessageIn,
+    db: Session = Depends(get_db),
+):
+    normalized_phone = payload.from_phone.strip()
+    text = payload.body.strip().upper()
+    if text in {"STOP", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"}:
+        existing = (
+            db.query(SmsOptOut)
+            .filter(SmsOptOut.organization_id == org_id, SmsOptOut.phone == normalized_phone)
+            .first()
+        )
+        if not existing:
+            db.add(SmsOptOut(organization_id=org_id, phone=normalized_phone, source="twilio_inbound_stop"))
+            db.commit()
+        return {"ok": True, "action": "opted_out"}
+
+    if text == "HELP":
+        return {"ok": True, "action": "help_requested"}
+
+    return {"ok": True, "action": "message_received"}
+
+
+@router.post("/integrations/twilio/status")
+def twilio_message_status(
+    payload: TwilioStatusEventIn,
+    db: Session = Depends(get_db),
+):
+    reminder = (
+        db.query(Reminder)
+        .filter(Reminder.external_message_id == payload.message_sid)
+        .first()
+    )
+    if not reminder:
+        return {"ok": True, "matched": False}
+
+    status = payload.message_status.strip().lower()
+    if status in {"delivered", "sent"}:
+        if cast(object, reminder.delivered_at) is None:
+            setattr(reminder, "delivered_at", cast(object, reminder.sent_at) or _utcnow())
+    if status in {"failed", "undelivered"}:
+        setattr(reminder, "last_dispatch_error", f"delivery_status={status}")
+    if status in {"received", "read"}:
+        if cast(object, reminder.responded_at) is None:
+            setattr(reminder, "responded_at", cast(object, reminder.sent_at) or _utcnow())
+    db.commit()
+    return {"ok": True, "matched": True}

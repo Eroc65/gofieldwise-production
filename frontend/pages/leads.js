@@ -294,6 +294,8 @@ export default function LeadInboxPage() {
         <p>Single-screen operator workflow to move inbound leads from new to booked without context switching.</p>
         <div className="hero-actions">
           <a className="ghost-link" href="/metrics">Open Metrics</a>
+          <a className="ghost-link" href="/platform">Platform Console</a>
+          <a className="ghost-link" href="/status">Status</a>
         </div>
       </section>
 

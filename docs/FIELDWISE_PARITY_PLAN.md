@@ -121,6 +121,19 @@ FrontDesk Pro is AI-first front desk software for trades businesses. It must mat
 - Done-for-you marketing service packaging baseline is live: `/api/marketing/service-packages`.
 - Public status page endpoint is live: `/api/status`.
 - Native mobile starter scaffold is live in `mobile/` with Expo app metadata and base app entrypoint.
+- Native release scaffolding now includes EAS build config in `mobile/eas.json`.
+- Twilio webhook and tenant communication profile APIs are live for multi-tenant messaging and STOP suppression.
+
+## Build Step Completion Snapshot
+1. Twilio delivery + webhook + suppression: implemented.
+2. Frontend surfaces for platform controls: implemented (`/platform`, `/status`).
+3. Mobile release scaffolding: implemented (Expo + EAS config).
+4. Multi-tenant voice/SMS profile scaffolding: implemented (`/api/org/comm-profile`).
+5. Operational status exposure: implemented (`/api/status` + `/status` page).
+
+External prerequisites still required for full production activation:
+- Real Twilio and Retell credentials per tenant.
+- App Store and Google Play signing and publisher accounts.
 
 ## Delivery Phases
 1. Foundation parity hardening: receptionist, SMS, dunning, auth recovery, admin analytics baseline.

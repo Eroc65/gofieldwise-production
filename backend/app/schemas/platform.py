@@ -63,3 +63,34 @@ class MarketingServicePackageOut(BaseModel):
     monthly_price_usd: int
     summary: str
     includes: list[str]
+
+
+class CommunicationTenantProfileUpdate(BaseModel):
+    active: bool = True
+    twilio_account_sid: Optional[str] = None
+    twilio_auth_token: Optional[str] = None
+    twilio_messaging_service_sid: Optional[str] = None
+    twilio_phone_number: Optional[str] = None
+    retell_agent_id: Optional[str] = None
+    retell_phone_number: Optional[str] = None
+
+
+class CommunicationTenantProfileOut(BaseModel):
+    organization_id: int
+    active: bool
+    twilio_account_sid: Optional[str] = None
+    twilio_messaging_service_sid: Optional[str] = None
+    twilio_phone_number: Optional[str] = None
+    retell_agent_id: Optional[str] = None
+    retell_phone_number: Optional[str] = None
+
+
+class TwilioInboundMessageIn(BaseModel):
+    from_phone: str = Field(min_length=7, max_length=32)
+    body: str = Field(min_length=1, max_length=1600)
+    message_sid: Optional[str] = None
+
+
+class TwilioStatusEventIn(BaseModel):
+    message_sid: str
+    message_status: str

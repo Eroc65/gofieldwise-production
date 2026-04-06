@@ -41,6 +41,9 @@ class ReminderOut(BaseModel):
     status: str
     due_at: datetime
     sent_at: Optional[datetime] = None
+    delivered_at: Optional[datetime] = None
+    responded_at: Optional[datetime] = None
+    external_message_id: Optional[str] = None
     dispatch_attempts: int
     last_dispatch_error: Optional[str] = None
     lead_id: Optional[int] = None

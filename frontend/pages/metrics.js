@@ -88,6 +88,8 @@ export default function MetricsPage() {
             {busyAction === "metrics" ? "Loading..." : "Load Metrics"}
           </button>
           <a className="ghost-link" href="/leads">Open Lead Inbox</a>
+          <a className="ghost-link" href="/platform">Platform Console</a>
+          <a className="ghost-link" href="/status">Status</a>
         </div>
       </section>
 

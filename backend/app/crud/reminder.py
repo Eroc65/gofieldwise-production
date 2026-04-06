@@ -4,7 +4,8 @@ from typing import Any, List, Optional, cast
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from ..models.core import Customer, Job, REMINDER_STATUSES, Reminder, _utcnow
+from ..models.core import Customer, Job, REMINDER_STATUSES, Reminder, SmsOptOut, _utcnow
+from ..services.twilio_gateway import send_sms_message
 
 
 # Default follow-up window: if a new lead sits uncontacted for this long, a
@@ -298,6 +299,40 @@ def _channel_contact_available(reminder: Reminder) -> bool:
     return False
 
 
+def _normalize_phone(phone: str | None) -> str | None:
+    if not phone:
+        return None
+    chars = [ch for ch in str(phone).strip() if ch.isdigit() or ch == "+"]
+    normalized = "".join(chars)
+    return normalized or None
+
+
+def _reminder_destination(reminder: Reminder) -> tuple[str | None, str | None]:
+    phone = None
+    email = None
+    if reminder.customer:
+        phone = reminder.customer.phone
+        email = reminder.customer.email
+    elif reminder.lead:
+        phone = reminder.lead.phone
+        email = reminder.lead.email
+    return _normalize_phone(phone), email
+
+
+def _is_sms_opted_out(db: Session, organization_id: int, phone: str | None) -> bool:
+    if not phone:
+        return False
+    row = (
+        db.query(SmsOptOut)
+        .filter(
+            SmsOptOut.organization_id == organization_id,
+            SmsOptOut.phone == phone,
+        )
+        .first()
+    )
+    return row is not None
+
+
 def dispatch_due_reminders(
     db: Session,
     organization_id: int,
@@ -339,6 +374,29 @@ def dispatch_due_reminders(
             reminder_obj.updated_at = now
             failed.append({"id": int(cast(int, reminder.id)), "error": str(cast(str, reminder.last_dispatch_error))})
             continue
+
+        channel = str(cast(str, reminder.channel))
+        phone, _email = _reminder_destination(reminder)
+        if channel == "sms" and _is_sms_opted_out(db, organization_id, phone):
+            reminder_obj.status = "dismissed"
+            reminder_obj.last_dispatch_error = "Suppressed due to SMS opt-out"
+            reminder_obj.updated_at = now
+            failed.append({"id": int(cast(int, reminder.id)), "error": str(cast(str, reminder_obj.last_dispatch_error))})
+            continue
+
+        if channel == "sms" and phone:
+            ok, external_message_id, sms_error = send_sms_message(
+                db,
+                organization_id=organization_id,
+                to_phone=phone,
+                body=str(cast(str, reminder.message)),
+            )
+            if not ok:
+                reminder_obj.last_dispatch_error = sms_error or "SMS dispatch failed"
+                reminder_obj.updated_at = now
+                failed.append({"id": int(cast(int, reminder.id)), "error": str(cast(str, reminder_obj.last_dispatch_error))})
+                continue
+            reminder_obj.external_message_id = external_message_id
 
         reminder_obj.status = "sent"
         reminder_obj.sent_at = now

@@ -24,6 +24,11 @@ def _assert_schema_compatibility() -> None:
     required_user_columns = {
         "role",
     }
+    required_reminder_columns = {
+        "delivered_at",
+        "responded_at",
+        "external_message_id",
+    }
 
     with engine.connect() as connection:
         inspector = inspect(connection)
@@ -94,6 +99,18 @@ def _assert_schema_compatibility() -> None:
                 "Run `alembic upgrade head` (or reset local sqlite test.db) before starting the API."
             )
 
+        if "communication_tenant_profiles" not in table_names:
+            raise RuntimeError(
+                "Database schema mismatch. Missing table: communication_tenant_profiles. "
+                "Run `alembic upgrade head` (or reset local sqlite test.db) before starting the API."
+            )
+
+        if "sms_opt_outs" not in table_names:
+            raise RuntimeError(
+                "Database schema mismatch. Missing table: sms_opt_outs. "
+                "Run `alembic upgrade head` (or reset local sqlite test.db) before starting the API."
+            )
+
         if "organizations" in table_names:
             organization_columns = {column["name"] for column in inspector.get_columns("organizations")}
             missing_org_columns = sorted(required_organization_columns - organization_columns)
@@ -112,6 +129,17 @@ def _assert_schema_compatibility() -> None:
                 missing_text = ", ".join(missing_user_columns)
                 raise RuntimeError(
                     "Database schema mismatch for users table. "
+                    f"Missing columns: {missing_text}. "
+                    "Run `alembic upgrade head` (or reset local sqlite test.db) before starting the API."
+                )
+
+        if "reminders" in table_names:
+            reminder_columns = {column["name"] for column in inspector.get_columns("reminders")}
+            missing_reminder_columns = sorted(required_reminder_columns - reminder_columns)
+            if missing_reminder_columns:
+                missing_text = ", ".join(missing_reminder_columns)
+                raise RuntimeError(
+                    "Database schema mismatch for reminders table. "
                     f"Missing columns: {missing_text}. "
                     "Run `alembic upgrade head` (or reset local sqlite test.db) before starting the API."
                 )
