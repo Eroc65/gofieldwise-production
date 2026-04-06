@@ -39,6 +39,13 @@ def _api_get(base: str, token: str, path: str) -> Any:
     return resp.json()
 
 
+def _api_get_safe(base: str, token: str, path: str) -> tuple[Any | None, str | None]:
+    try:
+        return _api_get(base, token, path), None
+    except Exception as exc:
+        return None, str(exc)
+
+
 def _api_post(base: str, token: str, path: str, payload: dict) -> Any:
     resp = httpx.post(
         f"{base}{path}",
@@ -58,28 +65,44 @@ def main() -> int:
 
     token = _login(base, email, password)
 
-    status = _api_get(base, token, "/api/status")
-    guide = _api_get(base, token, "/api/org/ai-guide")
-    comm_profile = _api_get(base, token, "/api/org/comm-profile")
-    packages = _api_get(base, token, "/api/marketing/service-packages")
-    reactivation_dry = _api_post(
-        base,
-        token,
-        "/api/marketing/reactivation/run",
-        {"lookback_days": 180, "limit": 20, "dry_run": True},
-    )
+    status, status_err = _api_get_safe(base, token, "/api/status")
+    guide, guide_err = _api_get_safe(base, token, "/api/org/ai-guide")
+    comm_profile, comm_err = _api_get_safe(base, token, "/api/org/comm-profile")
+    packages, pkg_err = _api_get_safe(base, token, "/api/marketing/service-packages")
+
+    reactivation_dry = None
+    react_err = None
+    try:
+        reactivation_dry = _api_post(
+            base,
+            token,
+            "/api/marketing/reactivation/run",
+            {"lookback_days": 180, "limit": 20, "dry_run": True},
+        )
+    except Exception as exc:
+        react_err = str(exc)
 
     readiness = {
-        "status_endpoint_ok": bool(status.get("status") == "ok"),
-        "ai_guide_endpoint_ok": bool("enabled" in guide and "stage" in guide),
-        "comm_profile_active": bool(comm_profile.get("active", False)),
-        "twilio_sid_present": bool(comm_profile.get("twilio_account_sid")),
-        "retell_agent_present": bool(comm_profile.get("retell_agent_id")),
+        "status_endpoint_ok": bool(status and status.get("status") == "ok"),
+        "ai_guide_endpoint_ok": bool(guide and "enabled" in guide and "stage" in guide),
+        "comm_profile_active": bool(comm_profile and comm_profile.get("active", False)),
+        "twilio_sid_present": bool(comm_profile and comm_profile.get("twilio_account_sid")),
+        "retell_agent_present": bool(comm_profile and comm_profile.get("retell_agent_id")),
         "packages_present": isinstance(packages, list) and len(packages) > 0,
-        "reactivation_dry_run_ok": "candidate_count" in reactivation_dry,
+        "reactivation_dry_run_ok": bool(reactivation_dry and "candidate_count" in reactivation_dry),
     }
 
     blockers = []
+    if status_err:
+        blockers.append(status_err)
+    if guide_err:
+        blockers.append(guide_err)
+    if comm_err:
+        blockers.append(comm_err)
+    if pkg_err:
+        blockers.append(pkg_err)
+    if react_err:
+        blockers.append(react_err)
     if not readiness["comm_profile_active"]:
         blockers.append("Communication profile is inactive")
     if not readiness["twilio_sid_present"]:
