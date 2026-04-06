@@ -31,3 +31,18 @@ class MarketingCampaignLaunchOut(BaseModel):
     campaign_id: int
     status: str
     generated_recipients: int
+
+
+class ReactivationRunRequest(BaseModel):
+    lookback_days: int = Field(default=180, ge=30, le=1460)
+    limit: int = Field(default=250, ge=1, le=1000)
+    dry_run: bool = False
+
+
+class ReactivationRunOut(BaseModel):
+    organization_id: int
+    lookback_days: int
+    dry_run: bool
+    candidate_count: int
+    queued_count: int
+    queued_customer_ids: list[int]

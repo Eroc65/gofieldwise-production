@@ -1,66 +1,129 @@
-# FrontDesk Pro vs Fieldwise: Must-Have Delivery Plan
+# FrontDesk Pro Feature Master Spec (Fieldwise Parity + Beyond)
 
-## Objective
-FrontDesk Pro will match Fieldwise core operations and ship the next-gen capabilities Fieldwise does not yet provide.
+## Product Statement
+FrontDesk Pro is AI-first front desk software for trades businesses. It must match Fieldwise operational capability and also ship the advanced sections listed below, including areas Fieldwise has not yet completed.
 
-## Capability Matrix
+## Core Feature Inventory
 
-### Core Operations (Fieldwise parity)
-- Customer intake: In place (lead intake + customer CRUD) 
-- Customer database: In place
-- Quotes and quote-to-job: In place (estimates and conversion workflow)
-- Scheduling and dispatch: In place (technician assignment, dispatch statuses)
-- Job lifecycle and notes: In place (status timeline, notes, completion workflow)
-- Invoicing and payments tracking: In place (invoice lifecycle + payment status)
-- Follow-ups and reminders: In place (reminder engine, queue, escalation)
-- Materials and pricebook: Planned (packages + materials service catalog)
-- Marketing landing page: Planned polish pass
-- Trial and demo path: In progress
-- Mobile PWA: In progress
-- Support/help center: In progress
+### AI Receptionist - Adrian
+- Retell AI + Twilio voice intake.
+- Trade-specific conditional intake for HVAC, Plumbing, Electrical, and General.
+- 120-second demo cap for sandbox callers.
+- Urgency auto-escalation for emergency scenarios.
+- Post-call extraction for name, service type, address, and urgency.
+- Live extraction feed on landing page.
+- Gemini 2.0 Flash for cost-optimized orchestration.
+- Phone number reference: +1 (602) 932-0967.
 
-### Beyond Fieldwise (explicitly requested)
-- Lead generation and marketing tools: New delivery stream started
-- Advertising services control plane: Planned
-- Autonomous voice intake (Retell + Twilio): Planned integration track
-- Review Harvester: Implemented backend foundation (campaign + launch APIs)
-- Re-activation Engine: Implemented backend foundation (campaign + launch APIs)
-- Native iOS/Android wrappers: Planned
-- Tribal knowledge capture and junior-tech coaching: Planned
+### SMS Infrastructure (Twilio)
+- A2P 10DLC-compliant messaging.
+- Inbound and outbound SMS via Twilio Messaging Service.
+- Post-call SMS confirmations.
+- Job-status automated texts (on-the-way, confirmation, invoice).
+- Missed-call text-back.
+- A2P starter brand registration support.
 
-## What Was Implemented in This Change
-- New marketing campaign domain for owner/admin/dispatcher roles.
-- New campaign types:
-  - review_harvester
-  - reactivation
-- New APIs:
-  - GET /api/marketing/campaigns
-  - POST /api/marketing/campaigns
-  - POST /api/marketing/campaigns/{campaign_id}/launch
-- Launch execution creates organization-scoped reminder tasks to operationalize outreach immediately.
+### Dead Lead Auto-Recovery
+- 30-minute non-conversion auto follow-up SMS.
+- 1-hour recovery email with recap and booking link.
+- 24-hour nudge SMS.
+- Stop triggers: booked, replied, called back, or marked not interested.
+- Lead recovery state labels: Recovering, Recovered, Lost.
 
-## Near-Term Build Sequence (next 3 sprints)
-1. Sprint M1: Marketing Ops Foundation
-- Ship campaign analytics and recipient status tracking.
-- Add suppression rules (do-not-contact, recent decline, duplicate prevention windows).
-- Add export and audit views for campaign outcomes.
+### Lead Management and Outreach
+- Oklahoma business scraper (CIB, SOS, ORCA, YellowPages).
+- Outreach leads table with source tracking.
+- Dynamic trade filter.
+- Deduplication logic.
+- Admin controls for scraper runs.
 
-2. Sprint M2: Review Harvester v1
-- Post-job review link templates by channel.
-- Time-delayed sends based on completion timestamp.
-- Response capture webhook and reminder cancellation.
+### Ads Performance Dashboard
+- Traffic source breakdown (Meta, Twitter, Direct, Organic).
+- Cost Per Lead (CPL) calculator.
+- UTM tracking on Meta Ads.
+- Date range filters (7d, 30d, 90d).
+- Color-coded CPL thresholds.
 
-3. Sprint M3: Re-activation Engine v1
-- Segment dormant customers by service type and elapsed time.
-- Offer templates with booking intent routing.
-- Attribution tagging from outreach to booked jobs/invoices.
+### Admin Dashboard
+- Unified admin navigation (Dashboard, Leads, Analytics, Ads Management).
+- Admin login gate.
+- Call logs with quality scores and extraction data.
+- Visitor analytics (traffic sources, CTA clicks, scroll depth, funnel).
+- Warm leads management.
 
-## Constraints and Safeguards
-- All campaign operations are organization-scoped.
-- Campaign launch is idempotent at the campaign level (single launch enforced).
-- Actions are role-gated to owner/admin/dispatcher.
+### Ads Management Page
+- Meta Ads status and daily spend.
+- Twitter activity.
+- Cold email tracking.
+- UTM references.
 
-## Planned Integrations
-- Twilio for outbound SMS and response webhooks.
-- Retell AI for voice intake handoff into lead + job creation.
-- Ad platform connectors for managed campaign visibility (Meta/Google) in later phase.
+### Invoice Dunning Automation
+- Auto-reminders for unpaid invoices (Day 1, 7, 14).
+- SMS and email reminders.
+- Overdue invoice dashboard with dunning status.
+- Manual overrides: skip, pause, escalate.
+- Auto-stop when payment is received.
+
+### Authentication and Security
+- Forgot password flow with reset link and 1-hour expiry.
+- Forgot username/email recovery by business name.
+- Shared recovery support across live, trial, demo, and admin login paths.
+
+### Upgrade and Subscription
+- Stripe checkout for $200/month plan.
+- Upgrade page with feature summary.
+- Post-subscription dashboard experience.
+- Cancellation at period end.
+- Account settings with plan details.
+
+### SEO and Indexing
+- sitemap.xml and robots.txt.
+- Meta tags and Open Graph tags on all pages.
+- JSON-LD (LocalBusiness and SoftwareApplication).
+- Canonical URLs.
+- SPA catch-all routes to avoid crawler 404s.
+
+### Legal and Compliance
+- Privacy Policy with A2P SMS compliance language.
+- Terms of Service with HELP and STOP instructions.
+- Cookie Policy page.
+- CCPA Do Not Share opt-out page.
+
+### Landing Page
+- Phone-based Call Adrian demo.
+- Live extraction feed.
+- Switch in 24 Hours positioning.
+- Competitor comparison table.
+- 9-step animated How It Works section.
+- Proof section with screenshots.
+- Social profile links in footer.
+- Hero messaging: Built for the first van. Ready for the full crew.
+- Nationwide targeting copy.
+- Meta Pixel tracking (ID: 938510368760818).
+
+### Multi-Tenant Architecture
+- Twilio subaccounts per tenant.
+- Per-tenant phone numbers.
+- Per-tenant Retell agents and knowledge bases.
+- Tenant provisioning API.
+- Messaging service per tenant.
+
+## Confirmed Not Built Yet
+- Native mobile apps (App Store and Google Play).
+- Done-for-you marketing service packaging (Phase B).
+- AI Guide in-app onboarding toggle.
+- Tribal knowledge capture and junior tech coaching.
+- Contextual in-app help (phase 3).
+- Public status page.
+
+## FrontDesk Pro Current Delta
+- Marketing campaign backend foundation is in place for review and reactivation campaign creation and launch APIs.
+- Review Harvester baseline automation is live: completing a job auto-creates an SMS review request reminder.
+- Re-activation Engine baseline automation is live: `/api/marketing/reactivation/run` queues SMS reminders for customers with no completed job in the configured lookback window.
+- End-to-end delivery integrations are still required for native apps, AI Guide, contextual help, status page, and advanced coaching.
+
+## Delivery Phases
+1. Foundation parity hardening: receptionist, SMS, dunning, auth recovery, admin analytics baseline.
+2. Growth systems: outreach scraper, ads dashboard, ads management, UTM and CPL instrumentation.
+3. Beyond parity: full review harvester, reactivation engine, multitenant voice stack, tribal coaching.
+4. Platform maturity: native apps, contextual help, status page, done-for-you marketing service packaging.

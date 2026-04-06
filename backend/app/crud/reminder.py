@@ -1,9 +1,10 @@
 from datetime import timedelta
 from typing import Any, List, Optional, cast
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from ..models.core import REMINDER_STATUSES, Reminder, _utcnow
+from ..models.core import Customer, Job, REMINDER_STATUSES, Reminder, _utcnow
 
 
 # Default follow-up window: if a new lead sits uncontacted for this long, a
@@ -91,6 +92,121 @@ def create_job_completion_reminder(
     db.commit()
     db.refresh(reminder)
     return reminder
+
+
+def create_review_request_reminder(
+    db: Session,
+    job_id: int,
+    customer_id: int,
+    organization_id: int,
+    days_until_due: int = 1,
+) -> Reminder:
+    """Create a post-completion review request reminder for SMS dispatch."""
+    due = _utcnow() + timedelta(days=days_until_due)
+    reminder = Reminder(
+        message=f"Review request: Thanks for your service visit on job #{job_id}. We'd love your feedback.",
+        channel="sms",
+        status="pending",
+        due_at=due,
+        job_id=job_id,
+        customer_id=customer_id,
+        organization_id=organization_id,
+    )
+    db.add(reminder)
+    db.commit()
+    db.refresh(reminder)
+    return reminder
+
+
+def run_reactivation_engine(
+    db: Session,
+    organization_id: int,
+    lookback_days: int = 180,
+    limit: int = 250,
+    dry_run: bool = False,
+) -> dict:
+    """Queue SMS reminders for customers with no completed jobs in the lookback window."""
+    lookback_days = max(30, lookback_days)
+    limit = min(max(limit, 1), 1000)
+    cutoff = _utcnow() - timedelta(days=lookback_days)
+
+    latest_completed = (
+        db.query(
+            Job.customer_id.label("customer_id"),
+            func.max(Job.completed_at).label("last_completed_at"),
+        )
+        .filter(
+            Job.organization_id == organization_id,
+            Job.completed_at.isnot(None),
+        )
+        .group_by(Job.customer_id)
+        .subquery()
+    )
+
+    stale_customers = (
+        db.query(Customer)
+        .outerjoin(latest_completed, latest_completed.c.customer_id == Customer.id)
+        .filter(Customer.organization_id == organization_id)
+        .filter(
+            (latest_completed.c.last_completed_at.is_(None))
+            | (latest_completed.c.last_completed_at < cutoff)
+        )
+        .limit(limit)
+        .all()
+    )
+
+    if dry_run:
+        return {
+            "organization_id": organization_id,
+            "lookback_days": lookback_days,
+            "dry_run": True,
+            "candidate_count": len(stale_customers),
+            "queued_count": 0,
+            "queued_customer_ids": [],
+        }
+
+    queued_ids: list[int] = []
+    for customer in stale_customers:
+        customer_id = int(cast(int, customer.id))
+
+        existing_pending = (
+            db.query(Reminder)
+            .filter(
+                Reminder.organization_id == organization_id,
+                Reminder.customer_id == customer_id,
+                Reminder.status == "pending",
+                Reminder.message.like("Reactivation:%"),
+            )
+            .first()
+        )
+        if existing_pending:
+            continue
+
+        message = (
+            "Reactivation: It has been a while since your last service. "
+            "Reply to book a visit this week."
+        )
+        db.add(
+            Reminder(
+                message=message,
+                channel="sms",
+                status="pending",
+                due_at=_utcnow(),
+                customer_id=customer_id,
+                organization_id=organization_id,
+            )
+        )
+        queued_ids.append(customer_id)
+
+    db.commit()
+    return {
+        "organization_id": organization_id,
+        "lookback_days": lookback_days,
+        "dry_run": False,
+        "candidate_count": len(stale_customers),
+        "queued_count": len(queued_ids),
+        "queued_customer_ids": queued_ids,
+    }
 
 
 def get_reminder(

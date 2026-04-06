@@ -1,4 +1,6 @@
 from datetime import timedelta
+from datetime import datetime
+from datetime import timezone
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -11,7 +13,6 @@ from app.main import app
 from app.models.core import Customer
 from app.models.core import Job
 from app.models.core import Organization
-from app.models.core import Reminder
 from app.models.core import User
 from app.models.core import _utcnow
 
@@ -167,3 +168,78 @@ def test_campaign_launch_is_not_relaunchable() -> None:
 
         second = client.post(f"/api/marketing/campaigns/{campaign_id}/launch", headers=headers)
         assert second.status_code == 409
+
+
+def test_review_harvester_auto_creates_sms_reminder_on_job_complete() -> None:
+    headers = _auth_headers()
+    with TestClient(app) as client:
+        create_customer = client.post(
+            "/api/customers",
+            json={"name": "Review Auto Customer", "email": "review-auto@example.com", "phone": "555-0190"},
+            headers=headers,
+        )
+        assert create_customer.status_code == 201
+        customer_id = create_customer.json()["id"]
+
+        create_job = client.post(
+            "/api/jobs",
+            json={"title": "Review Auto Job", "customer_id": customer_id},
+            headers=headers,
+        )
+        assert create_job.status_code == 201
+        job_id = create_job.json()["id"]
+
+        create_tech = client.post(
+            "/api/technicians",
+            json={"name": "Review Auto Tech"},
+            headers=headers,
+        )
+        assert create_tech.status_code == 201
+        technician_id = create_tech.json()["id"]
+
+        dispatch_job = client.patch(
+            f"/api/jobs/{job_id}/dispatch",
+            json={
+                "technician_id": technician_id,
+                "scheduled_time": datetime.now(timezone.utc).isoformat(),
+            },
+            headers=headers,
+        )
+        assert dispatch_job.status_code == 200
+
+        complete_job = client.patch(
+            f"/api/jobs/{job_id}/complete",
+            json={"completion_notes": "done"},
+            headers=headers,
+        )
+        assert complete_job.status_code == 200
+
+        reminders = client.get(f"/api/reminders?job_id={job_id}", headers=headers)
+        assert reminders.status_code == 200
+        sms_review = [
+            r
+            for r in reminders.json()
+            if r["channel"] == "sms" and "review request" in r["message"].lower()
+        ]
+        assert len(sms_review) >= 1
+
+
+def test_reactivation_engine_run_endpoint_queues_sms_for_stale_customers() -> None:
+    headers = _auth_headers()
+    with TestClient(app) as client:
+        run = client.post(
+            "/api/marketing/reactivation/run",
+            json={"lookback_days": 180, "limit": 100, "dry_run": False},
+            headers=headers,
+        )
+        assert run.status_code == 200
+        payload = run.json()
+        assert payload["lookback_days"] == 180
+        assert payload["queued_count"] >= 1
+
+        reminders = client.get("/api/reminders", headers=headers)
+        assert reminders.status_code == 200
+        reactivation_msgs = [
+            r for r in reminders.json() if r["channel"] == "sms" and r["message"].startswith("Reactivation:")
+        ]
+        assert len(reactivation_msgs) >= 1

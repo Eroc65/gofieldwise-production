@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 
 from ..models.core import Customer, Estimate, Job, JobActivity, JOB_VALID_TRANSITIONS, Reminder, Technician
+from .reminder import create_review_request_reminder
 from ..services.notifications import send_job_lifecycle_notification
 
 CENTRAL_TZ = ZoneInfo("America/Chicago")
@@ -321,6 +322,15 @@ def complete_job(
     )
     db.add(follow_up_reminder)
     db.commit()
+
+    # Auto-create review request reminder (Review Harvester baseline automation).
+    create_review_request_reminder(
+        db,
+        job_id=int(db_job.id),
+        customer_id=int(db_job.customer_id),
+        organization_id=organization_id,
+        days_until_due=1,
+    )
     
     # Auto-create invoice from approved estimate if one exists and no invoice yet
     from .invoice import create_invoice_from_estimate

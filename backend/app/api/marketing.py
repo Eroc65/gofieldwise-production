@@ -10,10 +10,13 @@ from ..crud.marketing import create_campaign
 from ..crud.marketing import get_campaign
 from ..crud.marketing import launch_campaign
 from ..crud.marketing import list_campaigns
+from ..crud.reminder import run_reactivation_engine
 from ..models.core import User
 from ..schemas.marketing import MarketingCampaignCreate
 from ..schemas.marketing import MarketingCampaignLaunchOut
 from ..schemas.marketing import MarketingCampaignOut
+from ..schemas.marketing import ReactivationRunOut
+from ..schemas.marketing import ReactivationRunRequest
 
 
 router = APIRouter()
@@ -64,3 +67,20 @@ def launch_marketing_campaign(
         "status": campaign.status,
         "generated_recipients": generated,
     }
+
+
+@router.post("/marketing/reactivation/run", response_model=ReactivationRunOut)
+def run_reactivation_engine_api(
+    payload: ReactivationRunRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ensure_marketing_access(current_user)
+    org_id = int(cast(int, current_user.organization_id))
+    return run_reactivation_engine(
+        db,
+        organization_id=org_id,
+        lookback_days=payload.lookback_days,
+        limit=payload.limit,
+        dry_run=payload.dry_run,
+    )
