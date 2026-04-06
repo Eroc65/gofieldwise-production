@@ -1,5 +1,8 @@
 # FrontDesk Pro — Sprint Plan (v1)
 
+Related roadmap:
+- [Fieldwise Parity and Beyond Plan](./FIELDWISE_PARITY_PLAN.md)
+
 ## Next 2 Sprints — GoFieldWise Execution Plan
 
 Execution artifacts for Sprint A:

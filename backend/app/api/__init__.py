@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from . import auth, customers, estimates, invoices, jobs, leads, protected, reminders, reports, technicians
+from . import auth, customers, estimates, invoices, jobs, leads, marketing, protected, reminders, reports, technicians
 
 
 router = APIRouter()
@@ -14,3 +14,4 @@ router.include_router(reminders.router, prefix="/api", tags=["reminders"])
 router.include_router(invoices.router, prefix="/api", tags=["invoices"])
 router.include_router(reports.router, prefix="/api", tags=["reports"])
 router.include_router(estimates.router, prefix="/api", tags=["estimates"])
+router.include_router(marketing.router, prefix="/api", tags=["marketing"])

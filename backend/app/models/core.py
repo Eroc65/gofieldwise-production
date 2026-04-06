@@ -31,6 +31,8 @@ class Organization(Base):
     job_activities = relationship("JobActivity", back_populates="organization")
     lead_activities = relationship("LeadActivity", back_populates="organization")
     user_role_events = relationship("UserRoleAuditEvent", back_populates="organization")
+    marketing_campaigns = relationship("MarketingCampaign", back_populates="organization")
+    marketing_campaign_recipients = relationship("MarketingCampaignRecipient", back_populates="organization")
 
 class User(Base):
     __tablename__ = "users"
@@ -52,6 +54,7 @@ class Customer(Base):
     jobs = relationship("Job", back_populates="customer")
     notes = relationship("Note", back_populates="customer")
     reminders = relationship("Reminder", back_populates="customer")
+    marketing_campaign_recipients = relationship("MarketingCampaignRecipient", back_populates="customer")
 
 JOB_VALID_TRANSITIONS: dict[str, set[str]] = {
     "pending": {"approved", "estimate_rejected", "dispatched"},
@@ -240,3 +243,40 @@ class UserRoleAuditEvent(Base):
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
     created_at = Column(DateTime, default=_utcnow, nullable=False)
     organization = relationship("Organization", back_populates="user_role_events")
+
+
+MARKETING_CAMPAIGN_KINDS = ("review_harvester", "reactivation")
+MARKETING_CAMPAIGN_STATUSES = ("draft", "launched")
+MARKETING_RECIPIENT_STATUSES = ("queued", "sent", "failed", "responded")
+
+
+class MarketingCampaign(Base):
+    __tablename__ = "marketing_campaigns"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    kind = Column(String, nullable=False, default="review_harvester")
+    status = Column(String, nullable=False, default="draft")
+    channel = Column(String, nullable=False, default="sms")
+    template = Column(Text)
+    lookback_days = Column(Integer, nullable=False, default=90)
+    launched_at = Column(DateTime)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
+    organization = relationship("Organization", back_populates="marketing_campaigns")
+    recipients = relationship("MarketingCampaignRecipient", back_populates="campaign")
+
+
+class MarketingCampaignRecipient(Base):
+    __tablename__ = "marketing_campaign_recipients"
+    id = Column(Integer, primary_key=True, index=True)
+    campaign_id = Column(Integer, ForeignKey("marketing_campaigns.id"), nullable=False)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
+    status = Column(String, nullable=False, default="queued")
+    reminder_id = Column(Integer, ForeignKey("reminders.id"), nullable=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+    sent_at = Column(DateTime)
+    campaign = relationship("MarketingCampaign", back_populates="recipients")
+    customer = relationship("Customer", back_populates="marketing_campaign_recipients")
+    organization = relationship("Organization", back_populates="marketing_campaign_recipients")
