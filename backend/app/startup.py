@@ -18,6 +18,8 @@ def _assert_schema_compatibility() -> None:
     }
     required_organization_columns = {
         "intake_key",
+        "ai_guide_enabled",
+        "ai_guide_stage",
     }
     required_user_columns = {
         "role",
@@ -77,6 +79,18 @@ def _assert_schema_compatibility() -> None:
         if "marketing_campaign_recipients" not in table_names:
             raise RuntimeError(
                 "Database schema mismatch. Missing table: marketing_campaign_recipients. "
+                "Run `alembic upgrade head` (or reset local sqlite test.db) before starting the API."
+            )
+
+        if "help_articles" not in table_names:
+            raise RuntimeError(
+                "Database schema mismatch. Missing table: help_articles. "
+                "Run `alembic upgrade head` (or reset local sqlite test.db) before starting the API."
+            )
+
+        if "coaching_snippets" not in table_names:
+            raise RuntimeError(
+                "Database schema mismatch. Missing table: coaching_snippets. "
                 "Run `alembic upgrade head` (or reset local sqlite test.db) before starting the API."
             )
 

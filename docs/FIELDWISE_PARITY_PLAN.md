@@ -109,21 +109,21 @@ FrontDesk Pro is AI-first front desk software for trades businesses. It must mat
 - Messaging service per tenant.
 
 ## Confirmed Not Built Yet
-- Native mobile apps (App Store and Google Play).
-- Done-for-you marketing service packaging (Phase B).
-- AI Guide in-app onboarding toggle.
-- Tribal knowledge capture and junior tech coaching.
-- Contextual in-app help (phase 3).
-- Public status page.
+- Native app store distribution pipeline (App Store and Google Play publishing).
 
 ## FrontDesk Pro Current Delta
 - Marketing campaign backend foundation is in place for review and reactivation campaign creation and launch APIs.
 - Review Harvester baseline automation is live: completing a job auto-creates an SMS review request reminder.
 - Re-activation Engine baseline automation is live: `/api/marketing/reactivation/run` queues SMS reminders for customers with no completed job in the configured lookback window.
-- End-to-end delivery integrations are still required for native apps, AI Guide, contextual help, status page, and advanced coaching.
+- AI Guide backend toggle is live: `/api/org/ai-guide`.
+- Contextual in-app help backend is live: `/api/help/articles`.
+- Tribal coaching backend is live: `/api/coaching/snippets`.
+- Done-for-you marketing service packaging baseline is live: `/api/marketing/service-packages`.
+- Public status page endpoint is live: `/api/status`.
+- Native mobile starter scaffold is live in `mobile/` with Expo app metadata and base app entrypoint.
 
 ## Delivery Phases
 1. Foundation parity hardening: receptionist, SMS, dunning, auth recovery, admin analytics baseline.
 2. Growth systems: outreach scraper, ads dashboard, ads management, UTM and CPL instrumentation.
-3. Beyond parity: full review harvester, reactivation engine, multitenant voice stack, tribal coaching.
-4. Platform maturity: native apps, contextual help, status page, done-for-you marketing service packaging.
+3. Beyond parity: multitenant voice stack hardening and coaching intelligence expansion.
+4. Platform maturity: native app store release workflow and managed service operations tooling.

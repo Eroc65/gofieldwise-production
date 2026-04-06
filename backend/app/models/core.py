@@ -19,6 +19,8 @@ class Organization(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True, nullable=False)
     intake_key = Column(String, unique=True, index=True, nullable=False, default=_new_intake_key)
+    ai_guide_enabled = Column(Integer, nullable=False, default=0)
+    ai_guide_stage = Column(String, nullable=False, default="off")
     users = relationship("User", back_populates="organization")
     customers = relationship("Customer", back_populates="organization")
     jobs = relationship("Job", back_populates="organization")
@@ -33,6 +35,8 @@ class Organization(Base):
     user_role_events = relationship("UserRoleAuditEvent", back_populates="organization")
     marketing_campaigns = relationship("MarketingCampaign", back_populates="organization")
     marketing_campaign_recipients = relationship("MarketingCampaignRecipient", back_populates="organization")
+    help_articles = relationship("HelpArticle", back_populates="organization")
+    coaching_snippets = relationship("CoachingSnippet", back_populates="organization")
 
 class User(Base):
     __tablename__ = "users"
@@ -280,3 +284,31 @@ class MarketingCampaignRecipient(Base):
     campaign = relationship("MarketingCampaign", back_populates="recipients")
     customer = relationship("Customer", back_populates="marketing_campaign_recipients")
     organization = relationship("Organization", back_populates="marketing_campaign_recipients")
+
+
+class HelpArticle(Base):
+    __tablename__ = "help_articles"
+    id = Column(Integer, primary_key=True, index=True)
+    slug = Column(String, nullable=False, index=True)
+    title = Column(String, nullable=False)
+    category = Column(String, nullable=False, default="general")
+    context_key = Column(String, nullable=False, default="general")
+    body = Column(Text, nullable=False)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
+    organization = relationship("Organization", back_populates="help_articles")
+
+
+class CoachingSnippet(Base):
+    __tablename__ = "coaching_snippets"
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    trade = Column(String, nullable=False, default="general")
+    issue_pattern = Column(String, nullable=False)
+    senior_tip = Column(Text, nullable=False)
+    checklist = Column(Text)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
+    organization = relationship("Organization", back_populates="coaching_snippets")

@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "FrontDesk Pro",
+    "slug": "frontdesk-pro",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "frontdeskpro",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.frontdeskpro.mobile"
+    },
+    "android": {
+      "package": "com.frontdeskpro.mobile"
+    }
+  }
+}
