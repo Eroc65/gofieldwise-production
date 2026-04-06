@@ -20,15 +20,17 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     connection = op.get_bind()
     inspector = sa.inspect(connection)
-
-    job_columns = {column["name"] for column in inspector.get_columns("jobs")}
-    if "on_my_way_at" not in job_columns:
-        op.add_column("jobs", sa.Column("on_my_way_at", sa.DateTime(), nullable=True))
-    if "started_at" not in job_columns:
-        op.add_column("jobs", sa.Column("started_at", sa.DateTime(), nullable=True))
-
     tables = set(inspector.get_table_names())
-    if "job_activities" not in tables:
+
+    if "jobs" in tables:
+        job_columns = {column["name"] for column in inspector.get_columns("jobs")}
+        if "on_my_way_at" not in job_columns:
+            op.add_column("jobs", sa.Column("on_my_way_at", sa.DateTime(), nullable=True))
+        if "started_at" not in job_columns:
+            op.add_column("jobs", sa.Column("started_at", sa.DateTime(), nullable=True))
+
+    required_fk_tables = {"users", "jobs", "organizations"}
+    if "job_activities" not in tables and required_fk_tables.issubset(tables):
         op.create_table(
             "job_activities",
             sa.Column("id", sa.Integer(), nullable=False),
@@ -57,8 +59,9 @@ def downgrade() -> None:
         op.drop_index(op.f("ix_job_activities_id"), table_name="job_activities")
         op.drop_table("job_activities")
 
-    job_columns = {column["name"] for column in inspector.get_columns("jobs")}
-    if "started_at" in job_columns:
-        op.drop_column("jobs", "started_at")
-    if "on_my_way_at" in job_columns:
-        op.drop_column("jobs", "on_my_way_at")
+    if "jobs" in tables:
+        job_columns = {column["name"] for column in inspector.get_columns("jobs")}
+        if "started_at" in job_columns:
+            op.drop_column("jobs", "started_at")
+        if "on_my_way_at" in job_columns:
+            op.drop_column("jobs", "on_my_way_at")

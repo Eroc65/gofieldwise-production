@@ -20,6 +20,8 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     connection = op.get_bind()
     inspector = sa.inspect(connection)
+    if not inspector.has_table("technicians"):
+        return
     existing = {column["name"] for column in inspector.get_columns("technicians")}
 
     if "availability_start_hour_utc" not in existing:
@@ -47,6 +49,8 @@ def upgrade() -> None:
 def downgrade() -> None:
     connection = op.get_bind()
     inspector = sa.inspect(connection)
+    if not inspector.has_table("technicians"):
+        return
     existing = {column["name"] for column in inspector.get_columns("technicians")}
 
     if "availability_weekdays" in existing:

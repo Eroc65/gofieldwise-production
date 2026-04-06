@@ -20,7 +20,10 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     # SQLite does not support ALTER COLUMN, so we use batch mode to rebuild
     # the reminders table with the new schema.
-    op.drop_table('reminders')
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if inspector.has_table('reminders'):
+        op.drop_table('reminders')
     op.create_table(
         'reminders',
         sa.Column('id', sa.Integer(), nullable=False),
