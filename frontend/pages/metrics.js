@@ -22,6 +22,14 @@ export default function MetricsPage() {
     return `$${amount.toFixed(2)}`;
   }
 
+  function bucketCount(key) {
+    return agingBuckets?.[key]?.count ?? 0;
+  }
+
+  function bucketAmount(key) {
+    return money(agingBuckets?.[key]?.amount ?? 0);
+  }
+
   useEffect(() => {
     const savedToken = window.localStorage.getItem("fdp.dispatch.token") || "";
     const savedEmail = window.localStorage.getItem("fdp.dispatch.email") || "";
@@ -156,23 +164,28 @@ export default function MetricsPage() {
               </article>
               <article className="panel">
                 <h3>Current Not Due</h3>
-                <p>{agingBuckets.current_not_due?.count ?? 0}</p>
+                <p>{bucketCount("current_not_due")}</p>
+                <small>{bucketAmount("current_not_due")}</small>
               </article>
               <article className="panel">
                 <h3>1 To 7 Days</h3>
-                <p>{agingBuckets.days_1_7?.count ?? 0}</p>
+                <p>{bucketCount("days_1_7")}</p>
+                <small>{bucketAmount("days_1_7")}</small>
               </article>
               <article className="panel">
                 <h3>8 To 14 Days</h3>
-                <p>{agingBuckets.days_8_14?.count ?? 0}</p>
+                <p>{bucketCount("days_8_14")}</p>
+                <small>{bucketAmount("days_8_14")}</small>
               </article>
               <article className="panel">
                 <h3>15 To 30 Days</h3>
-                <p>{agingBuckets.days_15_30?.count ?? 0}</p>
+                <p>{bucketCount("days_15_30")}</p>
+                <small>{bucketAmount("days_15_30")}</small>
               </article>
               <article className="panel">
                 <h3>31 Plus Days</h3>
-                <p>{agingBuckets.days_31_plus?.count ?? 0}</p>
+                <p>{bucketCount("days_31_plus")}</p>
+                <small>{bucketAmount("days_31_plus")}</small>
               </article>
             </div>
           </section>

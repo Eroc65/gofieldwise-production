@@ -103,5 +103,6 @@ test("metrics dashboard flow works", async ({ page }) => {
   await expect(page.locator(".results-grid .panel").filter({ hasText: "Unpaid Total" }).getByText("$1450.50", { exact: true })).toBeVisible();
   await expect(page.locator(".results-grid .panel").filter({ hasText: "Overdue Count" }).getByText("2", { exact: true })).toBeVisible();
   await expect(page.locator(".results-grid .panel").filter({ hasText: "8 To 14 Days" }).getByText("1", { exact: true })).toBeVisible();
+  await expect(page.locator(".results-grid .panel").filter({ hasText: "8 To 14 Days" }).getByText("$450.00", { exact: true })).toBeVisible();
   await expect(page.getByText("2026-04-01")).toBeVisible();
 });
