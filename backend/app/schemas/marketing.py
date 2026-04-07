@@ -87,3 +87,17 @@ class MarketingImageTradeTemplateOut(BaseModel):
     code: str
     name: str
     description: str
+
+
+class MarketingImageCampaignPackOut(BaseModel):
+    code: str
+    name: str
+    description: str
+    template_code: str
+    channel_code: str
+    trade_code: str
+    service_type: str
+    offer_text: str
+    cta_text: str
+    primary_color: str
+    prompt: str

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import {
   generateMarketingImage,
+  listMarketingImageCampaignPacks,
   listMarketingImageChannels,
   listMarketingImageTemplates,
   listMarketingImageTradeTemplates,
@@ -15,6 +16,8 @@ export default function MarketingAIPage() {
   const [templates, setTemplates] = useState([]);
   const [channels, setChannels] = useState([]);
   const [tradeTemplates, setTradeTemplates] = useState([]);
+  const [campaignPacks, setCampaignPacks] = useState([]);
+  const [selectedPack, setSelectedPack] = useState("");
   const [templateCode, setTemplateCode] = useState("social_promo");
   const [channelCode, setChannelCode] = useState("instagram_feed");
   const [tradeCode, setTradeCode] = useState("general_home_services");
@@ -58,14 +61,16 @@ export default function MarketingAIPage() {
       window.localStorage.setItem("fdp.dispatch.token", response.access_token);
       window.localStorage.setItem("fdp.dispatch.email", authEmail);
 
-      const [templateRows, channelRows, tradeRows] = await Promise.all([
+      const [templateRows, channelRows, tradeRows, packRows] = await Promise.all([
         listMarketingImageTemplates({ token: response.access_token }),
         listMarketingImageChannels({ token: response.access_token }),
         listMarketingImageTradeTemplates({ token: response.access_token }),
+        listMarketingImageCampaignPacks({ token: response.access_token }),
       ]);
       setTemplates(Array.isArray(templateRows) ? templateRows : []);
       setChannels(Array.isArray(channelRows) ? channelRows : []);
       setTradeTemplates(Array.isArray(tradeRows) ? tradeRows : []);
+      setCampaignPacks(Array.isArray(packRows) ? packRows : []);
 
       setResult("Operator session ready.");
     });
@@ -78,21 +83,24 @@ export default function MarketingAIPage() {
     let cancelled = false;
     async function loadTemplates() {
       try {
-        const [templateRows, channelRows, tradeRows] = await Promise.all([
+        const [templateRows, channelRows, tradeRows, packRows] = await Promise.all([
           listMarketingImageTemplates({ token }),
           listMarketingImageChannels({ token }),
           listMarketingImageTradeTemplates({ token }),
+          listMarketingImageCampaignPacks({ token }),
         ]);
         if (!cancelled) {
           setTemplates(Array.isArray(templateRows) ? templateRows : []);
           setChannels(Array.isArray(channelRows) ? channelRows : []);
           setTradeTemplates(Array.isArray(tradeRows) ? tradeRows : []);
+          setCampaignPacks(Array.isArray(packRows) ? packRows : []);
         }
       } catch {
         if (!cancelled) {
           setTemplates([]);
           setChannels([]);
           setTradeTemplates([]);
+          setCampaignPacks([]);
         }
       }
     }
@@ -128,6 +136,29 @@ export default function MarketingAIPage() {
     if (code === "facebook_landscape") {
       setSize("1536x1024");
     } else if (code === "story_vertical") {
+      setSize("1024x1536");
+    } else {
+      setSize("1024x1024");
+    }
+  }
+
+  function applyCampaignPack(code) {
+    setSelectedPack(code);
+    const pack = (campaignPacks || []).find((item) => item.code === code);
+    if (!pack) {
+      return;
+    }
+    setTemplateCode(pack.template_code);
+    setChannelCode(pack.channel_code);
+    setTradeCode(pack.trade_code);
+    setServiceType(pack.service_type);
+    setOfferText(pack.offer_text);
+    setCtaText(pack.cta_text);
+    setPrimaryColor(pack.primary_color);
+    setPrompt(pack.prompt);
+    if (pack.channel_code === "facebook_landscape") {
+      setSize("1536x1024");
+    } else if (pack.channel_code === "story_vertical") {
       setSize("1024x1536");
     } else {
       setSize("1024x1024");
@@ -190,6 +221,15 @@ export default function MarketingAIPage() {
       <section className="dispatch-card">
         <h2>Generate Image</h2>
         <div className="form-grid">
+          <label className="span-2">
+            Campaign Pack
+            <select value={selectedPack} onChange={(e) => applyCampaignPack(e.target.value)}>
+              <option value="">Select a campaign pack</option>
+              {(campaignPacks || []).map((item) => (
+                <option key={item.code} value={item.code}>{item.name}</option>
+              ))}
+            </select>
+          </label>
           <label>
             Template
             <select value={templateCode} onChange={(e) => applyTemplateDefaults(e.target.value)}>

@@ -18,6 +18,7 @@ from ..schemas.marketing import MarketingCampaignOut
 from ..schemas.marketing import MarketingImageGenerateOut
 from ..schemas.marketing import MarketingImageGenerateRequest
 from ..schemas.marketing import MarketingImageChannelOut
+from ..schemas.marketing import MarketingImageCampaignPackOut
 from ..schemas.marketing import MarketingImageTemplateOut
 from ..schemas.marketing import MarketingImageTradeTemplateOut
 from ..schemas.marketing import ReactivationRunOut
@@ -97,6 +98,47 @@ _MARKETING_IMAGE_TRADE_TEMPLATES: list[dict[str, str]] = [
         "description": "Professional electrical service visuals with safety-focused messaging",
     },
 ]
+_MARKETING_IMAGE_CAMPAIGN_PACKS: list[dict[str, str]] = [
+    {
+        "code": "spring_tuneup_hvac",
+        "name": "Spring Tune-Up HVAC",
+        "description": "Seasonal lead-generation campaign for HVAC tune-ups",
+        "template_code": "seasonal_offer",
+        "channel_code": "facebook_landscape",
+        "trade_code": "hvac",
+        "service_type": "HVAC",
+        "offer_text": "Spring Tune-Up Special - Save 20% This Week",
+        "cta_text": "Book Tune-Up",
+        "primary_color": "#0f172a",
+        "prompt": "Use a trustworthy residential HVAC scene, highlight comfort and reliability, and keep the CTA area highly visible.",
+    },
+    {
+        "code": "emergency_plumbing_fast",
+        "name": "Emergency Plumbing Fast Response",
+        "description": "Urgency-focused creative for emergency plumbing calls",
+        "template_code": "social_promo",
+        "channel_code": "instagram_feed",
+        "trade_code": "plumbing",
+        "service_type": "Plumbing",
+        "offer_text": "24/7 Emergency Plumbing - Fast Local Response",
+        "cta_text": "Call Now",
+        "primary_color": "#0b3b5a",
+        "prompt": "Use a clean modern style with urgent but professional tone, emphasizing speed and trust.",
+    },
+    {
+        "code": "electrical_safety_check",
+        "name": "Electrical Safety Check",
+        "description": "Safety and inspection campaign for electrical services",
+        "template_code": "review_push",
+        "channel_code": "instagram_feed",
+        "trade_code": "electrical",
+        "service_type": "Electrical",
+        "offer_text": "Home Electrical Safety Check - Limited Slots",
+        "cta_text": "Schedule Inspection",
+        "primary_color": "#111827",
+        "prompt": "Use reassuring visuals and clear hierarchy, emphasizing safety, expertise, and easy booking.",
+    },
+]
 
 
 def _ensure_marketing_access(current_user: User) -> None:
@@ -168,6 +210,14 @@ def list_marketing_image_trade_templates(
 ):
     _ensure_marketing_access(current_user)
     return _MARKETING_IMAGE_TRADE_TEMPLATES
+
+
+@router.get("/marketing/ai-images/campaign-packs", response_model=List[MarketingImageCampaignPackOut])
+def list_marketing_image_campaign_packs(
+    current_user: User = Depends(get_current_user),
+):
+    _ensure_marketing_access(current_user)
+    return _MARKETING_IMAGE_CAMPAIGN_PACKS
 
 
 @router.get("/marketing/campaigns", response_model=List[MarketingCampaignOut])

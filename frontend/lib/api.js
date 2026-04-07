@@ -526,6 +526,13 @@ export async function listMarketingImageTradeTemplates({ token }) {
   });
 }
 
+export async function listMarketingImageCampaignPacks({ token }) {
+  return apiFetch("/api/marketing/ai-images/campaign-packs", {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
 export async function generateMarketingImage({
   token,
   prompt,
