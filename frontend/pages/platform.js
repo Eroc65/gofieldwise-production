@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 
 import {
+  createMarketingCampaign,
   createCoachingSnippet,
   createHelpArticle,
   getAIGuideSettings,
   getCommProfile,
+  launchMarketingCampaign,
   listCoachingSnippets,
   listHelpArticles,
+  listMarketingCampaigns,
   listMarketingServicePackages,
   login,
   runReactivationEngine,
@@ -26,10 +29,18 @@ export default function PlatformPage() {
   const [helpArticles, setHelpArticles] = useState([]);
   const [coachingSnippets, setCoachingSnippets] = useState([]);
   const [servicePackages, setServicePackages] = useState([]);
+  const [campaigns, setCampaigns] = useState([]);
   const [commProfile, setCommProfile] = useState({ active: false });
 
   const [helpForm, setHelpForm] = useState({ slug: "", title: "", category: "general", context_key: "general", body: "" });
   const [coachForm, setCoachForm] = useState({ title: "", trade: "general", issue_pattern: "", senior_tip: "", checklist: "" });
+  const [campaignForm, setCampaignForm] = useState({
+    name: "",
+    kind: "review_harvester",
+    channel: "sms",
+    lookback_days: 90,
+    template: "",
+  });
 
   useEffect(() => {
     const savedToken = window.localStorage.getItem("fdp.dispatch.token") || "";
@@ -62,18 +73,20 @@ export default function PlatformPage() {
 
   async function refreshAll() {
     await withBusy(async () => {
-      const [guide, help, coach, packs, comm] = await Promise.all([
+      const [guide, help, coach, packs, comm, campaignRows] = await Promise.all([
         getAIGuideSettings({ token }),
         listHelpArticles({ token }),
         listCoachingSnippets({ token }),
         listMarketingServicePackages({ token }),
         getCommProfile({ token }),
+        listMarketingCampaigns({ token }),
       ]);
       setAiGuide(guide);
       setHelpArticles(Array.isArray(help) ? help : []);
       setCoachingSnippets(Array.isArray(coach) ? coach : []);
       setServicePackages(Array.isArray(packs) ? packs : []);
       setCommProfile(comm || { active: false });
+      setCampaigns(Array.isArray(campaignRows) ? campaignRows : []);
     });
   }
 
@@ -107,6 +120,25 @@ export default function PlatformPage() {
     await withBusy(async () => {
       const run = await runReactivationEngine({ token, lookbackDays: 180, limit: 250, dryRun: false });
       setResult(`Reactivation queued ${run.queued_count} of ${run.candidate_count} candidates.`);
+    });
+  }
+
+  async function addCampaign() {
+    await withBusy(async () => {
+      const created = await createMarketingCampaign({ token, payload: campaignForm });
+      setCampaigns((current) => [created, ...(Array.isArray(current) ? current : [])]);
+      setResult(`Campaign created: ${created.name}`);
+      setCampaignForm((prev) => ({ ...prev, name: "", template: "" }));
+    });
+  }
+
+  async function launchCampaign(campaignId) {
+    await withBusy(async () => {
+      const out = await launchMarketingCampaign({ token, campaignId });
+      setCampaigns((current) => (Array.isArray(current)
+        ? current.map((item) => (item.id === campaignId ? { ...item, status: "launched" } : item))
+        : current));
+      setResult(`Campaign launched with ${out.generated_recipients} queued recipients.`);
     });
   }
 
@@ -259,6 +291,69 @@ export default function PlatformPage() {
               <p>{pkg.summary}</p>
             </article>
           ))}
+        </div>
+      </section>
+
+      <section className="dispatch-card">
+        <h2>Campaign Orchestrator</h2>
+        <div className="form-grid">
+          <label>Campaign Name<input value={campaignForm.name} onChange={(e) => setCampaignForm((p) => ({ ...p, name: e.target.value }))} /></label>
+          <label>
+            Kind
+            <select value={campaignForm.kind} onChange={(e) => setCampaignForm((p) => ({ ...p, kind: e.target.value }))}>
+              <option value="review_harvester">review_harvester</option>
+              <option value="reactivation">reactivation</option>
+            </select>
+          </label>
+          <label>
+            Channel
+            <select value={campaignForm.channel} onChange={(e) => setCampaignForm((p) => ({ ...p, channel: e.target.value }))}>
+              <option value="sms">sms</option>
+              <option value="email">email</option>
+              <option value="internal">internal</option>
+            </select>
+          </label>
+          <label>
+            Lookback Days
+            <input type="number" min={7} max={730} value={campaignForm.lookback_days} onChange={(e) => setCampaignForm((p) => ({ ...p, lookback_days: Number(e.target.value) }))} />
+          </label>
+          <label className="span-2">Template<textarea rows={2} value={campaignForm.template} onChange={(e) => setCampaignForm((p) => ({ ...p, template: e.target.value }))} /></label>
+        </div>
+        <div className="actions">
+          <button type="button" onClick={addCampaign} disabled={!token || busy || !campaignForm.name}>Create Campaign</button>
+        </div>
+        <div className="metric-table-wrap">
+          <table className="metric-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Kind</th>
+                <th>Channel</th>
+                <th>Status</th>
+                <th>Run</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(campaigns || []).map((campaign) => (
+                <tr key={campaign.id}>
+                  <td>{campaign.name}</td>
+                  <td>{campaign.kind}</td>
+                  <td>{campaign.channel}</td>
+                  <td>{campaign.status}</td>
+                  <td>
+                    <button
+                      type="button"
+                      aria-label={`Launch ${campaign.name}`}
+                      onClick={() => launchCampaign(campaign.id)}
+                      disabled={!token || busy || campaign.status !== "draft"}
+                    >
+                      Launch
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
     </main>

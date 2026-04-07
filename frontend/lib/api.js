@@ -452,6 +452,28 @@ export async function listMarketingServicePackages({ token }) {
   });
 }
 
+export async function listMarketingCampaigns({ token }) {
+  return apiFetch("/api/marketing/campaigns", {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function createMarketingCampaign({ token, payload }) {
+  return apiFetch("/api/marketing/campaigns", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function launchMarketingCampaign({ token, campaignId }) {
+  return apiFetch(`/api/marketing/campaigns/${campaignId}/launch`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
 export async function runReactivationEngine({ token, lookbackDays = 180, limit = 250, dryRun = false }) {
   return apiFetch("/api/marketing/reactivation/run", {
     method: "POST",
