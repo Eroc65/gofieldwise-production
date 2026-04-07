@@ -159,6 +159,7 @@ export default function PlatformPage() {
         <div className="hero-actions">
           <a className="ghost-link" href="/">Marketing Site</a>
           <a className="ghost-link" href="/leads">Lead Inbox</a>
+          <a className="ghost-link" href="/growth">Growth Infrastructure</a>
           <button type="button" onClick={refreshAll} disabled={!token || busy}>Refresh Platform Data</button>
         </div>
       </section>

@@ -182,6 +182,9 @@ export default function HomePage() {
           <a className="ghost-link" href="/metrics">
             View Metrics
           </a>
+          <a className="ghost-link" href="/growth">
+            Growth Infrastructure
+          </a>
           <a className="ghost-link" href="/platform">
             Platform Console
           </a>
