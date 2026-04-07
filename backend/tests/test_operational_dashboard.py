@@ -96,6 +96,9 @@ def test_operational_dashboard_empty_org_returns_zeroes():
     assert body["organization_id"] > 0
     assert body["lead_pipeline"]["total"] == 0
     assert body["job_status"]["total"] == 0
+    assert body["job_status"]["on_my_way"] == 0
+    assert body["job_status"]["in_progress"] == 0
+    assert body["job_status"]["completed_today"] == 0
     assert body["invoice_summary"]["total"] == 0
     assert body["invoice_summary"]["unpaid_total_amount"] == 0.0
     assert body["invoice_summary"]["overdue_count"] == 0
@@ -176,6 +179,102 @@ def test_operational_dashboard_metrics_and_escalation_breakdown():
     assert body["action_priorities"]["urgent_now"] >= 1
     assert body["action_priorities"]["this_week"] >= 1
     assert body["action_priorities"]["total_open_actions"] >= 1
+
+
+def test_operational_dashboard_includes_active_lifecycle_stage_counts():
+    client = TestClient(app)
+    headers = _auth_headers(client, _EMAIL, _PASSWORD)
+
+    baseline_resp = client.get("/api/reports/operational-dashboard", headers=headers)
+    assert baseline_resp.status_code == 200
+    baseline = baseline_resp.json()["job_status"]
+
+    customer = _create_customer(client, headers, "Lifecycle Stage Customer")
+
+    on_my_way_job = _create_job(client, headers, customer["id"], "Lifecycle On My Way")
+    on_my_way_dispatch = client.put(
+        f"/api/jobs/{on_my_way_job['id']}",
+        json={"status": "dispatched"},
+        headers=headers,
+    )
+    assert on_my_way_dispatch.status_code == 200
+    on_my_way_mark = client.patch(f"/api/jobs/{on_my_way_job['id']}/on-my-way", headers=headers)
+    assert on_my_way_mark.status_code == 200
+
+    in_progress_job = _create_job(client, headers, customer["id"], "Lifecycle In Progress")
+    in_progress_dispatch = client.put(
+        f"/api/jobs/{in_progress_job['id']}",
+        json={"status": "dispatched"},
+        headers=headers,
+    )
+    assert in_progress_dispatch.status_code == 200
+    in_progress_on_my_way = client.patch(f"/api/jobs/{in_progress_job['id']}/on-my-way", headers=headers)
+    assert in_progress_on_my_way.status_code == 200
+    in_progress_start = client.patch(f"/api/jobs/{in_progress_job['id']}/start", headers=headers)
+    assert in_progress_start.status_code == 200
+
+    completed_today_job = _create_job(client, headers, customer["id"], "Lifecycle Completed Today")
+    completed_today_dispatch = client.put(
+        f"/api/jobs/{completed_today_job['id']}",
+        json={"status": "dispatched"},
+        headers=headers,
+    )
+    assert completed_today_dispatch.status_code == 200
+    completed_today_on_my_way = client.patch(f"/api/jobs/{completed_today_job['id']}/on-my-way", headers=headers)
+    assert completed_today_on_my_way.status_code == 200
+    completed_today_start = client.patch(f"/api/jobs/{completed_today_job['id']}/start", headers=headers)
+    assert completed_today_start.status_code == 200
+    completed_today_complete = client.patch(
+        f"/api/jobs/{completed_today_job['id']}/complete",
+        json={},
+        headers=headers,
+    )
+    assert completed_today_complete.status_code == 200
+
+    final_resp = client.get("/api/reports/operational-dashboard", headers=headers)
+    assert final_resp.status_code == 200
+    final_status = final_resp.json()["job_status"]
+
+    assert final_status["on_my_way"] == baseline["on_my_way"] + 1
+    assert final_status["in_progress"] == baseline["in_progress"] + 1
+    assert final_status["completed"] == baseline["completed"] + 1
+    assert final_status["completed_today"] >= baseline["completed_today"] + 1
+
+
+def test_operational_dashboard_lifecycle_stage_counts_are_org_scoped():
+    client = TestClient(app)
+    org1_headers = _auth_headers(client, _EMAIL, _PASSWORD)
+    org2_headers = _auth_headers(client, _OTHER_EMAIL, _OTHER_PASSWORD)
+
+    before_org1 = client.get("/api/reports/operational-dashboard", headers=org1_headers)
+    before_org2 = client.get("/api/reports/operational-dashboard", headers=org2_headers)
+    assert before_org1.status_code == 200
+    assert before_org2.status_code == 200
+    before_org1_on_my_way = before_org1.json()["job_status"]["on_my_way"]
+    before_org2_on_my_way = before_org2.json()["job_status"]["on_my_way"]
+
+    org2_customer = _create_customer(client, org2_headers, "Org2 Lifecycle Customer")
+    org2_job = _create_job(client, org2_headers, org2_customer["id"], "Org2 On My Way")
+
+    dispatch = client.put(
+        f"/api/jobs/{org2_job['id']}",
+        json={"status": "dispatched"},
+        headers=org2_headers,
+    )
+    assert dispatch.status_code == 200
+
+    on_my_way = client.patch(f"/api/jobs/{org2_job['id']}/on-my-way", headers=org2_headers)
+    assert on_my_way.status_code == 200
+
+    org1_dashboard = client.get("/api/reports/operational-dashboard", headers=org1_headers)
+    org2_dashboard = client.get("/api/reports/operational-dashboard", headers=org2_headers)
+    assert org1_dashboard.status_code == 200
+    assert org2_dashboard.status_code == 200
+
+    org1_job_status = org1_dashboard.json()["job_status"]
+    org2_job_status = org2_dashboard.json()["job_status"]
+    assert org2_job_status["on_my_way"] == before_org2_on_my_way + 1
+    assert org1_job_status["on_my_way"] == before_org1_on_my_way
 
 
 def test_operational_dashboard_org_isolation():

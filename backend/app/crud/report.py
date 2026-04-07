@@ -246,7 +246,15 @@ def get_operational_dashboard(db, organization_id: int) -> dict:
     jobs_pending = db.query(Job).filter(Job.organization_id == organization_id, Job.status == "pending").count()
     jobs_approved = db.query(Job).filter(Job.organization_id == organization_id, Job.status == "approved").count()
     jobs_dispatched = db.query(Job).filter(Job.organization_id == organization_id, Job.status == "dispatched").count()
+    jobs_on_my_way = db.query(Job).filter(Job.organization_id == organization_id, Job.status == "on_my_way").count()
+    jobs_in_progress = db.query(Job).filter(Job.organization_id == organization_id, Job.status == "in_progress").count()
     jobs_completed = db.query(Job).filter(Job.organization_id == organization_id, Job.status == "completed").count()
+    jobs_completed_today = db.query(Job).filter(
+        Job.organization_id == organization_id,
+        Job.status == "completed",
+        Job.completed_at.isnot(None),
+        func.date(Job.completed_at) == now.date().isoformat(),
+    ).count()
     
     # Invoice breakdown
     invoices_unpaid = db.query(Invoice).filter(Invoice.organization_id == organization_id, Invoice.status == "unpaid").count()
@@ -391,8 +399,18 @@ def get_operational_dashboard(db, organization_id: int) -> dict:
             "pending": jobs_pending,
             "approved": jobs_approved,
             "dispatched": jobs_dispatched,
+            "on_my_way": jobs_on_my_way,
+            "in_progress": jobs_in_progress,
             "completed": jobs_completed,
-            "total": jobs_pending + jobs_approved + jobs_dispatched + jobs_completed,
+            "completed_today": jobs_completed_today,
+            "total": (
+                jobs_pending
+                + jobs_approved
+                + jobs_dispatched
+                + jobs_on_my_way
+                + jobs_in_progress
+                + jobs_completed
+            ),
         },
         "invoice_summary": {
             "unpaid": invoices_unpaid,
