@@ -499,3 +499,85 @@ def test_lifecycle_quick_actions_require_valid_order(client, auth_headers):
     timeline = client.get(f"/api/jobs/{job_id}/timeline", headers=auth_headers)
     assert timeline.status_code == 200
     assert len(timeline.json()) >= 3
+
+
+def test_lifecycle_timeline_includes_actor_and_state_changes(client, auth_headers):
+    job_id, tech_id = _setup_job_and_tech(client, auth_headers)
+    when = _iso(18)
+
+    me = client.get("/api/auth/me", headers=auth_headers)
+    assert me.status_code == 200
+    actor_user_id = me.json()["id"]
+
+    dispatched = client.patch(
+        f"/api/jobs/{job_id}/dispatch",
+        json={"technician_id": tech_id, "scheduled_time": when},
+        headers=auth_headers,
+    )
+    assert dispatched.status_code == 200
+
+    on_my_way = client.patch(f"/api/jobs/{job_id}/on-my-way", headers=auth_headers)
+    assert on_my_way.status_code == 200
+
+    started = client.patch(f"/api/jobs/{job_id}/start", headers=auth_headers)
+    assert started.status_code == 200
+
+    completed = client.patch(
+        f"/api/jobs/{job_id}/complete",
+        json={"completion_notes": "finished safely"},
+        headers=auth_headers,
+    )
+    assert completed.status_code == 200
+
+    timeline = client.get(f"/api/jobs/{job_id}/timeline", headers=auth_headers)
+    assert timeline.status_code == 200
+    events = timeline.json()
+    assert len(events) >= 4
+
+    by_action = {event["action"]: event for event in events}
+    assert by_action["dispatched"]["from_status"] == "pending"
+    assert by_action["dispatched"]["to_status"] == "dispatched"
+    assert by_action["dispatched"]["actor_user_id"] == actor_user_id
+
+    assert by_action["on_my_way"]["from_status"] == "dispatched"
+    assert by_action["on_my_way"]["to_status"] == "on_my_way"
+    assert by_action["on_my_way"]["actor_user_id"] == actor_user_id
+
+    assert by_action["started"]["from_status"] == "on_my_way"
+    assert by_action["started"]["to_status"] == "in_progress"
+    assert by_action["started"]["actor_user_id"] == actor_user_id
+
+    assert by_action["completed"]["from_status"] == "in_progress"
+    assert by_action["completed"]["to_status"] == "completed"
+    assert by_action["completed"]["actor_user_id"] == actor_user_id
+    assert by_action["completed"]["note"] == "finished safely"
+
+
+def test_lifecycle_quick_actions_reject_cross_org_access(client, auth_headers, other_auth_headers):
+    job_id, tech_id = _setup_job_and_tech(client, auth_headers)
+    when = _iso(20)
+
+    dispatched = client.patch(
+        f"/api/jobs/{job_id}/dispatch",
+        json={"technician_id": tech_id, "scheduled_time": when},
+        headers=auth_headers,
+    )
+    assert dispatched.status_code == 200
+
+    # Other org cannot mutate or read lifecycle data for this job.
+    for endpoint in (
+        f"/api/jobs/{job_id}/on-my-way",
+        f"/api/jobs/{job_id}/start",
+    ):
+        denied = client.patch(endpoint, headers=other_auth_headers)
+        assert denied.status_code == 404
+
+    denied_complete = client.patch(
+        f"/api/jobs/{job_id}/complete",
+        json={"completion_notes": "cross-org attempt"},
+        headers=other_auth_headers,
+    )
+    assert denied_complete.status_code == 404
+
+    denied_timeline = client.get(f"/api/jobs/{job_id}/timeline", headers=other_auth_headers)
+    assert denied_timeline.status_code == 404
