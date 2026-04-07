@@ -24,6 +24,7 @@ from ..schemas.marketing import MarketingImageCampaignPackOut
 from ..schemas.marketing import MarketingImageTemplateOut
 from ..schemas.marketing import MarketingImageCustomCampaignPackCreate
 from ..schemas.marketing import MarketingImageCustomCampaignPackOut
+from ..schemas.marketing import MarketingImageCustomCampaignPackUpdate
 from ..schemas.marketing import MarketingImageTradeTemplateOut
 from ..schemas.marketing import ReactivationRunOut
 from ..schemas.marketing import ReactivationRunRequest
@@ -275,6 +276,48 @@ def create_marketing_image_custom_campaign_pack(
         prompt=payload.prompt.strip(),
         organization_id=org_id,
     )
+    db.add(pack)
+    db.commit()
+    db.refresh(pack)
+    return pack
+
+
+@router.patch("/marketing/ai-images/custom-packs/{pack_id}", response_model=MarketingImageCustomCampaignPackOut)
+def update_marketing_image_custom_campaign_pack(
+    pack_id: int,
+    payload: MarketingImageCustomCampaignPackUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ensure_marketing_access(current_user)
+    _validate_pack_codes(payload.template_code, payload.channel_code, payload.trade_code)
+    org_id = int(cast(int, current_user.organization_id))
+    pack = (
+        db.query(MarketingImageCampaignPack)
+        .filter(
+            MarketingImageCampaignPack.id == pack_id,
+            MarketingImageCampaignPack.organization_id == org_id,
+        )
+        .first()
+    )
+    if not pack:
+        raise HTTPException(status_code=404, detail="Custom campaign pack not found")
+
+    updates = {
+        "name": payload.name.strip(),
+        "description": payload.description.strip(),
+        "template_code": payload.template_code,
+        "channel_code": payload.channel_code,
+        "trade_code": payload.trade_code,
+        "service_type": payload.service_type.strip(),
+        "offer_text": payload.offer_text.strip(),
+        "cta_text": payload.cta_text.strip(),
+        "primary_color": payload.primary_color.strip(),
+        "prompt": payload.prompt.strip(),
+    }
+    for field, value in updates.items():
+        setattr(pack, field, value)
+
     db.add(pack)
     db.commit()
     db.refresh(pack)

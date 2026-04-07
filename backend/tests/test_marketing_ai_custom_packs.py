@@ -96,6 +96,30 @@ def test_custom_campaign_pack_create_list_delete_scoped_by_org() -> None:
         other_items = other_list.json()
         assert all(item["id"] != created["id"] for item in other_items)
 
+        update_payload = {
+            **payload,
+            "name": "My HVAC Local Pack Updated",
+            "offer_text": "Spring Tune-Up 25% Off",
+            "cta_text": "Book This Week",
+        }
+        update_denied = client.patch(
+            f"/api/marketing/ai-images/custom-packs/{created['id']}",
+            json=update_payload,
+            headers=other_headers,
+        )
+        assert update_denied.status_code == 404
+
+        update_ok = client.patch(
+            f"/api/marketing/ai-images/custom-packs/{created['id']}",
+            json=update_payload,
+            headers=owner_headers,
+        )
+        assert update_ok.status_code == 200
+        updated = update_ok.json()
+        assert updated["name"] == "My HVAC Local Pack Updated"
+        assert updated["offer_text"] == "Spring Tune-Up 25% Off"
+        assert updated["cta_text"] == "Book This Week"
+
         delete_denied = client.delete(f"/api/marketing/ai-images/custom-packs/{created['id']}", headers=other_headers)
         assert delete_denied.status_code == 404
 

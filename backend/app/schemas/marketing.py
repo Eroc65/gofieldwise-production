@@ -116,6 +116,10 @@ class MarketingImageCustomCampaignPackCreate(BaseModel):
     prompt: str = Field(min_length=8, max_length=2000)
 
 
+class MarketingImageCustomCampaignPackUpdate(MarketingImageCustomCampaignPackCreate):
+    pass
+
+
 class MarketingImageCustomCampaignPackOut(MarketingImageCampaignPackOut):
     id: int
     organization_id: int

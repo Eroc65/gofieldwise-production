@@ -10,6 +10,7 @@ import {
   listMarketingImageTemplates,
   listMarketingImageTradeTemplates,
   login,
+  updateMarketingImageCustomPack,
 } from "../lib/api";
 
 export default function MarketingAIPage() {
@@ -158,6 +159,9 @@ export default function MarketingAIPage() {
     if (!pack) {
       return;
     }
+    if (String(pack.code || "").startsWith("custom_")) {
+      setCustomPackName(pack.name || "");
+    }
     setTemplateCode(pack.template_code);
     setChannelCode(pack.channel_code);
     setTradeCode(pack.trade_code);
@@ -219,6 +223,44 @@ export default function MarketingAIPage() {
       setCustomPacks((current) => (Array.isArray(current) ? current.filter((item) => item.id !== pack.id) : []));
       setSelectedPack("");
       setResult("Custom pack deleted.");
+    });
+  }
+
+  async function updateSelectedCustomPack() {
+    if (!selectedPack.startsWith("custom_")) {
+      setError("Select a custom pack to update.");
+      return;
+    }
+    const pack = (customPacks || []).find((item) => item.code === selectedPack);
+    if (!pack || !pack.id) {
+      setError("Custom pack not found.");
+      return;
+    }
+
+    await withBusy(async () => {
+      const updated = await updateMarketingImageCustomPack({
+        token,
+        packId: pack.id,
+        payload: {
+          name: customPackName.trim() || pack.name,
+          description: "Custom saved preset",
+          template_code: templateCode,
+          channel_code: channelCode,
+          trade_code: tradeCode,
+          service_type: serviceType,
+          offer_text: offerText,
+          cta_text: ctaText,
+          primary_color: primaryColor,
+          prompt,
+        },
+      });
+      setCustomPacks((current) => (
+        Array.isArray(current)
+          ? current.map((item) => (item.id === updated.id ? updated : item))
+          : [updated]
+      ));
+      setCustomPackName(updated.name);
+      setResult(`Updated custom pack: ${updated.name}`);
     });
   }
 
@@ -304,6 +346,7 @@ export default function MarketingAIPage() {
           </label>
           <div className="actions" style={{ alignItems: "end" }}>
             <button type="button" onClick={saveCustomPack} disabled={!token || busy}>Save Custom Pack</button>
+            <button type="button" onClick={updateSelectedCustomPack} disabled={!token || busy}>Update Selected Custom Pack</button>
             <button type="button" onClick={deleteSelectedCustomPack} disabled={!token || busy}>Delete Selected Custom Pack</button>
           </div>
           <label>

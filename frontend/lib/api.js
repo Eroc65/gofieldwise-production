@@ -548,6 +548,14 @@ export async function createMarketingImageCustomPack({ token, payload }) {
   });
 }
 
+export async function updateMarketingImageCustomPack({ token, packId, payload }) {
+  return apiFetch(`/api/marketing/ai-images/custom-packs/${packId}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function deleteMarketingImageCustomPack({ token, packId }) {
   return apiFetch(`/api/marketing/ai-images/custom-packs/${packId}`, {
     method: "DELETE",
