@@ -56,6 +56,8 @@ jobs:
         run: pytest -q tests/test_dispatch.py -k lifecycle_quick_actions_require_valid_order
       - name: Run lead conversion metrics fast gate
         run: pytest -q tests/test_reports.py -k lead_conversion_metrics_daily_series
+      - name: Run collections regression fast gate
+        run: pytest -q tests/test_payment_escalation.py tests/test_invoices.py
       - name: Run Python tests
         run: pytest -q
 
