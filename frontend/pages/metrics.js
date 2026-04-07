@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { getLeadConversionMetrics, getOperationalDashboard, login } from "../lib/api";
+import { getLeadConversionMetrics, getOperationalDashboard, getOperatorQueue, login } from "../lib/api";
 
 export default function MetricsPage() {
   const [token, setToken] = useState("");
@@ -9,6 +9,7 @@ export default function MetricsPage() {
   const [days, setDays] = useState(7);
   const [metrics, setMetrics] = useState(null);
   const [dashboard, setDashboard] = useState(null);
+  const [operatorQueue, setOperatorQueue] = useState(null);
   const [error, setError] = useState("");
   const [busyAction, setBusyAction] = useState("");
 
@@ -83,12 +84,14 @@ export default function MetricsPage() {
   async function onLoadMetrics() {
     await withAction("metrics", async () => {
       if (!token) throw new Error("Login first to load metrics.");
-      const [metricsData, dashboardData] = await Promise.all([
+      const [metricsData, dashboardData, operatorQueueData] = await Promise.all([
         getLeadConversionMetrics({ token, days }),
         getOperationalDashboard({ token }),
+        getOperatorQueue({ token, limit: 5 }),
       ]);
       setMetrics(metricsData);
       setDashboard(dashboardData);
+      setOperatorQueue(operatorQueueData);
     });
   }
 
@@ -229,6 +232,39 @@ export default function MetricsPage() {
                 </tbody>
               </table>
             </div>
+          </section>
+
+          <section className="dispatch-card">
+            <header className="dispatch-head">
+              <h2>Operator Priority Queue</h2>
+              <p>Top ranked actions to reduce cash risk and close operational gaps.</p>
+            </header>
+            {(operatorQueue?.items || []).length > 0 ? (
+              <div className="metric-table-wrap">
+                <table className="metric-table">
+                  <thead>
+                    <tr>
+                      <th>Priority</th>
+                      <th>Task</th>
+                      <th>Urgency</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(operatorQueue?.items || []).map((item, index) => (
+                      <tr key={`${item.item_type}-${item.entity_id}`}>
+                        <td>#{index + 1} ({item.priority_score})</td>
+                        <td>{item.title}</td>
+                        <td>{item.urgency}</td>
+                        <td>{item.action}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p>No operator queue items right now.</p>
+            )}
           </section>
         </>
       ) : null}

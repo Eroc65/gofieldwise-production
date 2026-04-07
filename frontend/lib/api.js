@@ -279,6 +279,16 @@ export async function getOperationalDashboard({ token }) {
   });
 }
 
+export async function getOperatorQueue({ token, limit = 5 }) {
+  const query = new URLSearchParams({ limit: String(limit) });
+  return apiFetch(`/api/reports/operator-queue?${query.toString()}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
 export async function getLeadActivity({ token, leadId, action, sinceHours }) {
   const query = new URLSearchParams();
   if (action) {

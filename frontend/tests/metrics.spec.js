@@ -82,6 +82,41 @@ test("metrics dashboard flow works", async ({ page }) => {
     });
   });
 
+  await page.route("**/api/reports/operator-queue**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        organization_id: 11,
+        timestamp: new Date().toISOString(),
+        limit: 5,
+        total_candidates: 2,
+        items: [
+          {
+            item_type: "invoice_collection",
+            entity_id: 401,
+            title: "Collect invoice #401",
+            urgency: "critical",
+            priority_score: 148,
+            revenue_impact: 900,
+            due_at: "2026-03-20T10:00:00",
+            action: "Call customer and collect payment today.",
+          },
+          {
+            item_type: "job_completion",
+            entity_id: 77,
+            title: "Close dispatched job #77",
+            urgency: "high",
+            priority_score: 96,
+            revenue_impact: null,
+            due_at: "2026-03-31T14:00:00",
+            action: "Confirm outcome and mark complete or reschedule.",
+          },
+        ],
+      }),
+    });
+  });
+
   await page.goto("/metrics");
 
   await expect(page.getByRole("heading", { name: "Lead Conversion Dashboard" })).toBeVisible();
@@ -97,6 +132,7 @@ test("metrics dashboard flow works", async ({ page }) => {
   await expect(page.getByText("Maintain current process and monitor booked volume for consistency.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Daily Timeline" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Collections Snapshot" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Operator Priority Queue" })).toBeVisible();
   await expect(page.getByText("Intakes").first()).toBeVisible();
   await expect(page.locator(".results-grid .panel").filter({ hasText: "Intakes" }).getByText("12", { exact: true })).toBeVisible();
   await expect(page.locator(".results-grid .panel").filter({ hasText: "Qualification Rate" }).getByText("75%", { exact: true })).toBeVisible();
@@ -112,6 +148,9 @@ test("metrics dashboard flow works", async ({ page }) => {
   await expect(bucketHeadings.nth(4)).toHaveText("Current Not Due");
   await expect(page.getByText("Call today and secure payment commitment before close.")).toBeVisible();
   await expect(page.getByText("Prioritize outbound follow-up this shift.")).toBeVisible();
+  await expect(page.getByText("Collect invoice #401")).toBeVisible();
+  await expect(page.getByText("#1 (148)")).toBeVisible();
+  await expect(page.getByText("Call customer and collect payment today.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "8 To 14 Days (Top Action)" })).toHaveCount(0);
   await expect(page.getByText("2026-04-01")).toBeVisible();
 });
