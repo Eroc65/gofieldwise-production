@@ -110,6 +110,8 @@ test("metrics dashboard flow works", async ({ page }) => {
   await expect(bucketHeadings.nth(2)).toHaveText("8 To 14 Days");
   await expect(bucketHeadings.nth(3)).toHaveText("1 To 7 Days");
   await expect(bucketHeadings.nth(4)).toHaveText("Current Not Due");
+  await expect(page.getByText("Call today and secure payment commitment before close.")).toBeVisible();
+  await expect(page.getByText("Prioritize outbound follow-up this shift.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "8 To 14 Days (Top Action)" })).toHaveCount(0);
   await expect(page.getByText("2026-04-01")).toBeVisible();
 });
