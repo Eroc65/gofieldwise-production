@@ -27,7 +27,7 @@ export default function MarketingAIPage() {
   const [templateCode, setTemplateCode] = useState("social_promo");
   const [channelCode, setChannelCode] = useState("instagram_feed");
   const [tradeCode, setTradeCode] = useState("general_home_services");
-  const [businessName, setBusinessName] = useState("FieldWise");
+  const [businessName, setBusinessName] = useState("GoFieldwise");
   const [serviceType, setServiceType] = useState("HVAC");
   const [offerText, setOfferText] = useState("Spring Tune-Up Special - Save 20% This Week");
   const [ctaText, setCtaText] = useState("Book Today");

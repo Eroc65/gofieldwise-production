@@ -8,7 +8,7 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>FieldWise - AI Field Service Management for Home Service Businesses</title>
+        <title>GoFieldwise - AI Field Service Management for Home Service Businesses</title>
         <meta
           name="description"
           content="Never miss a customer. Automate every job-from first call to paid invoice. AI-powered scheduling, dispatch & invoicing for contractors. $200/mo flat rate. Try live demo."
@@ -17,15 +17,15 @@ export default function Home() {
           name="keywords"
           content="AI field service management, contractor software, plumbing scheduling, HVAC dispatch, electrician invoicing, automated job booking, AI receptionist"
         />
-        <meta property="og:title" content="FieldWise - AI Field Service Management" />
+        <meta property="og:title" content="GoFieldwise - AI Field Service Management" />
         <meta
           property="og:description"
-          content="Stop missing calls & jobs. FieldWise answers, books, dispatches, and invoices automatically-even while you sleep."
+          content="Stop missing calls & jobs. GoFieldwise answers, books, dispatches, and invoices automatically-even while you sleep."
         />
-        <meta property="og:image" content="https://fieldwise-duhl.polsia.app/og-image.png" />
-        <meta property="og:url" content="https://fieldwise-duhl.polsia.app" />
+        <meta property="og:image" content="https://gofieldwise.com/og-image.png" />
+        <meta property="og:url" content="https://gofieldwise.com" />
         <meta name="twitter:card" content="summary_large_image" />
-        <link rel="canonical" href="https://fieldwise-duhl.polsia.app" />
+        <link rel="canonical" href="https://gofieldwise.com" />
       </Head>
 
       <section className="hero">
@@ -36,12 +36,12 @@ export default function Home() {
             <span className="highlight">Automate Every Job</span>-From First Call to Paid Invoice.
           </h1>
           <p className="hero-subtitle">
-            FieldWise is AI-powered field service management built for home service businesses-no surprise pricing, no
+            GoFieldwise is AI-powered field service management built for home service businesses-no surprise pricing, no
             setup headaches, just more jobs booked and more time for real work.
           </p>
           <div className="hero-cta">
             <Link href="/demo" className="btn btn-primary btn-large">
-              See FieldWise in Action-No Signup Needed
+              See GoFieldwise in Action-No Signup Needed
             </Link>
             <button className="btn btn-secondary btn-large" onClick={() => setDemoActive(true)}>
               Call Our AI Receptionist: (602) 932-0967
@@ -72,7 +72,7 @@ export default function Home() {
           <div className="testimonial-card">
             <div className="stars">★★★★★</div>
             <p className="testimonial-text">
-              "FieldWise replaced my $3,500/mo office manager. We miss zero calls and book jobs even when nobody&apos;s
+              "GoFieldwise replaced my $3,500/mo office manager. We miss zero calls and book jobs even when nobody&apos;s
               at the office."
             </p>
             <div className="testimonial-author">
@@ -98,7 +98,7 @@ export default function Home() {
 
       <section className="value-prop">
         <div className="container">
-          <h2>Why Choose FieldWise Over "AI Agencies"?</h2>
+          <h2>Why Choose GoFieldwise Over "AI Agencies"?</h2>
           <div className="comparison-grid">
             <div className="comparison-card">
               <h3>Most AI Agencies</h3>
@@ -111,7 +111,7 @@ export default function Home() {
               </ul>
             </div>
             <div className="comparison-card highlight">
-              <h3>FieldWise</h3>
+              <h3>GoFieldwise</h3>
               <ul>
                 <li>
                   <strong>Full workflow automation</strong>-calls, booking, dispatch, invoicing, reviews
@@ -156,11 +156,25 @@ export default function Home() {
         </div>
       </section>
 
+      <section className="industry-links">
+        <div className="container">
+          <h2>Built for Your Trade</h2>
+          <p>Explore tailored pages for your business type.</p>
+          <div className="industry-grid">
+            <Link href="/plumbing" className="industry-card">Plumbing</Link>
+            <Link href="/hvac" className="industry-card">HVAC</Link>
+            <Link href="/electrical" className="industry-card">Electrical</Link>
+            <Link href="/landscaping" className="industry-card">Landscaping</Link>
+            <Link href="/cleaning-services" className="industry-card">Cleaning Services</Link>
+          </div>
+        </div>
+      </section>
+
       <section className="cta-final">
         <div className="container">
           <h2>Ready to Stop Missing Calls & Start Growing?</h2>
           <p>
-            Join hundreds of contractors who trust FieldWise to handle their front desk-so they can focus on the work
+            Join hundreds of contractors who trust GoFieldwise to handle their front desk-so they can focus on the work
             that pays.
           </p>
           <div className="cta-buttons">
@@ -182,7 +196,7 @@ export default function Home() {
           <div className="modal-content">
             <h3>Call Our AI Receptionist Now</h3>
             <p>
-              Dial <strong>(602) 932-0967</strong> to experience how FieldWise answers, qualifies, and books jobs-24/7.
+              Dial <strong>(602) 932-0967</strong> to experience how GoFieldwise answers, qualifies, and books jobs-24/7.
             </p>
             <button className="btn btn-secondary" onClick={() => setDemoActive(false)}>
               Close
@@ -358,6 +372,38 @@ export default function Home() {
         .how-it-works {
           padding: 5rem 1rem;
           background: #f8fafc;
+        }
+        .industry-links {
+          padding: 5rem 1rem;
+          background: white;
+          text-align: center;
+        }
+        .industry-links p {
+          margin: 0 auto 2rem;
+          color: #64748b;
+        }
+        .industry-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 1rem;
+          max-width: 900px;
+          margin: 0 auto;
+        }
+        .industry-card {
+          display: inline-block;
+          border: 1px solid #cbd5e1;
+          border-radius: 12px;
+          padding: 1rem;
+          text-decoration: none;
+          color: #0f172a;
+          font-weight: 600;
+          transition: all 0.2s;
+          background: #f8fafc;
+        }
+        .industry-card:hover {
+          border-color: #3b82f6;
+          background: #eff6ff;
+          color: #1d4ed8;
         }
         .how-it-works h2 {
           text-align: center;
