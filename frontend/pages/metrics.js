@@ -5,7 +5,9 @@ import {
   getLeadConversionMetrics,
   getOperationalDashboard,
   getOperatorQueue,
+  getOperatorQueueHistory,
   login,
+  unacknowledgeOperatorQueueItem,
 } from "../lib/api";
 
 export default function MetricsPage() {
@@ -16,6 +18,7 @@ export default function MetricsPage() {
   const [metrics, setMetrics] = useState(null);
   const [dashboard, setDashboard] = useState(null);
   const [operatorQueue, setOperatorQueue] = useState(null);
+  const [queueHistory, setQueueHistory] = useState(null);
   const [queueNotice, setQueueNotice] = useState("");
   const [queueBusyKey, setQueueBusyKey] = useState("");
   const [error, setError] = useState("");
@@ -92,16 +95,27 @@ export default function MetricsPage() {
   async function onLoadMetrics() {
     await withAction("metrics", async () => {
       if (!token) throw new Error("Login first to load metrics.");
-      const [metricsData, dashboardData, operatorQueueData] = await Promise.all([
+      const [metricsData, dashboardData, operatorQueueData, queueHistoryData] = await Promise.all([
         getLeadConversionMetrics({ token, days }),
         getOperationalDashboard({ token }),
         getOperatorQueue({ token, limit: 5 }),
+        getOperatorQueueHistory({ token, limit: 20 }),
       ]);
       setMetrics(metricsData);
       setDashboard(dashboardData);
       setOperatorQueue(operatorQueueData);
+      setQueueHistory(queueHistoryData);
       setQueueNotice("");
     });
+  }
+
+  async function refreshQueueData() {
+    const [queueData, historyData] = await Promise.all([
+      getOperatorQueue({ token, limit: 5 }),
+      getOperatorQueueHistory({ token, limit: 20 }),
+    ]);
+    setOperatorQueue(queueData);
+    setQueueHistory(historyData);
   }
 
   async function onAcknowledgeQueueItem(item) {
@@ -115,22 +129,28 @@ export default function MetricsPage() {
         itemType: item.item_type,
         entityId: item.entity_id,
       });
-
-      setOperatorQueue((current) => {
-        if (!current) {
-          return current;
-        }
-        const nextItems = (current.items || []).filter(
-          (candidate) => !(candidate.item_type === item.item_type && candidate.entity_id === item.entity_id),
-        );
-        const nextTotal = Math.max(0, Number(current.total_candidates || 0) - 1);
-        return {
-          ...current,
-          total_candidates: nextTotal,
-          items: nextItems,
-        };
-      });
+      await refreshQueueData();
       setQueueNotice(`Acknowledged: ${item.title}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setQueueBusyKey("");
+    }
+  }
+
+  async function onRestoreQueueItem(event) {
+    setError("");
+    setQueueNotice("");
+    const queueKey = `restore-${event.item_type}-${event.entity_id}`;
+    setQueueBusyKey(queueKey);
+    try {
+      await unacknowledgeOperatorQueueItem({
+        token,
+        itemType: event.item_type,
+        entityId: event.entity_id,
+      });
+      await refreshQueueData();
+      setQueueNotice(`Restored: ${event.item_type} #${event.entity_id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -319,6 +339,52 @@ export default function MetricsPage() {
               </div>
             ) : (
               <p>No operator queue items right now.</p>
+            )}
+          </section>
+
+          <section className="dispatch-card">
+            <header className="dispatch-head">
+              <h2>Queue History</h2>
+              <p>Recent acknowledgement and restore activity for operator queue items.</p>
+            </header>
+            {(queueHistory?.events || []).length > 0 ? (
+              <div className="metric-table-wrap">
+                <table className="metric-table">
+                  <thead>
+                    <tr>
+                      <th>Action</th>
+                      <th>Item</th>
+                      <th>When</th>
+                      <th>Queue</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(queueHistory?.events || []).map((event) => (
+                      <tr key={`${event.action}-${event.item_type}-${event.entity_id}-${event.timestamp}`}>
+                        <td>{event.action}</td>
+                        <td>{event.item_type} #{event.entity_id}</td>
+                        <td>{event.timestamp}</td>
+                        <td>
+                          {event.action === "ack" ? (
+                            <button
+                              type="button"
+                              aria-label={`Restore ${event.item_type} #${event.entity_id}`}
+                              onClick={() => onRestoreQueueItem(event)}
+                              disabled={busyAction !== "" || queueBusyKey === `restore-${event.item_type}-${event.entity_id}`}
+                            >
+                              {queueBusyKey === `restore-${event.item_type}-${event.entity_id}` ? "Saving..." : "Restore"}
+                            </button>
+                          ) : (
+                            <span>-</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p>No queue history yet.</p>
             )}
           </section>
         </>

@@ -302,6 +302,29 @@ export async function acknowledgeOperatorQueueItem({ token, itemType, entityId }
   });
 }
 
+export async function unacknowledgeOperatorQueueItem({ token, itemType, entityId }) {
+  return apiFetch("/api/reports/operator-queue/unack", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      item_type: itemType,
+      entity_id: Number(entityId),
+    }),
+  });
+}
+
+export async function getOperatorQueueHistory({ token, limit = 20 }) {
+  const query = new URLSearchParams({ limit: String(limit) });
+  return apiFetch(`/api/reports/operator-queue/history?${query.toString()}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
 export async function getLeadActivity({ token, leadId, action, sinceHours }) {
   const query = new URLSearchParams();
   if (action) {

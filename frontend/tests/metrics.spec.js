@@ -1,6 +1,32 @@
 const { test, expect } = require("@playwright/test");
 
 test("metrics dashboard flow works", async ({ page }) => {
+  const nowIso = new Date().toISOString();
+  const queueItems = [
+    {
+      item_type: "invoice_collection",
+      entity_id: 401,
+      title: "Collect invoice #401",
+      urgency: "critical",
+      priority_score: 148,
+      revenue_impact: 900,
+      due_at: "2026-03-20T10:00:00",
+      action: "Call customer and collect payment today.",
+    },
+    {
+      item_type: "job_completion",
+      entity_id: 77,
+      title: "Close dispatched job #77",
+      urgency: "high",
+      priority_score: 96,
+      revenue_impact: null,
+      due_at: "2026-03-31T14:00:00",
+      action: "Confirm outcome and mark complete or reschedule.",
+    },
+  ];
+  const archivedItems = {};
+  const historyEvents = [];
+
   await page.route("**/api/auth/login", async (route) => {
     await route.fulfill({
       status: 200,
@@ -82,43 +108,48 @@ test("metrics dashboard flow works", async ({ page }) => {
     });
   });
 
-  await page.route("**/api/reports/operator-queue**", async (route) => {
+  await page.route("**/api/reports/operator-queue?**", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         organization_id: 11,
-        timestamp: new Date().toISOString(),
+        timestamp: nowIso,
         limit: 5,
-        total_candidates: 2,
-        items: [
-          {
-            item_type: "invoice_collection",
-            entity_id: 401,
-            title: "Collect invoice #401",
-            urgency: "critical",
-            priority_score: 148,
-            revenue_impact: 900,
-            due_at: "2026-03-20T10:00:00",
-            action: "Call customer and collect payment today.",
-          },
-          {
-            item_type: "job_completion",
-            entity_id: 77,
-            title: "Close dispatched job #77",
-            urgency: "high",
-            priority_score: 96,
-            revenue_impact: null,
-            due_at: "2026-03-31T14:00:00",
-            action: "Confirm outcome and mark complete or reschedule.",
-          },
-        ],
+        total_candidates: queueItems.length,
+        items: queueItems,
+      }),
+    });
+  });
+
+  await page.route("**/api/reports/operator-queue/history?**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        organization_id: 11,
+        timestamp: nowIso,
+        limit: 20,
+        events: historyEvents,
       }),
     });
   });
 
   await page.route("**/api/reports/operator-queue/ack", async (route) => {
     const payload = route.request().postDataJSON();
+    const itemIndex = queueItems.findIndex(
+      (item) => item.item_type === payload.item_type && item.entity_id === payload.entity_id,
+    );
+    if (itemIndex >= 0) {
+      const [removed] = queueItems.splice(itemIndex, 1);
+      archivedItems[`${removed.item_type}-${removed.entity_id}`] = removed;
+      historyEvents.unshift({
+        action: "ack",
+        item_type: removed.item_type,
+        entity_id: removed.entity_id,
+        timestamp: new Date().toISOString(),
+      });
+    }
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -129,6 +160,35 @@ test("metrics dashboard flow works", async ({ page }) => {
         acknowledged: true,
         already_acknowledged: false,
         acknowledged_at: new Date().toISOString(),
+      }),
+    });
+  });
+
+  await page.route("**/api/reports/operator-queue/unack", async (route) => {
+    const payload = route.request().postDataJSON();
+    const key = `${payload.item_type}-${payload.entity_id}`;
+    const restored = archivedItems[key];
+    if (restored) {
+      queueItems.unshift(restored);
+      delete archivedItems[key];
+    }
+    historyEvents.unshift({
+      action: "unack",
+      item_type: payload.item_type,
+      entity_id: payload.entity_id,
+      timestamp: new Date().toISOString(),
+    });
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        organization_id: 11,
+        item_type: payload.item_type,
+        entity_id: payload.entity_id,
+        unacknowledged: true,
+        already_unacknowledged: false,
+        unacknowledged_at: new Date().toISOString(),
       }),
     });
   });
@@ -149,6 +209,7 @@ test("metrics dashboard flow works", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Daily Timeline" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Collections Snapshot" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Operator Priority Queue" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Queue History" })).toBeVisible();
   await expect(page.getByText("Intakes").first()).toBeVisible();
   await expect(page.locator(".results-grid .panel").filter({ hasText: "Intakes" }).getByText("12", { exact: true })).toBeVisible();
   await expect(page.locator(".results-grid .panel").filter({ hasText: "Qualification Rate" }).getByText("75%", { exact: true })).toBeVisible();
@@ -171,6 +232,10 @@ test("metrics dashboard flow works", async ({ page }) => {
   await expect(page.getByText("Acknowledged: Collect invoice #401")).toBeVisible();
   const queueRows = page.locator("section.dispatch-card:has(h2:has-text('Operator Priority Queue')) tbody tr");
   await expect(queueRows.filter({ hasText: "Collect invoice #401" })).toHaveCount(0);
+  await expect(page.getByText("invoice_collection #401")).toBeVisible();
+  await page.getByRole("button", { name: "Restore invoice_collection #401" }).click();
+  await expect(page.getByText("Restored: invoice_collection #401")).toBeVisible();
+  await expect(queueRows.filter({ hasText: "Collect invoice #401" })).toHaveCount(1);
   await expect(page.getByRole("heading", { name: "8 To 14 Days (Top Action)" })).toHaveCount(0);
   await expect(page.getByText("2026-04-01")).toBeVisible();
 });
