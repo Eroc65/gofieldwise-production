@@ -89,6 +89,7 @@ def update_invoice_status(
 
     invoice_obj = cast(Any, invoice)
     was_status = str(cast(str, invoice.status))
+    invoice_marker = f"invoice #{invoice.id}".lower()
     invoice_obj.status = new_status
     if new_status == "paid":
         invoice_obj.paid_at = _utcnow()
@@ -99,11 +100,13 @@ def update_invoice_status(
                 Reminder.organization_id == invoice.organization_id,
                 Reminder.job_id == invoice.job_id,
                 Reminder.status == "pending",
-                Reminder.message == f"Collect payment for invoice #{invoice.id}",
             )
             .all()
         )
         for reminder in reminders:
+            reminder_message = str(cast(str, reminder.message)).lower()
+            if invoice_marker not in reminder_message:
+                continue
             reminder_obj = cast(Any, reminder)
             reminder_obj.status = "dismissed"
             reminder_obj.updated_at = _utcnow()
@@ -117,11 +120,13 @@ def update_invoice_status(
                     Reminder.organization_id == invoice.organization_id,
                     Reminder.job_id == invoice.job_id,
                     Reminder.status == "dismissed",
-                    Reminder.message == f"Collect payment for invoice #{invoice.id}",
                 )
                 .all()
             )
             for reminder in reminders:
+                reminder_message = str(cast(str, reminder.message)).lower()
+                if invoice_marker not in reminder_message:
+                    continue
                 reminder_obj = cast(Any, reminder)
                 reminder_obj.status = "pending"
                 reminder_obj.due_at = cast(Any, invoice.due_at) or _utcnow()
