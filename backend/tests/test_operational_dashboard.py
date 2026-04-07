@@ -278,3 +278,41 @@ def test_growth_control_tower_org_isolation():
     body2 = org2.json()
     assert body1["organization_id"] != body2["organization_id"]
     assert body2["campaigns"]["total"] >= 1
+
+
+def test_operational_history_requires_auth():
+    client = TestClient(app)
+    assert client.get("/api/reports/operational-history").status_code == 401
+    assert client.get("/api/reports/operational-history/export.csv").status_code == 401
+
+
+def test_operational_history_json_and_csv_export():
+    client = TestClient(app)
+    headers = _auth_headers(client, _EMAIL, _PASSWORD)
+
+    json_resp = client.get("/api/reports/operational-history?days=2", headers=headers)
+    assert json_resp.status_code == 200
+    payload = json_resp.json()
+    assert payload["organization_id"] > 0
+    assert payload["days"] == 2
+    assert len(payload["rows"]) == 2
+    assert "leads_created" in payload["rows"][0]
+    assert "payments_collected_amount" in payload["rows"][0]
+
+    csv_resp = client.get("/api/reports/operational-history/export.csv?days=2", headers=headers)
+    assert csv_resp.status_code == 200
+    assert csv_resp.headers["content-type"].startswith("text/csv")
+    csv_body = csv_resp.text
+    assert "date,leads_created,jobs_completed,invoices_issued_count" in csv_body
+    assert len([line for line in csv_body.strip().splitlines() if line]) == 3
+
+
+def test_operational_history_invalid_date_range_rejected():
+    client = TestClient(app)
+    headers = _auth_headers(client, _EMAIL, _PASSWORD)
+
+    bad = client.get(
+        "/api/reports/operational-history?start_date=2026-04-10&end_date=2026-04-01",
+        headers=headers,
+    )
+    assert bad.status_code == 422

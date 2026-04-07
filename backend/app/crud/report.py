@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, cast
 
 from sqlalchemy import func
@@ -1003,4 +1003,86 @@ def get_growth_control_tower(db, organization_id: int, days: int = 7, queue_limi
             "total_candidates": queue["total_candidates"],
             "items": queue["items"],
         },
+    }
+
+
+def get_operational_history(
+    db,
+    organization_id: int,
+    start_date: date,
+    end_date: date,
+) -> dict:
+    """Return daily operational metrics for a bounded date range."""
+    days = (end_date - start_date).days + 1
+    rows: list[dict[str, Any]] = []
+
+    for offset in range(days):
+        day = start_date + timedelta(days=offset)
+        day_start = datetime.combine(day, datetime.min.time(), tzinfo=_utcnow().tzinfo)
+        day_end = day_start + timedelta(days=1)
+
+        leads_created = db.query(Lead).filter(
+            Lead.organization_id == organization_id,
+            Lead.created_at >= day_start,
+            Lead.created_at < day_end,
+        ).count()
+
+        jobs_completed = db.query(Job).filter(
+            Job.organization_id == organization_id,
+            Job.completed_at.isnot(None),
+            Job.completed_at >= day_start,
+            Job.completed_at < day_end,
+        ).count()
+
+        invoices_issued_count = db.query(Invoice).filter(
+            Invoice.organization_id == organization_id,
+            Invoice.issued_at >= day_start,
+            Invoice.issued_at < day_end,
+        ).count()
+        invoices_issued_amount = db.query(func.sum(Invoice.amount)).filter(
+            Invoice.organization_id == organization_id,
+            Invoice.issued_at >= day_start,
+            Invoice.issued_at < day_end,
+        ).scalar() or 0.0
+
+        payments_collected_count = db.query(Invoice).filter(
+            Invoice.organization_id == organization_id,
+            Invoice.status == "paid",
+            Invoice.paid_at.isnot(None),
+            Invoice.paid_at >= day_start,
+            Invoice.paid_at < day_end,
+        ).count()
+        payments_collected_amount = db.query(func.sum(Invoice.amount)).filter(
+            Invoice.organization_id == organization_id,
+            Invoice.status == "paid",
+            Invoice.paid_at.isnot(None),
+            Invoice.paid_at >= day_start,
+            Invoice.paid_at < day_end,
+        ).scalar() or 0.0
+
+        reminders_due = db.query(Reminder).filter(
+            Reminder.organization_id == organization_id,
+            Reminder.due_at >= day_start,
+            Reminder.due_at < day_end,
+        ).count()
+
+        rows.append(
+            {
+                "date": day.isoformat(),
+                "leads_created": leads_created,
+                "jobs_completed": jobs_completed,
+                "invoices_issued_count": invoices_issued_count,
+                "invoices_issued_amount": round(float(invoices_issued_amount), 2),
+                "payments_collected_count": payments_collected_count,
+                "payments_collected_amount": round(float(payments_collected_amount), 2),
+                "reminders_due": reminders_due,
+            }
+        )
+
+    return {
+        "organization_id": organization_id,
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "days": days,
+        "rows": rows,
     }

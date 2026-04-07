@@ -160,3 +160,22 @@ class GrowthControlTowerOut(BaseModel):
     kpis: GrowthControlTowerKpisOut
     recommended_next_action: str
     operator_queue: GrowthControlTowerQueueOut
+
+
+class OperationalHistoryDayOut(BaseModel):
+    date: str
+    leads_created: int
+    jobs_completed: int
+    invoices_issued_count: int
+    invoices_issued_amount: float
+    payments_collected_count: int
+    payments_collected_amount: float
+    reminders_due: int
+
+
+class OperationalHistoryOut(BaseModel):
+    organization_id: int
+    start_date: str
+    end_date: str
+    days: int
+    rows: list[OperationalHistoryDayOut]
