@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { getLeadConversionMetrics, login } from "../lib/api";
+import { getLeadConversionMetrics, getOperationalDashboard, login } from "../lib/api";
 
 export default function MetricsPage() {
   const [token, setToken] = useState("");
@@ -8,10 +8,19 @@ export default function MetricsPage() {
   const [authPassword, setAuthPassword] = useState("");
   const [days, setDays] = useState(7);
   const [metrics, setMetrics] = useState(null);
+  const [dashboard, setDashboard] = useState(null);
   const [error, setError] = useState("");
   const [busyAction, setBusyAction] = useState("");
 
   const totals = useMemo(() => metrics?.totals || {}, [metrics]);
+  const invoiceSummary = useMemo(() => dashboard?.invoice_summary || {}, [dashboard]);
+  const overdueInvoices = useMemo(() => dashboard?.overdue_invoices || {}, [dashboard]);
+  const agingBuckets = useMemo(() => overdueInvoices.aging_buckets || {}, [overdueInvoices]);
+
+  function money(value) {
+    const amount = Number(value || 0);
+    return `$${amount.toFixed(2)}`;
+  }
 
   useEffect(() => {
     const savedToken = window.localStorage.getItem("fdp.dispatch.token") || "";
@@ -46,8 +55,12 @@ export default function MetricsPage() {
   async function onLoadMetrics() {
     await withAction("metrics", async () => {
       if (!token) throw new Error("Login first to load metrics.");
-      const data = await getLeadConversionMetrics({ token, days });
-      setMetrics(data);
+      const [metricsData, dashboardData] = await Promise.all([
+        getLeadConversionMetrics({ token, days }),
+        getOperationalDashboard({ token }),
+      ]);
+      setMetrics(metricsData);
+      setDashboard(dashboardData);
     });
   }
 
@@ -125,6 +138,43 @@ export default function MetricsPage() {
               <h3>Booking Rate</h3>
               <p>{totals.booking_rate ?? 0}%</p>
             </article>
+          </section>
+
+          <section className="dispatch-card">
+            <header className="dispatch-head">
+              <h2>Collections Snapshot</h2>
+              <p>Unpaid exposure and overdue aging buckets from the operational dashboard.</p>
+            </header>
+            <div className="results-grid">
+              <article className="panel">
+                <h3>Unpaid Total</h3>
+                <p>{money(invoiceSummary.unpaid_total_amount)}</p>
+              </article>
+              <article className="panel">
+                <h3>Overdue Count</h3>
+                <p>{invoiceSummary.overdue_count ?? 0}</p>
+              </article>
+              <article className="panel">
+                <h3>Current Not Due</h3>
+                <p>{agingBuckets.current_not_due?.count ?? 0}</p>
+              </article>
+              <article className="panel">
+                <h3>1 To 7 Days</h3>
+                <p>{agingBuckets.days_1_7?.count ?? 0}</p>
+              </article>
+              <article className="panel">
+                <h3>8 To 14 Days</h3>
+                <p>{agingBuckets.days_8_14?.count ?? 0}</p>
+              </article>
+              <article className="panel">
+                <h3>15 To 30 Days</h3>
+                <p>{agingBuckets.days_15_30?.count ?? 0}</p>
+              </article>
+              <article className="panel">
+                <h3>31 Plus Days</h3>
+                <p>{agingBuckets.days_31_plus?.count ?? 0}</p>
+              </article>
+            </div>
           </section>
 
           <section className="dispatch-card">

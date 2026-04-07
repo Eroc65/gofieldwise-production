@@ -270,6 +270,15 @@ export async function getLeadConversionMetrics({ token, days = 7 }) {
   });
 }
 
+export async function getOperationalDashboard({ token }) {
+  return apiFetch("/api/reports/operational-dashboard", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
 export async function getLeadActivity({ token, leadId, action, sinceHours }) {
   const query = new URLSearchParams();
   if (action) {
