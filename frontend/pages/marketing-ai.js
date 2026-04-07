@@ -9,6 +9,24 @@ import {
   login,
 } from "../lib/api";
 
+const CUSTOM_PACKS_KEY_PREFIX = "fdp.marketing.customPacks.";
+
+function customPacksStorageKey(email) {
+  const normalized = String(email || "").trim().toLowerCase();
+  return `${CUSTOM_PACKS_KEY_PREFIX}${normalized || "default"}`;
+}
+
+function makePackCode(name) {
+  const slug = String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40);
+  const stamp = Date.now().toString().slice(-6);
+  return `custom_${slug || "pack"}_${stamp}`;
+}
+
 export default function MarketingAIPage() {
   const [token, setToken] = useState("");
   const [authEmail, setAuthEmail] = useState("");
@@ -17,6 +35,8 @@ export default function MarketingAIPage() {
   const [channels, setChannels] = useState([]);
   const [tradeTemplates, setTradeTemplates] = useState([]);
   const [campaignPacks, setCampaignPacks] = useState([]);
+  const [customPacks, setCustomPacks] = useState([]);
+  const [customPackName, setCustomPackName] = useState("");
   const [selectedPack, setSelectedPack] = useState("");
   const [templateCode, setTemplateCode] = useState("social_promo");
   const [channelCode, setChannelCode] = useState("instagram_feed");
@@ -40,6 +60,17 @@ export default function MarketingAIPage() {
     if (savedToken) setToken(savedToken);
     if (savedEmail) setAuthEmail(savedEmail);
   }, []);
+
+  useEffect(() => {
+    const key = customPacksStorageKey(authEmail);
+    try {
+      const raw = window.localStorage.getItem(key);
+      const parsed = raw ? JSON.parse(raw) : [];
+      setCustomPacks(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      setCustomPacks([]);
+    }
+  }, [authEmail]);
 
   async function withBusy(fn) {
     setBusy(true);
@@ -144,7 +175,7 @@ export default function MarketingAIPage() {
 
   function applyCampaignPack(code) {
     setSelectedPack(code);
-    const pack = (campaignPacks || []).find((item) => item.code === code);
+    const pack = [...(campaignPacks || []), ...(customPacks || [])].find((item) => item.code === code);
     if (!pack) {
       return;
     }
@@ -163,6 +194,48 @@ export default function MarketingAIPage() {
     } else {
       setSize("1024x1024");
     }
+  }
+
+  function saveCustomPack() {
+    const name = customPackName.trim();
+    if (!name) {
+      setError("Custom pack name is required.");
+      return;
+    }
+
+    const pack = {
+      code: makePackCode(name),
+      name,
+      description: "Custom saved preset",
+      template_code: templateCode,
+      channel_code: channelCode,
+      trade_code: tradeCode,
+      service_type: serviceType,
+      offer_text: offerText,
+      cta_text: ctaText,
+      primary_color: primaryColor,
+      prompt,
+    };
+
+    const next = [pack, ...(customPacks || [])];
+    setCustomPacks(next);
+    window.localStorage.setItem(customPacksStorageKey(authEmail), JSON.stringify(next));
+    setCustomPackName("");
+    setResult(`Saved custom pack: ${name}`);
+    setError("");
+  }
+
+  function deleteSelectedCustomPack() {
+    if (!selectedPack.startsWith("custom_")) {
+      setError("Select a custom pack to delete.");
+      return;
+    }
+    const next = (customPacks || []).filter((item) => item.code !== selectedPack);
+    setCustomPacks(next);
+    window.localStorage.setItem(customPacksStorageKey(authEmail), JSON.stringify(next));
+    setSelectedPack("");
+    setResult("Custom pack deleted.");
+    setError("");
   }
 
   async function onGenerate() {
@@ -225,11 +298,30 @@ export default function MarketingAIPage() {
             Campaign Pack
             <select value={selectedPack} onChange={(e) => applyCampaignPack(e.target.value)}>
               <option value="">Select a campaign pack</option>
-              {(campaignPacks || []).map((item) => (
-                <option key={item.code} value={item.code}>{item.name}</option>
-              ))}
+              {(campaignPacks || []).length > 0 ? (
+                <optgroup label="Built-in packs">
+                  {(campaignPacks || []).map((item) => (
+                    <option key={item.code} value={item.code}>{item.name}</option>
+                  ))}
+                </optgroup>
+              ) : null}
+              {(customPacks || []).length > 0 ? (
+                <optgroup label="Your custom packs">
+                  {(customPacks || []).map((item) => (
+                    <option key={item.code} value={item.code}>{item.name}</option>
+                  ))}
+                </optgroup>
+              ) : null}
             </select>
           </label>
+          <label>
+            Save Current As
+            <input value={customPackName} onChange={(e) => setCustomPackName(e.target.value)} placeholder="My Summer Promo Pack" />
+          </label>
+          <div className="actions" style={{ alignItems: "end" }}>
+            <button type="button" onClick={saveCustomPack} disabled={!token || busy}>Save Custom Pack</button>
+            <button type="button" onClick={deleteSelectedCustomPack} disabled={!token || busy}>Delete Selected Custom Pack</button>
+          </div>
           <label>
             Template
             <select value={templateCode} onChange={(e) => applyTemplateDefaults(e.target.value)}>
