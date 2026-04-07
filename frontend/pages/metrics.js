@@ -18,8 +18,8 @@ export default function MetricsPage() {
   const agingBuckets = useMemo(() => overdueInvoices.aging_buckets || {}, [overdueInvoices]);
   const prioritizedAgingBuckets = useMemo(
     () => [
-      { key: "days_31_plus", label: "31 Plus Days" },
-      { key: "days_15_30", label: "15 To 30 Days" },
+      { key: "days_31_plus", label: "31 Plus Days", topAction: true },
+      { key: "days_15_30", label: "15 To 30 Days", topAction: true },
       { key: "days_8_14", label: "8 To 14 Days" },
       { key: "days_1_7", label: "1 To 7 Days" },
       { key: "current_not_due", label: "Current Not Due" },
@@ -176,7 +176,10 @@ export default function MetricsPage() {
             <div className="results-grid collections-aging-grid">
               {prioritizedAgingBuckets.map((bucket) => (
                 <article className="panel" key={bucket.key}>
-                  <h3>{bucket.label}</h3>
+                  <h3>
+                    {bucket.label}
+                    {bucket.topAction ? " (Top Action)" : ""}
+                  </h3>
                   <p>{bucketCount(bucket.key)}</p>
                   <small>{bucketAmount(bucket.key)}</small>
                 </article>
