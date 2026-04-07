@@ -23,7 +23,7 @@ def build_backend_config() -> dict[str, Any]:
 
     Examples:
       AGENT_MODEL_BASE_URL=http://localhost:1234/v1
-      AGENT_MODEL_API_KEY=sk-...
+            AGENT_MODEL_API_KEY=<api-key>
       AGENT_MODEL_NAME=gpt-4.1-mini
     """
     return {
