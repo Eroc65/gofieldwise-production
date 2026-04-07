@@ -533,6 +533,28 @@ export async function listMarketingImageCampaignPacks({ token }) {
   });
 }
 
+export async function listMarketingImageCustomPacks({ token }) {
+  return apiFetch("/api/marketing/ai-images/custom-packs", {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function createMarketingImageCustomPack({ token, payload }) {
+  return apiFetch("/api/marketing/ai-images/custom-packs", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteMarketingImageCustomPack({ token, packId }) {
+  return apiFetch(`/api/marketing/ai-images/custom-packs/${packId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
 export async function generateMarketingImage({
   token,
   prompt,

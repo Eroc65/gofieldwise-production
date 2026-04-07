@@ -1,3 +1,4 @@
+from secrets import token_urlsafe
 from typing import List, cast
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -12,6 +13,7 @@ from ..crud.marketing import launch_campaign
 from ..crud.marketing import list_campaigns
 from ..crud.reminder import run_reactivation_engine
 from ..models.core import User
+from ..models.core import MarketingImageCampaignPack
 from ..schemas.marketing import MarketingCampaignCreate
 from ..schemas.marketing import MarketingCampaignLaunchOut
 from ..schemas.marketing import MarketingCampaignOut
@@ -20,6 +22,8 @@ from ..schemas.marketing import MarketingImageGenerateRequest
 from ..schemas.marketing import MarketingImageChannelOut
 from ..schemas.marketing import MarketingImageCampaignPackOut
 from ..schemas.marketing import MarketingImageTemplateOut
+from ..schemas.marketing import MarketingImageCustomCampaignPackCreate
+from ..schemas.marketing import MarketingImageCustomCampaignPackOut
 from ..schemas.marketing import MarketingImageTradeTemplateOut
 from ..schemas.marketing import ReactivationRunOut
 from ..schemas.marketing import ReactivationRunRequest
@@ -188,6 +192,18 @@ def _compose_marketing_prompt(payload: MarketingImageGenerateRequest) -> str:
     )
 
 
+def _validate_pack_codes(template_code: str, channel_code: str, trade_code: str) -> None:
+    if not any(item["code"] == template_code for item in _MARKETING_IMAGE_TEMPLATES):
+        allowed = ", ".join(item["code"] for item in _MARKETING_IMAGE_TEMPLATES)
+        raise HTTPException(status_code=400, detail=f"template_code must be one of: {allowed}")
+    if not any(item["code"] == channel_code for item in _MARKETING_IMAGE_CHANNELS):
+        allowed = ", ".join(item["code"] for item in _MARKETING_IMAGE_CHANNELS)
+        raise HTTPException(status_code=400, detail=f"channel_code must be one of: {allowed}")
+    if not any(item["code"] == trade_code for item in _MARKETING_IMAGE_TRADE_TEMPLATES):
+        allowed = ", ".join(item["code"] for item in _MARKETING_IMAGE_TRADE_TEMPLATES)
+        raise HTTPException(status_code=400, detail=f"trade_code must be one of: {allowed}")
+
+
 @router.get("/marketing/ai-images/templates", response_model=List[MarketingImageTemplateOut])
 def list_marketing_image_templates(
     current_user: User = Depends(get_current_user),
@@ -218,6 +234,75 @@ def list_marketing_image_campaign_packs(
 ):
     _ensure_marketing_access(current_user)
     return _MARKETING_IMAGE_CAMPAIGN_PACKS
+
+
+@router.get("/marketing/ai-images/custom-packs", response_model=List[MarketingImageCustomCampaignPackOut])
+def list_marketing_image_custom_campaign_packs(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ensure_marketing_access(current_user)
+    org_id = int(cast(int, current_user.organization_id))
+    return (
+        db.query(MarketingImageCampaignPack)
+        .filter(MarketingImageCampaignPack.organization_id == org_id)
+        .order_by(MarketingImageCampaignPack.updated_at.desc(), MarketingImageCampaignPack.id.desc())
+        .all()
+    )
+
+
+@router.post("/marketing/ai-images/custom-packs", response_model=MarketingImageCustomCampaignPackOut, status_code=status.HTTP_201_CREATED)
+def create_marketing_image_custom_campaign_pack(
+    payload: MarketingImageCustomCampaignPackCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ensure_marketing_access(current_user)
+    _validate_pack_codes(payload.template_code, payload.channel_code, payload.trade_code)
+    org_id = int(cast(int, current_user.organization_id))
+
+    pack = MarketingImageCampaignPack(
+        code=f"custom_{token_urlsafe(8)}",
+        name=payload.name.strip(),
+        description=payload.description.strip(),
+        template_code=payload.template_code,
+        channel_code=payload.channel_code,
+        trade_code=payload.trade_code,
+        service_type=payload.service_type.strip(),
+        offer_text=payload.offer_text.strip(),
+        cta_text=payload.cta_text.strip(),
+        primary_color=payload.primary_color.strip(),
+        prompt=payload.prompt.strip(),
+        organization_id=org_id,
+    )
+    db.add(pack)
+    db.commit()
+    db.refresh(pack)
+    return pack
+
+
+@router.delete("/marketing/ai-images/custom-packs/{pack_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_marketing_image_custom_campaign_pack(
+    pack_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ensure_marketing_access(current_user)
+    org_id = int(cast(int, current_user.organization_id))
+    pack = (
+        db.query(MarketingImageCampaignPack)
+        .filter(
+            MarketingImageCampaignPack.id == pack_id,
+            MarketingImageCampaignPack.organization_id == org_id,
+        )
+        .first()
+    )
+    if not pack:
+        raise HTTPException(status_code=404, detail="Custom campaign pack not found")
+
+    db.delete(pack)
+    db.commit()
+    return None
 
 
 @router.get("/marketing/campaigns", response_model=List[MarketingCampaignOut])

@@ -1,31 +1,16 @@
 import { useEffect, useState } from "react";
 
 import {
+  createMarketingImageCustomPack,
+  deleteMarketingImageCustomPack,
   generateMarketingImage,
   listMarketingImageCampaignPacks,
   listMarketingImageChannels,
+  listMarketingImageCustomPacks,
   listMarketingImageTemplates,
   listMarketingImageTradeTemplates,
   login,
 } from "../lib/api";
-
-const CUSTOM_PACKS_KEY_PREFIX = "fdp.marketing.customPacks.";
-
-function customPacksStorageKey(email) {
-  const normalized = String(email || "").trim().toLowerCase();
-  return `${CUSTOM_PACKS_KEY_PREFIX}${normalized || "default"}`;
-}
-
-function makePackCode(name) {
-  const slug = String(name || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 40);
-  const stamp = Date.now().toString().slice(-6);
-  return `custom_${slug || "pack"}_${stamp}`;
-}
 
 export default function MarketingAIPage() {
   const [token, setToken] = useState("");
@@ -61,17 +46,6 @@ export default function MarketingAIPage() {
     if (savedEmail) setAuthEmail(savedEmail);
   }, []);
 
-  useEffect(() => {
-    const key = customPacksStorageKey(authEmail);
-    try {
-      const raw = window.localStorage.getItem(key);
-      const parsed = raw ? JSON.parse(raw) : [];
-      setCustomPacks(Array.isArray(parsed) ? parsed : []);
-    } catch {
-      setCustomPacks([]);
-    }
-  }, [authEmail]);
-
   async function withBusy(fn) {
     setBusy(true);
     setError("");
@@ -92,16 +66,18 @@ export default function MarketingAIPage() {
       window.localStorage.setItem("fdp.dispatch.token", response.access_token);
       window.localStorage.setItem("fdp.dispatch.email", authEmail);
 
-      const [templateRows, channelRows, tradeRows, packRows] = await Promise.all([
+      const [templateRows, channelRows, tradeRows, packRows, customPackRows] = await Promise.all([
         listMarketingImageTemplates({ token: response.access_token }),
         listMarketingImageChannels({ token: response.access_token }),
         listMarketingImageTradeTemplates({ token: response.access_token }),
         listMarketingImageCampaignPacks({ token: response.access_token }),
+        listMarketingImageCustomPacks({ token: response.access_token }),
       ]);
       setTemplates(Array.isArray(templateRows) ? templateRows : []);
       setChannels(Array.isArray(channelRows) ? channelRows : []);
       setTradeTemplates(Array.isArray(tradeRows) ? tradeRows : []);
       setCampaignPacks(Array.isArray(packRows) ? packRows : []);
+      setCustomPacks(Array.isArray(customPackRows) ? customPackRows : []);
 
       setResult("Operator session ready.");
     });
@@ -114,17 +90,19 @@ export default function MarketingAIPage() {
     let cancelled = false;
     async function loadTemplates() {
       try {
-        const [templateRows, channelRows, tradeRows, packRows] = await Promise.all([
+        const [templateRows, channelRows, tradeRows, packRows, customPackRows] = await Promise.all([
           listMarketingImageTemplates({ token }),
           listMarketingImageChannels({ token }),
           listMarketingImageTradeTemplates({ token }),
           listMarketingImageCampaignPacks({ token }),
+          listMarketingImageCustomPacks({ token }),
         ]);
         if (!cancelled) {
           setTemplates(Array.isArray(templateRows) ? templateRows : []);
           setChannels(Array.isArray(channelRows) ? channelRows : []);
           setTradeTemplates(Array.isArray(tradeRows) ? tradeRows : []);
           setCampaignPacks(Array.isArray(packRows) ? packRows : []);
+          setCustomPacks(Array.isArray(customPackRows) ? customPackRows : []);
         }
       } catch {
         if (!cancelled) {
@@ -132,6 +110,7 @@ export default function MarketingAIPage() {
           setChannels([]);
           setTradeTemplates([]);
           setCampaignPacks([]);
+          setCustomPacks([]);
         }
       }
     }
@@ -196,46 +175,51 @@ export default function MarketingAIPage() {
     }
   }
 
-  function saveCustomPack() {
+  async function saveCustomPack() {
     const name = customPackName.trim();
     if (!name) {
       setError("Custom pack name is required.");
       return;
     }
 
-    const pack = {
-      code: makePackCode(name),
-      name,
-      description: "Custom saved preset",
-      template_code: templateCode,
-      channel_code: channelCode,
-      trade_code: tradeCode,
-      service_type: serviceType,
-      offer_text: offerText,
-      cta_text: ctaText,
-      primary_color: primaryColor,
-      prompt,
-    };
-
-    const next = [pack, ...(customPacks || [])];
-    setCustomPacks(next);
-    window.localStorage.setItem(customPacksStorageKey(authEmail), JSON.stringify(next));
-    setCustomPackName("");
-    setResult(`Saved custom pack: ${name}`);
-    setError("");
+    await withBusy(async () => {
+      const created = await createMarketingImageCustomPack({
+        token,
+        payload: {
+          name,
+          description: "Custom saved preset",
+          template_code: templateCode,
+          channel_code: channelCode,
+          trade_code: tradeCode,
+          service_type: serviceType,
+          offer_text: offerText,
+          cta_text: ctaText,
+          primary_color: primaryColor,
+          prompt,
+        },
+      });
+      setCustomPacks((current) => [created, ...(Array.isArray(current) ? current : [])]);
+      setCustomPackName("");
+      setResult(`Saved custom pack: ${name}`);
+    });
   }
 
-  function deleteSelectedCustomPack() {
+  async function deleteSelectedCustomPack() {
     if (!selectedPack.startsWith("custom_")) {
       setError("Select a custom pack to delete.");
       return;
     }
-    const next = (customPacks || []).filter((item) => item.code !== selectedPack);
-    setCustomPacks(next);
-    window.localStorage.setItem(customPacksStorageKey(authEmail), JSON.stringify(next));
-    setSelectedPack("");
-    setResult("Custom pack deleted.");
-    setError("");
+    const pack = (customPacks || []).find((item) => item.code === selectedPack);
+    if (!pack || !pack.id) {
+      setError("Custom pack not found.");
+      return;
+    }
+    await withBusy(async () => {
+      await deleteMarketingImageCustomPack({ token, packId: pack.id });
+      setCustomPacks((current) => (Array.isArray(current) ? current.filter((item) => item.id !== pack.id) : []));
+      setSelectedPack("");
+      setResult("Custom pack deleted.");
+    });
   }
 
   async function onGenerate() {

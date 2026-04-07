@@ -101,3 +101,22 @@ class MarketingImageCampaignPackOut(BaseModel):
     cta_text: str
     primary_color: str
     prompt: str
+
+
+class MarketingImageCustomCampaignPackCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    description: str = Field(default="Custom saved preset", min_length=2, max_length=240)
+    template_code: str = Field(default="social_promo")
+    channel_code: str = Field(default="instagram_feed")
+    trade_code: str = Field(default="general_home_services")
+    service_type: str = Field(min_length=2, max_length=80)
+    offer_text: str = Field(min_length=2, max_length=180)
+    cta_text: str = Field(min_length=2, max_length=120)
+    primary_color: str = Field(min_length=2, max_length=32)
+    prompt: str = Field(min_length=8, max_length=2000)
+
+
+class MarketingImageCustomCampaignPackOut(MarketingImageCampaignPackOut):
+    id: int
+    organization_id: int
+    model_config = ConfigDict(from_attributes=True)

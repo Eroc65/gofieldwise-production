@@ -35,6 +35,7 @@ class Organization(Base):
     user_role_events = relationship("UserRoleAuditEvent", back_populates="organization")
     marketing_campaigns = relationship("MarketingCampaign", back_populates="organization")
     marketing_campaign_recipients = relationship("MarketingCampaignRecipient", back_populates="organization")
+    marketing_image_campaign_packs = relationship("MarketingImageCampaignPack", back_populates="organization")
     help_articles = relationship("HelpArticle", back_populates="organization")
     coaching_snippets = relationship("CoachingSnippet", back_populates="organization")
     comm_profile = relationship("CommunicationTenantProfile", back_populates="organization", uselist=False)
@@ -289,6 +290,26 @@ class MarketingCampaignRecipient(Base):
     campaign = relationship("MarketingCampaign", back_populates="recipients")
     customer = relationship("Customer", back_populates="marketing_campaign_recipients")
     organization = relationship("Organization", back_populates="marketing_campaign_recipients")
+
+
+class MarketingImageCampaignPack(Base):
+    __tablename__ = "marketing_image_campaign_packs"
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String, nullable=False, index=True)
+    name = Column(String, nullable=False)
+    description = Column(String, nullable=False, default="Custom saved preset")
+    template_code = Column(String, nullable=False, default="social_promo")
+    channel_code = Column(String, nullable=False, default="instagram_feed")
+    trade_code = Column(String, nullable=False, default="general_home_services")
+    service_type = Column(String, nullable=False)
+    offer_text = Column(String, nullable=False)
+    cta_text = Column(String, nullable=False)
+    primary_color = Column(String, nullable=False)
+    prompt = Column(Text, nullable=False)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
+    organization = relationship("Organization", back_populates="marketing_image_campaign_packs")
 
 
 class HelpArticle(Base):
