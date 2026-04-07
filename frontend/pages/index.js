@@ -1,288 +1,450 @@
-import { useMemo, useState } from "react";
+import Head from "next/head";
+import Link from "next/link";
+import { useState } from "react";
 
-import DispatchAssistant from "../components/DispatchAssistant";
-import { submitPublicLeadIntake } from "../lib/api";
-
-const PHONE_NUMBER = process.env.NEXT_PUBLIC_SALES_PHONE || "+1 (555) 010-2024";
-const BOOKING_URL = process.env.NEXT_PUBLIC_BOOKING_URL || "https://cal.com/frontdeskpro/demo";
-const INTAKE_KEY = process.env.NEXT_PUBLIC_INTAKE_KEY || "";
-const LEGACY_INTAKE_ORG_ID = process.env.NEXT_PUBLIC_INTAKE_ORG_ID || "";
-
-const offerings = [
-  {
-    title: "AI Voice Agents",
-    subtitle: "Answer every call. Never miss a lead.",
-    description:
-      "Human-like AI phone agents that answer calls, respond to questions, capture lead details, qualify prospects, and book appointments 24/7.",
-    includes: [
-      "Answers calls 24/7, including after hours and weekends",
-      "Speaks naturally and handles complex conversations",
-      "Captures caller name, number, and reason for calling",
-      "Qualifies prospects based on your criteria",
-      "Books, reschedules, or cancels appointments",
-      "Missed call text-back flows to recover lost leads",
-      "Transfers to a human when needed",
-      "Works on your existing business phone number",
-    ],
-    idealFor: "HVAC, Plumbing, Dental, Med Spa, Pest Control, Auto Services, Contractors",
-  },
-  {
-    title: "AI Chatbots",
-    subtitle: "Engage every visitor. Convert more leads.",
-    description:
-      "Intelligent website chatbots that engage visitors instantly, answer common questions, collect lead information, qualify prospects, and guide users toward booking.",
-    includes: [
-      "Responds to visitors instantly with zero wait time",
-      "Trained on your specific services and FAQs",
-      "Collects name, phone, email, and inquiry details",
-      "Qualifies visitors before they reach you",
-      "Books appointments or triggers quote requests",
-      "Runs around the clock on your website",
-      "Sends real-time lead notifications",
-      "Fully branded to match your business",
-    ],
-    idealFor: "Restaurants, Salons, Dentists, Service Businesses, Agencies, Consultants",
-  },
-  {
-    title: "AI-Integrated Websites",
-    subtitle: "A site that works as hard as you do.",
-    description:
-      "Modern, high-converting websites built to explain your offer clearly, build trust fast, capture leads, and connect directly with chatbot and booking systems.",
-    includes: [
-      "Modern, mobile-responsive premium design",
-      "AI chatbot or voice widget built directly in",
-      "Clear, conversion-focused copywriting",
-      "Lead capture forms that convert",
-      "Direct booking system integration",
-      "SEO-optimized structure for local search",
-      "Fast load speeds and clean layout",
-      "Live in 4 to 5 business days",
-    ],
-    idealFor: "Any local or service business ready to grow online",
-  },
-  {
-    title: "Lead Capture And Booking Automation",
-    subtitle: "Turn every touchpoint into a booked appointment.",
-    description:
-      "Connect website, chatbot, forms, and AI systems so leads are captured instantly, organized automatically, and pushed toward booking calls, demos, estimates, or appointments.",
-    includes: [
-      "Multi-channel lead capture across website, chatbot, and forms",
-      "Instant lead notifications to phone or email",
-      "Automatic lead organization and routing",
-      "Online booking available 24/7",
-      "Calendar sync with existing tools",
-      "Automatic confirmation and reminder messages",
-      "Rescheduling and no-show reduction flows",
-      "Full lead reporting and visibility",
-    ],
-    idealFor: "High-volume businesses, Real Estate, Insurance, Service Companies",
-  },
-  {
-    title: "Custom Business Automation",
-    subtitle: "Built around how your business actually works.",
-    description:
-      "Custom workflows for follow-up, notifications, CRM syncing, intake forms, appointment flows, and other automations that reduce manual work.",
-    includes: [
-      "Multi-step follow-up text and email sequences",
-      "CRM syncing and contact management",
-      "Custom intake and onboarding forms",
-      "Internal team notifications and routing",
-      "Review request automation",
-      "Re-engagement campaigns for cold leads",
-      "Custom appointment workflows",
-      "Built around your existing tools and processes",
-    ],
-    idealFor: "Any business with repetitive manual tasks or broken follow-up",
-  },
-];
-
-export default function HomePage() {
-  const [selectedService, setSelectedService] = useState(offerings[0].title);
-  const [lead, setLead] = useState({
-    name: "",
-    phone: "",
-    email: "",
-    company: "",
-    details: "",
-  });
-  const [submitMessage, setSubmitMessage] = useState("");
-  const [submitError, setSubmitError] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const offeringAnchors = useMemo(
-    () => offerings.map((offering) => ({ ...offering, id: offering.title.toLowerCase().replace(/[^a-z0-9]+/g, "-") })),
-    [],
-  );
-
-  function handleGetStarted(serviceName) {
-    setSelectedService(serviceName);
-    setSubmitMessage("");
-    setSubmitError("");
-    const el = document.getElementById("get-started");
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }
-
-  function onLeadFieldChange(field, value) {
-    setLead((prev) => ({ ...prev, [field]: value }));
-  }
-
-  async function onSubmitLead(event) {
-    event.preventDefault();
-    setSubmitMessage("");
-    setSubmitError("");
-    setIsSubmitting(true);
-    try {
-      if (!INTAKE_KEY && !LEGACY_INTAKE_ORG_ID) {
-        throw new Error("Lead intake is not configured. Set NEXT_PUBLIC_INTAKE_KEY.");
-      }
-      await submitPublicLeadIntake({
-        intakeKey: INTAKE_KEY,
-        orgId: LEGACY_INTAKE_ORG_ID,
-        name: lead.name,
-        phone: lead.phone,
-        email: lead.email,
-        service: selectedService,
-        company: lead.company,
-        details: lead.details,
-      });
-      setSubmitMessage("Intake received. Our team will contact you shortly to map your setup plan.");
-      setLead({
-        name: "",
-        phone: "",
-        email: "",
-        company: "",
-        details: "",
-      });
-    } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : "Unable to submit intake right now.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
+export default function Home() {
+  const [demoActive, setDemoActive] = useState(false);
 
   return (
-    <main className="page-shell">
+    <>
+      <Head>
+        <title>FieldWise - AI Field Service Management for Home Service Businesses</title>
+        <meta
+          name="description"
+          content="Never miss a customer. Automate every job-from first call to paid invoice. AI-powered scheduling, dispatch & invoicing for contractors. $200/mo flat rate. Try live demo."
+        />
+        <meta
+          name="keywords"
+          content="AI field service management, contractor software, plumbing scheduling, HVAC dispatch, electrician invoicing, automated job booking, AI receptionist"
+        />
+        <meta property="og:title" content="FieldWise - AI Field Service Management" />
+        <meta
+          property="og:description"
+          content="Stop missing calls & jobs. FieldWise answers, books, dispatches, and invoices automatically-even while you sleep."
+        />
+        <meta property="og:image" content="https://fieldwise-duhl.polsia.app/og-image.png" />
+        <meta property="og:url" content="https://fieldwise-duhl.polsia.app" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <link rel="canonical" href="https://fieldwise-duhl.polsia.app" />
+      </Head>
+
       <section className="hero">
-        <p className="eyebrow">FrontDesk Pro</p>
-        <h1>AI Voice Agents And Automation For Service Businesses</h1>
-        <p>
-          AI-forward systems that answer every call, capture and qualify leads, and book work 24/7.
-          Never miss a lead because the phone rang at the wrong time.
-        </p>
-        <div className="hero-actions">
-          <button type="button" onClick={() => handleGetStarted("AI Voice Agents")}>Start With AI Voice</button>
-          <a className="ghost-link" href={BOOKING_URL} target="_blank" rel="noreferrer">
-            Book A Demo Call
-          </a>
-          <a className="ghost-link" href="/leads">
-            Open Lead Inbox
-          </a>
-          <a className="ghost-link" href="/metrics">
-            View Metrics
-          </a>
-          <a className="ghost-link" href="/growth">
-            Growth Infrastructure
-          </a>
-          <a className="ghost-link" href="/platform">
-            Platform Console
-          </a>
-          <a className="ghost-link" href="/status">
-            Status
-          </a>
+        <div className="container">
+          <h1 className="hero-title">
+            Never Miss a Customer.
+            <br />
+            <span className="highlight">Automate Every Job</span>-From First Call to Paid Invoice.
+          </h1>
+          <p className="hero-subtitle">
+            FieldWise is AI-powered field service management built for home service businesses-no surprise pricing, no
+            setup headaches, just more jobs booked and more time for real work.
+          </p>
+          <div className="hero-cta">
+            <Link href="/demo" className="btn btn-primary btn-large">
+              See FieldWise in Action-No Signup Needed
+            </Link>
+            <button className="btn btn-secondary btn-large" onClick={() => setDemoActive(true)}>
+              Call Our AI Receptionist: (602) 932-0967
+            </button>
+          </div>
+          <div className="hero-stats">
+            <div className="stat">
+              <span className="stat-number">24/7</span>
+              <span className="stat-label">Instant Lead Capture</span>
+            </div>
+            <div className="stat">
+              <span className="stat-number">$200/mo</span>
+              <span className="stat-label">Flat Rate, No Hidden Fees</span>
+            </div>
+            <div className="stat">
+              <span className="stat-number">60 min</span>
+              <span className="stat-label">Live in Under an Hour</span>
+            </div>
+          </div>
         </div>
       </section>
 
-      <section className="service-jump" aria-label="Service shortcuts">
-        {offeringAnchors.map((offering) => (
-          <a key={offering.id} href={`#${offering.id}`}>
-            {offering.title}
-          </a>
-        ))}
-      </section>
-
-      <section className="offerings" aria-label="FrontDesk Pro offerings">
-        {offeringAnchors.map((offering) => (
-          <article className="offering-card" key={offering.title} id={offering.id}>
-            <header>
-              <h2>{offering.title}</h2>
-              <p className="offering-subtitle">{offering.subtitle}</p>
-            </header>
-            <p className="offering-description">{offering.description}</p>
-
-            <h3>What&apos;s Included</h3>
-            <ul>
-              {offering.includes.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-
-            <p className="ideal-for">
-              <strong>Ideal For:</strong> {offering.idealFor}
+      <section className="social-proof">
+        <div className="container">
+          <div className="testimonial-card">
+            <div className="stars">★★★★★</div>
+            <p className="testimonial-text">
+              "FieldWise replaced my $3,500/mo office manager. We miss zero calls and book jobs even when nobody&apos;s
+              at the office."
             </p>
-            <button type="button" onClick={() => handleGetStarted(offering.title)}>Get Started</button>
-          </article>
-        ))}
-      </section>
-
-      <section className="lead-capture" id="get-started" aria-label="Get started">
-        <article className="lead-intro">
-          <p className="eyebrow">Get Started</p>
-          <h2>Tell us your business and we will map the automation stack</h2>
-          <p>
-            Picked service: <strong>{selectedService}</strong>
-          </p>
-          <div className="contact-quick-actions">
-            <a href={`tel:${PHONE_NUMBER.replace(/[^\d+]/g, "")}`}>Call {PHONE_NUMBER}</a>
-            <a href={BOOKING_URL} target="_blank" rel="noreferrer">Schedule Demo</a>
+            <div className="testimonial-author">
+              <strong>Dave K.</strong> - Plumber, Phoenix, AZ
+            </div>
           </div>
-        </article>
-
-        <form className="lead-form" onSubmit={onSubmitLead}>
-          <label>
-            Service Needed
-            <select value={selectedService} onChange={(e) => setSelectedService(e.target.value)}>
-              {offerings.map((offering) => (
-                <option key={offering.title} value={offering.title}>{offering.title}</option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            Name
-            <input value={lead.name} onChange={(e) => onLeadFieldChange("name", e.target.value)} required />
-          </label>
-
-          <label>
-            Phone
-            <input value={lead.phone} onChange={(e) => onLeadFieldChange("phone", e.target.value)} required />
-          </label>
-
-          <label>
-            Email
-            <input type="email" value={lead.email} onChange={(e) => onLeadFieldChange("email", e.target.value)} required />
-          </label>
-
-          <label>
-            Business Name
-            <input value={lead.company} onChange={(e) => onLeadFieldChange("company", e.target.value)} />
-          </label>
-
-          <label>
-            What should we automate first?
-            <textarea value={lead.details} onChange={(e) => onLeadFieldChange("details", e.target.value)} rows={4} />
-          </label>
-
-          <button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Submitting..." : "Send Intake And Get Setup Plan"}
-          </button>
-          {submitMessage ? <p className="submit-note">{submitMessage}</p> : null}
-          {submitError ? <p className="submit-error">{submitError}</p> : null}
-        </form>
+          <div className="metrics">
+            <div className="metric">
+              <div className="metric-value">87</div>
+              <div className="metric-label">Google reviews in 90 days</div>
+            </div>
+            <div className="metric">
+              <div className="metric-value">60s</div>
+              <div className="metric-label">Avg. time from call to job booked</div>
+            </div>
+            <div className="metric">
+              <div className="metric-value">0</div>
+              <div className="metric-label">Missed calls since switching</div>
+            </div>
+          </div>
+        </div>
       </section>
 
-      <DispatchAssistant />
-    </main>
+      <section className="value-prop">
+        <div className="container">
+          <h2>Why Choose FieldWise Over "AI Agencies"?</h2>
+          <div className="comparison-grid">
+            <div className="comparison-card">
+              <h3>Most AI Agencies</h3>
+              <ul>
+                <li>Just answer calls & capture leads</li>
+                <li>Custom quotes & hidden pricing</li>
+                <li>No scheduling, dispatch, or invoicing</li>
+                <li>Slow setup (4-5 days)</li>
+                <li>Limited to front-end automation</li>
+              </ul>
+            </div>
+            <div className="comparison-card highlight">
+              <h3>FieldWise</h3>
+              <ul>
+                <li>
+                  <strong>Full workflow automation</strong>-calls, booking, dispatch, invoicing, reviews
+                </li>
+                <li>
+                  <strong>$200/mo flat rate</strong>-no surprises, no demo required
+                </li>
+                <li>
+                  <strong>Live in under 60 minutes</strong>-self-serve, no technical knowledge needed
+                </li>
+                <li>
+                  <strong>Built for home service businesses</strong> (1-20 techs)
+                </li>
+                <li>
+                  <strong>End-to-end operations</strong>-not just lead capture
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="how-it-works">
+        <div className="container">
+          <h2>From First Ring to Five-Star Review-Every Step Automated</h2>
+          <div className="steps">
+            {[
+              { number: "01", title: "Customer Calls", desc: "AI answers 24/7, captures job details" },
+              { number: "02", title: "Job Booked", desc: "Auto-scheduled to best available slot" },
+              { number: "03", title: "Tech Dispatched", desc: "Right person gets all details on their phone" },
+              { number: "04", title: "Invoice Sent", desc: "Auto-generated & sent the moment work is done" },
+              { number: "05", title: "Payment Collected", desc: "Text payment link, paid before tech leaves" },
+              { number: "06", title: "Review Requested", desc: "Auto-follow-up for Google reviews" },
+            ].map((step) => (
+              <div className="step" key={step.number}>
+                <div className="step-number">{step.number}</div>
+                <h3>{step.title}</h3>
+                <p>{step.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="cta-final">
+        <div className="container">
+          <h2>Ready to Stop Missing Calls & Start Growing?</h2>
+          <p>
+            Join hundreds of contractors who trust FieldWise to handle their front desk-so they can focus on the work
+            that pays.
+          </p>
+          <div className="cta-buttons">
+            <Link href="/demo" className="btn btn-primary btn-xlarge">
+              Try the Live Demo Now
+            </Link>
+            <Link href="/pricing" className="btn btn-outline btn-xlarge">
+              See Transparent Pricing
+            </Link>
+          </div>
+          <p className="cta-note">
+            <small>No credit card required. Cancel anytime.</small>
+          </p>
+        </div>
+      </section>
+
+      {demoActive && (
+        <div className="demo-modal">
+          <div className="modal-content">
+            <h3>Call Our AI Receptionist Now</h3>
+            <p>
+              Dial <strong>(602) 932-0967</strong> to experience how FieldWise answers, qualifies, and books jobs-24/7.
+            </p>
+            <button className="btn btn-secondary" onClick={() => setDemoActive(false)}>
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      <style jsx>{`
+        .hero {
+          padding: 5rem 1rem;
+          background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+          color: white;
+          text-align: center;
+        }
+        .container {
+          max-width: 1200px;
+          margin: 0 auto;
+          padding: 0 1rem;
+        }
+        .hero-title {
+          font-size: 3.5rem;
+          line-height: 1.1;
+          margin-bottom: 1.5rem;
+        }
+        .highlight {
+          color: #3b82f6;
+        }
+        .hero-subtitle {
+          font-size: 1.25rem;
+          max-width: 800px;
+          margin: 0 auto 2.5rem;
+          opacity: 0.9;
+        }
+        .hero-cta {
+          display: flex;
+          gap: 1rem;
+          justify-content: center;
+          flex-wrap: wrap;
+          margin-bottom: 3rem;
+        }
+        .btn {
+          padding: 1rem 2rem;
+          border-radius: 8px;
+          font-weight: 600;
+          text-decoration: none;
+          display: inline-block;
+          cursor: pointer;
+          border: none;
+          transition: all 0.2s;
+        }
+        .btn-primary {
+          background: #3b82f6;
+          color: white;
+        }
+        .btn-primary:hover {
+          background: #2563eb;
+        }
+        .btn-secondary {
+          background: transparent;
+          color: white;
+          border: 2px solid #64748b;
+        }
+        .btn-secondary:hover {
+          border-color: #3b82f6;
+          color: #3b82f6;
+        }
+        .btn-large {
+          font-size: 1.125rem;
+          padding: 1.25rem 2.5rem;
+        }
+        .btn-xlarge {
+          font-size: 1.25rem;
+          padding: 1.5rem 3rem;
+        }
+        .btn-outline {
+          background: transparent;
+          border: 2px solid white;
+          color: white;
+        }
+        .hero-stats {
+          display: flex;
+          justify-content: center;
+          gap: 3rem;
+          margin-top: 3rem;
+        }
+        .stat {
+          text-align: center;
+        }
+        .stat-number {
+          display: block;
+          font-size: 2.5rem;
+          font-weight: 700;
+          color: #3b82f6;
+        }
+        .stat-label {
+          font-size: 0.95rem;
+          opacity: 0.8;
+        }
+        .social-proof {
+          padding: 4rem 1rem;
+          background: #f8fafc;
+        }
+        .testimonial-card {
+          max-width: 700px;
+          margin: 0 auto 3rem;
+          padding: 2rem;
+          background: white;
+          border-radius: 12px;
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+          text-align: center;
+        }
+        .stars {
+          font-size: 1.5rem;
+          color: #fbbf24;
+          margin-bottom: 1rem;
+        }
+        .testimonial-text {
+          font-size: 1.25rem;
+          font-style: italic;
+          margin-bottom: 1rem;
+        }
+        .metrics {
+          display: flex;
+          justify-content: center;
+          gap: 4rem;
+          flex-wrap: wrap;
+        }
+        .metric-value {
+          font-size: 2.5rem;
+          font-weight: 700;
+          color: #0f172a;
+        }
+        .metric-label {
+          font-size: 0.95rem;
+          color: #64748b;
+        }
+        .value-prop {
+          padding: 5rem 1rem;
+        }
+        .value-prop h2 {
+          text-align: center;
+          font-size: 2.5rem;
+          margin-bottom: 3rem;
+        }
+        .comparison-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 2rem;
+          max-width: 1000px;
+          margin: 0 auto;
+        }
+        .comparison-card {
+          padding: 2rem;
+          border-radius: 12px;
+          border: 2px solid #e2e8f0;
+        }
+        .comparison-card.highlight {
+          border-color: #3b82f6;
+          background: #eff6ff;
+        }
+        .comparison-card h3 {
+          margin-top: 0;
+          margin-bottom: 1.5rem;
+        }
+        .comparison-card ul {
+          padding-left: 1.5rem;
+          margin: 0;
+        }
+        .comparison-card li {
+          margin-bottom: 0.75rem;
+        }
+        .how-it-works {
+          padding: 5rem 1rem;
+          background: #f8fafc;
+        }
+        .how-it-works h2 {
+          text-align: center;
+          font-size: 2.5rem;
+          margin-bottom: 3rem;
+        }
+        .steps {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+          gap: 2rem;
+          max-width: 1200px;
+          margin: 0 auto;
+        }
+        .step {
+          text-align: center;
+          padding: 2rem;
+          background: white;
+          border-radius: 12px;
+          box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+        }
+        .step-number {
+          font-size: 2rem;
+          font-weight: 700;
+          color: #3b82f6;
+          margin-bottom: 1rem;
+        }
+        .cta-final {
+          padding: 5rem 1rem;
+          background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+          color: white;
+          text-align: center;
+        }
+        .cta-final h2 {
+          font-size: 2.5rem;
+          margin-bottom: 1.5rem;
+        }
+        .cta-final p {
+          font-size: 1.25rem;
+          max-width: 700px;
+          margin: 0 auto 3rem;
+          opacity: 0.9;
+        }
+        .cta-buttons {
+          display: flex;
+          gap: 1.5rem;
+          justify-content: center;
+          flex-wrap: wrap;
+          margin-bottom: 1.5rem;
+        }
+        .demo-modal {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.7);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+        }
+        .modal-content {
+          background: white;
+          padding: 3rem;
+          border-radius: 12px;
+          max-width: 500px;
+          text-align: center;
+        }
+        @media (max-width: 768px) {
+          .hero-title {
+            font-size: 2.5rem;
+          }
+          .hero-cta {
+            flex-direction: column;
+            align-items: center;
+          }
+          .hero-stats,
+          .metrics {
+            flex-direction: column;
+            gap: 2rem;
+          }
+          .comparison-grid {
+            grid-template-columns: 1fr;
+          }
+          .cta-buttons {
+            flex-direction: column;
+            align-items: center;
+          }
+        }
+      `}</style>
+    </>
   );
 }
