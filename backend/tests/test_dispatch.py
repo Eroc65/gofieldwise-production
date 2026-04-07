@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import hash_password
 from app.core.db import Base, SessionLocal, engine
 from app.main import app
-from app.models.core import Organization, User
+from app.models.core import Organization, Reminder, User
 
 _EMAIL = "dispatch@example.com"
 _PASSWORD = "dispatchpass"
@@ -105,6 +105,23 @@ def _setup_job_and_tech(client, headers):
     assert job.status_code == 201
     job_id = job.json()["id"]
     return job_id, tech_id
+
+
+def _lifecycle_notification_messages_for_job(job_id: int) -> list[str]:
+    db: Session = SessionLocal()
+    try:
+        reminders = (
+            db.query(Reminder)
+            .filter(
+                Reminder.job_id == job_id,
+                Reminder.channel == "internal",
+                Reminder.message.like(f"Job #{job_id} moved to%"),
+            )
+            .all()
+        )
+        return [str(reminder.message) for reminder in reminders]
+    finally:
+        db.close()
 
 
 def test_dispatch_requires_auth(client):
@@ -581,3 +598,68 @@ def test_lifecycle_quick_actions_reject_cross_org_access(client, auth_headers, o
 
     denied_timeline = client.get(f"/api/jobs/{job_id}/timeline", headers=other_auth_headers)
     assert denied_timeline.status_code == 404
+
+
+def test_lifecycle_transitions_queue_notifications(client, auth_headers):
+    job_id, tech_id = _setup_job_and_tech(client, auth_headers)
+    when = _iso(22)
+
+    dispatched = client.patch(
+        f"/api/jobs/{job_id}/dispatch",
+        json={"technician_id": tech_id, "scheduled_time": when},
+        headers=auth_headers,
+    )
+    assert dispatched.status_code == 200
+
+    on_my_way = client.patch(f"/api/jobs/{job_id}/on-my-way", headers=auth_headers)
+    assert on_my_way.status_code == 200
+
+    started = client.patch(f"/api/jobs/{job_id}/start", headers=auth_headers)
+    assert started.status_code == 200
+
+    completed = client.patch(
+        f"/api/jobs/{job_id}/complete",
+        json={"completion_notes": "done"},
+        headers=auth_headers,
+    )
+    assert completed.status_code == 200
+
+    messages = _lifecycle_notification_messages_for_job(job_id)
+    assert set(messages) == {
+        f"Job #{job_id} moved to on my way",
+        f"Job #{job_id} moved to in progress",
+        f"Job #{job_id} moved to completed",
+    }
+
+
+def test_lifecycle_transitions_do_not_fail_when_notifications_error(client, auth_headers, monkeypatch):
+    def _raise_notification(*args, **kwargs):
+        raise RuntimeError("notification provider unavailable")
+
+    monkeypatch.setattr("app.crud.job.send_job_lifecycle_notification", _raise_notification)
+
+    job_id, tech_id = _setup_job_and_tech(client, auth_headers)
+    when = _iso(24)
+
+    dispatched = client.patch(
+        f"/api/jobs/{job_id}/dispatch",
+        json={"technician_id": tech_id, "scheduled_time": when},
+        headers=auth_headers,
+    )
+    assert dispatched.status_code == 200
+
+    on_my_way = client.patch(f"/api/jobs/{job_id}/on-my-way", headers=auth_headers)
+    assert on_my_way.status_code == 200
+    assert on_my_way.json()["status"] == "on_my_way"
+
+    started = client.patch(f"/api/jobs/{job_id}/start", headers=auth_headers)
+    assert started.status_code == 200
+    assert started.json()["status"] == "in_progress"
+
+    completed = client.patch(
+        f"/api/jobs/{job_id}/complete",
+        json={"completion_notes": "resilient completion"},
+        headers=auth_headers,
+    )
+    assert completed.status_code == 200
+    assert completed.json()["status"] == "completed"

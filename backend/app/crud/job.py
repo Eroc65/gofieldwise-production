@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple
 from zoneinfo import ZoneInfo
@@ -9,6 +10,7 @@ from .reminder import create_review_request_reminder
 from ..services.notifications import send_job_lifecycle_notification
 
 CENTRAL_TZ = ZoneInfo("America/Chicago")
+logger = logging.getLogger(__name__)
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -93,6 +95,30 @@ def _record_job_activity(
             organization_id=organization_id,
         )
     )
+
+
+def _send_job_lifecycle_notification_safe(
+    db: Session,
+    *,
+    organization_id: int,
+    customer_id: int | None,
+    job_id: int,
+    to_status: str,
+) -> None:
+    try:
+        send_job_lifecycle_notification(
+            db,
+            organization_id=organization_id,
+            customer_id=customer_id,
+            job_id=job_id,
+            to_status=to_status,
+        )
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Failed to queue lifecycle notification",
+            extra={"organization_id": organization_id, "job_id": job_id, "to_status": to_status},
+        )
 
 def create_job(db: Session, job: dict, organization_id: int) -> Job:
     customer_id = job.get("customer_id")
@@ -285,7 +311,7 @@ def complete_job(
     db.commit()
     db.refresh(db_job)
 
-    send_job_lifecycle_notification(
+    _send_job_lifecycle_notification_safe(
         db,
         organization_id=organization_id,
         customer_id=db_job.customer_id,
@@ -375,7 +401,7 @@ def mark_job_on_my_way(
     db.commit()
     db.refresh(db_job)
 
-    send_job_lifecycle_notification(
+    _send_job_lifecycle_notification_safe(
         db,
         organization_id=organization_id,
         customer_id=db_job.customer_id,
@@ -409,7 +435,7 @@ def start_job(
     db.commit()
     db.refresh(db_job)
 
-    send_job_lifecycle_notification(
+    _send_job_lifecycle_notification_safe(
         db,
         organization_id=organization_id,
         customer_id=db_job.customer_id,
