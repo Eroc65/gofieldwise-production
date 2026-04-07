@@ -16,6 +16,16 @@ export default function MetricsPage() {
   const invoiceSummary = useMemo(() => dashboard?.invoice_summary || {}, [dashboard]);
   const overdueInvoices = useMemo(() => dashboard?.overdue_invoices || {}, [dashboard]);
   const agingBuckets = useMemo(() => overdueInvoices.aging_buckets || {}, [overdueInvoices]);
+  const prioritizedAgingBuckets = useMemo(
+    () => [
+      { key: "days_31_plus", label: "31 Plus Days" },
+      { key: "days_15_30", label: "15 To 30 Days" },
+      { key: "days_8_14", label: "8 To 14 Days" },
+      { key: "days_1_7", label: "1 To 7 Days" },
+      { key: "current_not_due", label: "Current Not Due" },
+    ],
+    [],
+  );
 
   function money(value) {
     const amount = Number(value || 0);
@@ -151,7 +161,7 @@ export default function MetricsPage() {
           <section className="dispatch-card">
             <header className="dispatch-head">
               <h2>Collections Snapshot</h2>
-              <p>Unpaid exposure and overdue aging buckets from the operational dashboard.</p>
+              <p>Unpaid exposure and overdue aging buckets in highest-risk-first order.</p>
             </header>
             <div className="results-grid">
               <article className="panel">
@@ -162,31 +172,15 @@ export default function MetricsPage() {
                 <h3>Overdue Count</h3>
                 <p>{invoiceSummary.overdue_count ?? 0}</p>
               </article>
-              <article className="panel">
-                <h3>Current Not Due</h3>
-                <p>{bucketCount("current_not_due")}</p>
-                <small>{bucketAmount("current_not_due")}</small>
-              </article>
-              <article className="panel">
-                <h3>1 To 7 Days</h3>
-                <p>{bucketCount("days_1_7")}</p>
-                <small>{bucketAmount("days_1_7")}</small>
-              </article>
-              <article className="panel">
-                <h3>8 To 14 Days</h3>
-                <p>{bucketCount("days_8_14")}</p>
-                <small>{bucketAmount("days_8_14")}</small>
-              </article>
-              <article className="panel">
-                <h3>15 To 30 Days</h3>
-                <p>{bucketCount("days_15_30")}</p>
-                <small>{bucketAmount("days_15_30")}</small>
-              </article>
-              <article className="panel">
-                <h3>31 Plus Days</h3>
-                <p>{bucketCount("days_31_plus")}</p>
-                <small>{bucketAmount("days_31_plus")}</small>
-              </article>
+            </div>
+            <div className="results-grid collections-aging-grid">
+              {prioritizedAgingBuckets.map((bucket) => (
+                <article className="panel" key={bucket.key}>
+                  <h3>{bucket.label}</h3>
+                  <p>{bucketCount(bucket.key)}</p>
+                  <small>{bucketAmount(bucket.key)}</small>
+                </article>
+              ))}
             </div>
           </section>
 

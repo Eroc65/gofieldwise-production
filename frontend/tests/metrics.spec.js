@@ -104,5 +104,11 @@ test("metrics dashboard flow works", async ({ page }) => {
   await expect(page.locator(".results-grid .panel").filter({ hasText: "Overdue Count" }).getByText("2", { exact: true })).toBeVisible();
   await expect(page.locator(".results-grid .panel").filter({ hasText: "8 To 14 Days" }).getByText("1", { exact: true })).toBeVisible();
   await expect(page.locator(".results-grid .panel").filter({ hasText: "8 To 14 Days" }).getByText("$450.00", { exact: true })).toBeVisible();
+  const bucketHeadings = page.locator(".collections-aging-grid .panel h3");
+  await expect(bucketHeadings.nth(0)).toHaveText("31 Plus Days");
+  await expect(bucketHeadings.nth(1)).toHaveText("15 To 30 Days");
+  await expect(bucketHeadings.nth(2)).toHaveText("8 To 14 Days");
+  await expect(bucketHeadings.nth(3)).toHaveText("1 To 7 Days");
+  await expect(bucketHeadings.nth(4)).toHaveText("Current Not Due");
   await expect(page.getByText("2026-04-01")).toBeVisible();
 });
