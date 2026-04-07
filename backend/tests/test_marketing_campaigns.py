@@ -197,11 +197,12 @@ def test_review_harvester_auto_creates_sms_reminder_on_job_complete() -> None:
         assert create_tech.status_code == 201
         technician_id = create_tech.json()["id"]
 
+        # Use a fixed UTC time that always falls inside default business availability.
         dispatch_job = client.patch(
             f"/api/jobs/{job_id}/dispatch",
             json={
                 "technician_id": technician_id,
-                "scheduled_time": datetime.now(timezone.utc).isoformat(),
+                "scheduled_time": datetime(2026, 1, 12, 16, 0, tzinfo=timezone.utc).isoformat(),
             },
             headers=headers,
         )

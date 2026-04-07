@@ -155,13 +155,13 @@ test("dispatch assistant full flow works", async ({ page }) => {
   await expect(page.getByText("Status: dispatched")).toBeVisible();
   await expect(page.getByText("Job ID: 101")).toBeVisible();
 
-  await page.getByRole("button", { name: "Mark On My Way" }).click();
+  await page.getByRole("button", { name: "Mark On My Way", exact: true }).click();
   await expect(page.getByText("Status: on_my_way")).toBeVisible();
 
-  await page.getByRole("button", { name: "Mark Started" }).click();
+  await page.getByRole("button", { name: "Mark Started", exact: true }).click();
   await expect(page.getByText("Status: in_progress")).toBeVisible();
 
-  await page.getByRole("button", { name: "Mark Completed" }).click();
+  await page.getByRole("button", { name: "Mark Completed", exact: true }).click();
   await expect(page.getByText("Status: completed")).toBeVisible();
 
   await page.getByRole("button", { name: "Load Timeline" }).click();
