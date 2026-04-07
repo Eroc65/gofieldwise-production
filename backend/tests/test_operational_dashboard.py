@@ -213,3 +213,68 @@ def test_operational_dashboard_org_isolation():
     assert org2_body["sla_breaches"]["pending_total_alerts"] == 0
     assert "action_priorities" in org2_body
     assert org1_body["invoice_summary"]["total"] > org2_body["invoice_summary"]["total"]
+
+
+def test_growth_control_tower_requires_auth():
+    client = TestClient(app)
+    assert client.get("/api/reports/growth-control-tower").status_code == 401
+
+
+def test_growth_control_tower_returns_combined_snapshot():
+    client = TestClient(app)
+    headers = _auth_headers(client, _EMAIL, _PASSWORD)
+
+    create_campaign = client.post(
+        "/api/marketing/campaigns",
+        json={"name": "Growth Tower Draft", "kind": "review_harvester", "channel": "sms"},
+        headers=headers,
+    )
+    assert create_campaign.status_code == 201
+
+    campaign_id = create_campaign.json()["id"]
+    launch_campaign = client.post(f"/api/marketing/campaigns/{campaign_id}/launch", headers=headers)
+    assert launch_campaign.status_code == 200
+
+    response = client.get("/api/reports/growth-control-tower?days=7&queue_limit=3", headers=headers)
+    assert response.status_code == 200
+
+    body = response.json()
+    assert body["organization_id"] > 0
+    assert body["campaigns"]["total"] >= 1
+    assert body["campaigns"]["launched"] >= 1
+    assert body["campaigns"]["last_launched_at"] is not None
+    assert "kpis" in body
+    assert body["kpis"]["lead_intakes"] >= 0
+    assert body["kpis"]["urgent_now"] >= 0
+    assert isinstance(body["recommended_next_action"], str)
+    assert body["operator_queue"]["total_candidates"] >= len(body["operator_queue"]["items"])
+    assert len(body["operator_queue"]["items"]) <= 3
+
+
+def test_growth_control_tower_org_isolation():
+    client = TestClient(app)
+    org1_headers = _auth_headers(client, _EMAIL, _PASSWORD)
+    org2_headers = _auth_headers(client, _OTHER_EMAIL, _OTHER_PASSWORD)
+
+    create_campaign = client.post(
+        "/api/marketing/campaigns",
+        json={"name": "Other Org Campaign", "kind": "reactivation", "channel": "email"},
+        headers=org2_headers,
+    )
+    assert create_campaign.status_code == 201
+
+    launch_campaign = client.post(
+        f"/api/marketing/campaigns/{create_campaign.json()['id']}/launch",
+        headers=org2_headers,
+    )
+    assert launch_campaign.status_code == 200
+
+    org1 = client.get("/api/reports/growth-control-tower", headers=org1_headers)
+    org2 = client.get("/api/reports/growth-control-tower", headers=org2_headers)
+    assert org1.status_code == 200
+    assert org2.status_code == 200
+
+    body1 = org1.json()
+    body2 = org2.json()
+    assert body1["organization_id"] != body2["organization_id"]
+    assert body2["campaigns"]["total"] >= 1

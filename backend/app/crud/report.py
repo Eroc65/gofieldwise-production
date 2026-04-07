@@ -3,7 +3,7 @@ from typing import Any, cast
 
 from sqlalchemy import func
 
-from ..models.core import Invoice, Job, Lead, Reminder, User, _utcnow
+from ..models.core import Invoice, Job, Lead, MarketingCampaign, Reminder, User, _utcnow
 
 
 OPERATOR_QUEUE_ITEM_TYPES = {
@@ -954,4 +954,53 @@ def get_operator_queue_ack_history(db, organization_id: int, limit: int = 100) -
         "timestamp": now.isoformat(),
         "limit": capped_limit,
         "events": out,
+    }
+
+
+def get_growth_control_tower(db, organization_id: int, days: int = 7, queue_limit: int = 5) -> dict:
+    """Return a consolidated growth/operator snapshot for a single-request control tower view."""
+    now = _utcnow()
+    lead_metrics = get_lead_conversion_metrics(db, organization_id, days=days)
+    dashboard = get_operational_dashboard(db, organization_id)
+    queue = get_operator_queue(db, organization_id, limit=queue_limit)
+
+    campaigns = (
+        db.query(MarketingCampaign)
+        .filter(MarketingCampaign.organization_id == organization_id)
+        .all()
+    )
+    campaigns_total = len(campaigns)
+    campaigns_draft = sum(1 for c in campaigns if c.status == "draft")
+    campaigns_launched = sum(1 for c in campaigns if c.status == "launched")
+    last_launched = max(
+        (c.launched_at for c in campaigns if c.launched_at is not None),
+        default=None,
+    )
+
+    invoice_summary = cast(dict[str, Any], dashboard["invoice_summary"])
+    action_priorities = cast(dict[str, Any], dashboard["action_priorities"])
+    lead_totals = cast(dict[str, Any], lead_metrics["totals"])
+
+    return {
+        "organization_id": organization_id,
+        "timestamp": now.isoformat(),
+        "campaigns": {
+            "total": campaigns_total,
+            "draft": campaigns_draft,
+            "launched": campaigns_launched,
+            "last_launched_at": last_launched.isoformat() if last_launched else None,
+        },
+        "kpis": {
+            "lead_intakes": int(cast(int, lead_totals.get("intakes", 0))),
+            "lead_booked": int(cast(int, lead_totals.get("booked", 0))),
+            "lead_booking_rate": float(cast(float, lead_totals.get("booking_rate", 0.0))),
+            "unpaid_total_amount": float(cast(float, invoice_summary.get("unpaid_total_amount", 0.0))),
+            "overdue_invoice_count": int(cast(int, invoice_summary.get("overdue_count", 0))),
+            "urgent_now": int(cast(int, action_priorities.get("urgent_now", 0))),
+        },
+        "recommended_next_action": lead_metrics["recommended_next_action"],
+        "operator_queue": {
+            "total_candidates": queue["total_candidates"],
+            "items": queue["items"],
+        },
     }

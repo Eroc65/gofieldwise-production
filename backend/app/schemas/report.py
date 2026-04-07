@@ -130,3 +130,33 @@ class OperatorQueueHistoryOut(BaseModel):
     timestamp: str
     limit: int
     events: list[OperatorQueueHistoryEventOut]
+
+
+class GrowthControlTowerCampaignsOut(BaseModel):
+    total: int
+    draft: int
+    launched: int
+    last_launched_at: str | None = None
+
+
+class GrowthControlTowerKpisOut(BaseModel):
+    lead_intakes: int
+    lead_booked: int
+    lead_booking_rate: float
+    unpaid_total_amount: float
+    overdue_invoice_count: int
+    urgent_now: int
+
+
+class GrowthControlTowerQueueOut(BaseModel):
+    total_candidates: int
+    items: list[OperatorQueueItemOut]
+
+
+class GrowthControlTowerOut(BaseModel):
+    organization_id: int
+    timestamp: str
+    campaigns: GrowthControlTowerCampaignsOut
+    kpis: GrowthControlTowerKpisOut
+    recommended_next_action: str
+    operator_queue: GrowthControlTowerQueueOut
