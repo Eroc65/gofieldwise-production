@@ -4,7 +4,7 @@ import DispatchAssistant from "../components/DispatchAssistant";
 import { submitPublicLeadIntake } from "../lib/api";
 
 const PHONE_NUMBER = process.env.NEXT_PUBLIC_SALES_PHONE || "+1 (555) 010-2024";
-const BOOKING_URL = process.env.NEXT_PUBLIC_BOOKING_URL || "https://cal.com/gofieldwise/demo";
+const BOOKING_URL = process.env.NEXT_PUBLIC_BOOKING_URL || "https://cal.com/frontdeskpro/demo";
 const INTAKE_KEY = process.env.NEXT_PUBLIC_INTAKE_KEY || "";
 const LEGACY_INTAKE_ORG_ID = process.env.NEXT_PUBLIC_INTAKE_ORG_ID || "";
 
@@ -165,7 +165,7 @@ export default function HomePage() {
   return (
     <main className="page-shell">
       <section className="hero">
-        <p className="eyebrow">GoFieldWise</p>
+        <p className="eyebrow">FrontDesk Pro</p>
         <h1>AI Voice Agents And Automation For Service Businesses</h1>
         <p>
           AI-forward systems that answer every call, capture and qualify leads, and book work 24/7.
@@ -202,7 +202,7 @@ export default function HomePage() {
         ))}
       </section>
 
-      <section className="offerings" aria-label="GoFieldWise offerings">
+      <section className="offerings" aria-label="FrontDesk Pro offerings">
         {offeringAnchors.map((offering) => (
           <article className="offering-card" key={offering.title} id={offering.id}>
             <header>

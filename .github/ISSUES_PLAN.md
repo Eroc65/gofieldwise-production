@@ -2,7 +2,7 @@
 
 This file maps sprints and epics to actionable GitHub issues for the build queue. Use this as the source for creating issues in the repo.
 
-## Current Priority Backlog (GoFieldWise)
+## Current Priority Backlog (FrontDesk Pro)
 - Import-ready Sprint A tickets: [ISSUES_IMPORT_SPRINT_A.csv](ISSUES_IMPORT_SPRINT_A.csv)
 - Full issue bodies: [ISSUE_BODIES_SPRINT_A.md](ISSUE_BODIES_SPRINT_A.md)
 - Import-ready Sprint B tickets: [ISSUES_IMPORT_SPRINT_B.csv](ISSUES_IMPORT_SPRINT_B.csv)

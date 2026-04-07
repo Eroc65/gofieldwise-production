@@ -1,7 +1,7 @@
 param(
     [ValidateSet("check-secrets", "set-smoke-secrets", "trigger-staging", "trigger-production", "status")]
     [string]$Action = "status",
-    [string]$Repo = "Eroc65/auto-gpt",
+    [string]$Repo,
     [string]$StagingApiBaseUrl,
     [string]$StagingSmokeEmail,
     [string]$StagingSmokePassword,
@@ -20,6 +20,19 @@ function Require-Gh {
     if ($LASTEXITCODE -ne 0) {
         throw "GitHub CLI is not authenticated. Run: gh auth login"
     }
+}
+
+function Resolve-Repo {
+    if (-not [string]::IsNullOrWhiteSpace($Repo)) {
+        return $Repo
+    }
+
+    $detected = gh repo view --json nameWithOwner -q .nameWithOwner 2>$null
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($detected)) {
+        throw "Unable to resolve repository. Pass -Repo <owner/repo> or run inside a cloned GitHub repository."
+    }
+
+    return $detected.Trim()
 }
 
 function Get-SecretNames {
@@ -112,6 +125,7 @@ function Trigger-Workflow([string]$workflowName) {
 }
 
 Require-Gh
+$Repo = Resolve-Repo
 
 switch ($Action) {
     "check-secrets" {

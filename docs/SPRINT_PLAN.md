@@ -3,7 +3,7 @@
 Related roadmap:
 - [Fieldwise Parity and Beyond Plan](./FIELDWISE_PARITY_PLAN.md)
 
-## Next 2 Sprints — GoFieldWise Execution Plan
+## Next 2 Sprints — FrontDesk Pro Execution Plan
 
 Execution artifacts for Sprint A:
 - [ISSUES_IMPORT_SPRINT_A.csv](../.github/ISSUES_IMPORT_SPRINT_A.csv)

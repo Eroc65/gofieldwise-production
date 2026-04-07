@@ -63,7 +63,7 @@ And a Metrics page at `/metrics`:
 	- Preferred: `$env:NEXT_PUBLIC_INTAKE_KEY="org_xxx"`
 	- Legacy fallback: `$env:NEXT_PUBLIC_INTAKE_ORG_ID="1"`
 5. Optional business contact overrides:
-	- `$env:NEXT_PUBLIC_BOOKING_URL="https://cal.com/gofieldwise/demo"`
+	- `$env:NEXT_PUBLIC_BOOKING_URL="https://cal.com/frontdeskpro/demo"`
 	- `$env:NEXT_PUBLIC_SALES_PHONE="+1 (555) 010-2024"`
 6. Start dev server:
 	- `npm run dev`

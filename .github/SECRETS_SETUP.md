@@ -4,7 +4,6 @@ Configure these repository secrets in Settings > Secrets and variables > Actions
 
 ## GitHub CLI (Workspace Ready)
 - GitHub CLI is installed in this workspace (`gh 2.89.0`).
-- Current status: authenticated (account: `Eroc65`).
 - If authentication expires, re-authenticate from this workspace:
 	- `gh auth login`
 	- choose: `GitHub.com` -> `HTTPS` -> `Login with a web browser`
@@ -38,8 +37,10 @@ Examples:
 	- `powershell -ExecutionPolicy Bypass -File .github/scripts/github-ops.ps1 -Action trigger-production`
 
 ## Current Status
-- Required secret names are present.
-- Latest `Deploy Staging`, `Deploy Production`, and `Post Deploy Smoke` workflows completed successfully.
+- Validate live secret health with:
+	- `powershell -ExecutionPolicy Bypass -File .github/scripts/github-ops.ps1 -Action check-secrets`
+- Validate latest workflow runs with:
+	- `powershell -ExecutionPolicy Bypass -File .github/scripts/github-ops.ps1 -Action status`
 
 ## Render deploy hooks
 - RENDER_FRONTEND_DEPLOY_HOOK_URL
