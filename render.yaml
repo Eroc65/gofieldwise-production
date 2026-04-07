@@ -2,6 +2,17 @@
 
 services:
   - type: web
+    name: fieldwise-web
+    env: node
+    plan: free
+    buildCommand: cd frontend && npm install && npm run build
+    startCommand: cd frontend && npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+  - type: web
     name: frontend
     env: node
     plan: free
