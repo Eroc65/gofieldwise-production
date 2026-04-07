@@ -512,12 +512,28 @@ export async function listMarketingImageTemplates({ token }) {
   });
 }
 
+export async function listMarketingImageChannels({ token }) {
+  return apiFetch("/api/marketing/ai-images/channels", {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function listMarketingImageTradeTemplates({ token }) {
+  return apiFetch("/api/marketing/ai-images/trade-templates", {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
 export async function generateMarketingImage({
   token,
   prompt,
   size = "1024x1024",
   quality = "high",
   templateCode = "social_promo",
+  channelCode = "instagram_feed",
+  tradeCode = "general_home_services",
   businessName,
   serviceType,
   offerText,
@@ -532,6 +548,8 @@ export async function generateMarketingImage({
       size,
       quality,
       template_code: templateCode,
+      channel_code: channelCode,
+      trade_code: tradeCode,
       business_name: businessName || null,
       service_type: serviceType || null,
       offer_text: offerText || null,

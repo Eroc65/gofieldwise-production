@@ -1,13 +1,23 @@
 import { useEffect, useState } from "react";
 
-import { generateMarketingImage, listMarketingImageTemplates, login } from "../lib/api";
+import {
+  generateMarketingImage,
+  listMarketingImageChannels,
+  listMarketingImageTemplates,
+  listMarketingImageTradeTemplates,
+  login,
+} from "../lib/api";
 
 export default function MarketingAIPage() {
   const [token, setToken] = useState("");
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [templates, setTemplates] = useState([]);
+  const [channels, setChannels] = useState([]);
+  const [tradeTemplates, setTradeTemplates] = useState([]);
   const [templateCode, setTemplateCode] = useState("social_promo");
+  const [channelCode, setChannelCode] = useState("instagram_feed");
+  const [tradeCode, setTradeCode] = useState("general_home_services");
   const [businessName, setBusinessName] = useState("FieldWise");
   const [serviceType, setServiceType] = useState("HVAC");
   const [offerText, setOfferText] = useState("Spring Tune-Up Special - Save 20% This Week");
@@ -48,8 +58,14 @@ export default function MarketingAIPage() {
       window.localStorage.setItem("fdp.dispatch.token", response.access_token);
       window.localStorage.setItem("fdp.dispatch.email", authEmail);
 
-      const rows = await listMarketingImageTemplates({ token: response.access_token });
-      setTemplates(Array.isArray(rows) ? rows : []);
+      const [templateRows, channelRows, tradeRows] = await Promise.all([
+        listMarketingImageTemplates({ token: response.access_token }),
+        listMarketingImageChannels({ token: response.access_token }),
+        listMarketingImageTradeTemplates({ token: response.access_token }),
+      ]);
+      setTemplates(Array.isArray(templateRows) ? templateRows : []);
+      setChannels(Array.isArray(channelRows) ? channelRows : []);
+      setTradeTemplates(Array.isArray(tradeRows) ? tradeRows : []);
 
       setResult("Operator session ready.");
     });
@@ -62,13 +78,21 @@ export default function MarketingAIPage() {
     let cancelled = false;
     async function loadTemplates() {
       try {
-        const rows = await listMarketingImageTemplates({ token });
+        const [templateRows, channelRows, tradeRows] = await Promise.all([
+          listMarketingImageTemplates({ token }),
+          listMarketingImageChannels({ token }),
+          listMarketingImageTradeTemplates({ token }),
+        ]);
         if (!cancelled) {
-          setTemplates(Array.isArray(rows) ? rows : []);
+          setTemplates(Array.isArray(templateRows) ? templateRows : []);
+          setChannels(Array.isArray(channelRows) ? channelRows : []);
+          setTradeTemplates(Array.isArray(tradeRows) ? tradeRows : []);
         }
       } catch {
         if (!cancelled) {
           setTemplates([]);
+          setChannels([]);
+          setTradeTemplates([]);
         }
       }
     }
@@ -99,6 +123,17 @@ export default function MarketingAIPage() {
     }
   }
 
+  function applyChannelDefaults(code) {
+    setChannelCode(code);
+    if (code === "facebook_landscape") {
+      setSize("1536x1024");
+    } else if (code === "story_vertical") {
+      setSize("1024x1536");
+    } else {
+      setSize("1024x1024");
+    }
+  }
+
   async function onGenerate() {
     await withBusy(async () => {
       if (!prompt.trim()) {
@@ -110,6 +145,8 @@ export default function MarketingAIPage() {
         size,
         quality,
         templateCode,
+        channelCode,
+        tradeCode,
         businessName,
         serviceType,
         offerText,
@@ -161,6 +198,31 @@ export default function MarketingAIPage() {
                 { code: "seasonal_offer", name: "Seasonal Offer" },
                 { code: "review_push", name: "Review Push" },
                 { code: "reactivation_offer", name: "Reactivation Offer" },
+              ]).map((item) => (
+                <option key={item.code} value={item.code}>{item.name}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Channel Preset
+            <select value={channelCode} onChange={(e) => applyChannelDefaults(e.target.value)}>
+              {(channels.length ? channels : [
+                { code: "instagram_feed", name: "Instagram Feed" },
+                { code: "facebook_landscape", name: "Facebook Landscape" },
+                { code: "story_vertical", name: "Story Vertical" },
+              ]).map((item) => (
+                <option key={item.code} value={item.code}>{item.name}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Trade Prompt Template
+            <select value={tradeCode} onChange={(e) => setTradeCode(e.target.value)}>
+              {(tradeTemplates.length ? tradeTemplates : [
+                { code: "general_home_services", name: "General Home Services" },
+                { code: "hvac", name: "HVAC" },
+                { code: "plumbing", name: "Plumbing" },
+                { code: "electrical", name: "Electrical" },
               ]).map((item) => (
                 <option key={item.code} value={item.code}>{item.name}</option>
               ))}

@@ -53,6 +53,8 @@ class MarketingImageGenerateRequest(BaseModel):
     size: str = Field(default="1024x1024")
     quality: str = Field(default="high")
     template_code: str = Field(default="social_promo")
+    channel_code: str = Field(default="instagram_feed")
+    trade_code: str = Field(default="general_home_services")
     business_name: Optional[str] = Field(default=None, max_length=120)
     service_type: Optional[str] = Field(default=None, max_length=80)
     offer_text: Optional[str] = Field(default=None, max_length=180)
@@ -71,4 +73,17 @@ class MarketingImageTemplateOut(BaseModel):
     code: str
     name: str
     recommended_size: str
+    description: str
+
+
+class MarketingImageChannelOut(BaseModel):
+    code: str
+    name: str
+    recommended_size: str
+    description: str
+
+
+class MarketingImageTradeTemplateOut(BaseModel):
+    code: str
+    name: str
     description: str

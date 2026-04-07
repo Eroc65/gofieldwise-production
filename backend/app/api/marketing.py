@@ -17,7 +17,9 @@ from ..schemas.marketing import MarketingCampaignLaunchOut
 from ..schemas.marketing import MarketingCampaignOut
 from ..schemas.marketing import MarketingImageGenerateOut
 from ..schemas.marketing import MarketingImageGenerateRequest
+from ..schemas.marketing import MarketingImageChannelOut
 from ..schemas.marketing import MarketingImageTemplateOut
+from ..schemas.marketing import MarketingImageTradeTemplateOut
 from ..schemas.marketing import ReactivationRunOut
 from ..schemas.marketing import ReactivationRunRequest
 from ..services.ai_image_service import generate_marketing_image
@@ -53,6 +55,48 @@ _MARKETING_IMAGE_TEMPLATES: list[dict[str, str]] = [
         "description": "Portrait creative for win-back and dormant customer outreach",
     },
 ]
+_MARKETING_IMAGE_CHANNELS: list[dict[str, str]] = [
+    {
+        "code": "instagram_feed",
+        "name": "Instagram Feed",
+        "recommended_size": "1024x1024",
+        "description": "Square layout optimized for social feed posts",
+    },
+    {
+        "code": "facebook_landscape",
+        "name": "Facebook Landscape",
+        "recommended_size": "1536x1024",
+        "description": "Landscape layout optimized for Facebook ads and boosted posts",
+    },
+    {
+        "code": "story_vertical",
+        "name": "Story Vertical",
+        "recommended_size": "1024x1536",
+        "description": "Vertical creative for stories and mobile-first placements",
+    },
+]
+_MARKETING_IMAGE_TRADE_TEMPLATES: list[dict[str, str]] = [
+    {
+        "code": "general_home_services",
+        "name": "General Home Services",
+        "description": "Practical, trustworthy home service visual style with clean iconography",
+    },
+    {
+        "code": "hvac",
+        "name": "HVAC",
+        "description": "Heating and cooling visuals, seasonal comfort messaging, reliability-first tone",
+    },
+    {
+        "code": "plumbing",
+        "name": "Plumbing",
+        "description": "Fast-response plumbing visuals, urgency + trust, clear service promise",
+    },
+    {
+        "code": "electrical",
+        "name": "Electrical",
+        "description": "Professional electrical service visuals with safety-focused messaging",
+    },
+]
 
 
 def _ensure_marketing_access(current_user: User) -> None:
@@ -66,6 +110,16 @@ def _compose_marketing_prompt(payload: MarketingImageGenerateRequest) -> str:
     if not template:
         allowed = ", ".join(item["code"] for item in _MARKETING_IMAGE_TEMPLATES)
         raise HTTPException(status_code=400, detail=f"template_code must be one of: {allowed}")
+
+    channel = next((item for item in _MARKETING_IMAGE_CHANNELS if item["code"] == payload.channel_code), None)
+    if not channel:
+        allowed = ", ".join(item["code"] for item in _MARKETING_IMAGE_CHANNELS)
+        raise HTTPException(status_code=400, detail=f"channel_code must be one of: {allowed}")
+
+    trade_template = next((item for item in _MARKETING_IMAGE_TRADE_TEMPLATES if item["code"] == payload.trade_code), None)
+    if not trade_template:
+        allowed = ", ".join(item["code"] for item in _MARKETING_IMAGE_TRADE_TEMPLATES)
+        raise HTTPException(status_code=400, detail=f"trade_code must be one of: {allowed}")
 
     service_type = (payload.service_type or "home service").strip()
     business_name = (payload.business_name or "local business").strip()
@@ -82,6 +136,8 @@ def _compose_marketing_prompt(payload: MarketingImageGenerateRequest) -> str:
 
     return (
         f"Template: {template['name']}. "
+        f"Channel: {channel['name']} ({channel['recommended_size']}). "
+        f"Trade style: {trade_template['name']} - {trade_template['description']}. "
         f"Create a marketing image for {business_name} in the {service_type} industry. "
         f"Primary offer text: {offer_text}. CTA text: {cta_text}. "
         f"Primary color: {primary_color}. "
@@ -96,6 +152,22 @@ def list_marketing_image_templates(
 ):
     _ensure_marketing_access(current_user)
     return _MARKETING_IMAGE_TEMPLATES
+
+
+@router.get("/marketing/ai-images/channels", response_model=List[MarketingImageChannelOut])
+def list_marketing_image_channels(
+    current_user: User = Depends(get_current_user),
+):
+    _ensure_marketing_access(current_user)
+    return _MARKETING_IMAGE_CHANNELS
+
+
+@router.get("/marketing/ai-images/trade-templates", response_model=List[MarketingImageTradeTemplateOut])
+def list_marketing_image_trade_templates(
+    current_user: User = Depends(get_current_user),
+):
+    _ensure_marketing_access(current_user)
+    return _MARKETING_IMAGE_TRADE_TEMPLATES
 
 
 @router.get("/marketing/campaigns", response_model=List[MarketingCampaignOut])
