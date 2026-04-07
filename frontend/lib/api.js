@@ -505,6 +505,42 @@ export async function runReactivationEngine({ token, lookbackDays = 180, limit =
   });
 }
 
+export async function listMarketingImageTemplates({ token }) {
+  return apiFetch("/api/marketing/ai-images/templates", {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function generateMarketingImage({
+  token,
+  prompt,
+  size = "1024x1024",
+  quality = "high",
+  templateCode = "social_promo",
+  businessName,
+  serviceType,
+  offerText,
+  ctaText,
+  primaryColor,
+}) {
+  return apiFetch("/api/marketing/ai-images/generate", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      prompt,
+      size,
+      quality,
+      template_code: templateCode,
+      business_name: businessName || null,
+      service_type: serviceType || null,
+      offer_text: offerText || null,
+      cta_text: ctaText || null,
+      primary_color: primaryColor || null,
+    }),
+  });
+}
+
 export async function getCommProfile({ token }) {
   return apiFetch("/api/org/comm-profile", {
     method: "GET",

@@ -46,3 +46,29 @@ class ReactivationRunOut(BaseModel):
     candidate_count: int
     queued_count: int
     queued_customer_ids: list[int]
+
+
+class MarketingImageGenerateRequest(BaseModel):
+    prompt: str = Field(min_length=8, max_length=2000)
+    size: str = Field(default="1024x1024")
+    quality: str = Field(default="high")
+    template_code: str = Field(default="social_promo")
+    business_name: Optional[str] = Field(default=None, max_length=120)
+    service_type: Optional[str] = Field(default=None, max_length=80)
+    offer_text: Optional[str] = Field(default=None, max_length=180)
+    cta_text: Optional[str] = Field(default=None, max_length=120)
+    primary_color: Optional[str] = Field(default=None, max_length=32)
+
+
+class MarketingImageGenerateOut(BaseModel):
+    model: str
+    mime_type: str
+    image_base64: str
+    revised_prompt: Optional[str] = None
+
+
+class MarketingImageTemplateOut(BaseModel):
+    code: str
+    name: str
+    recommended_size: str
+    description: str

@@ -46,6 +46,9 @@ export default function Home() {
             <button className="btn btn-secondary btn-large" onClick={() => setDemoActive(true)}>
               Call Our AI Receptionist: (602) 932-0967
             </button>
+            <Link href="/marketing-ai" className="btn btn-secondary btn-large">
+              Generate AI Marketing Images
+            </Link>
           </div>
           <div className="hero-stats">
             <div className="stat">
