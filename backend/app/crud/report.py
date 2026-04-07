@@ -252,6 +252,39 @@ def get_operational_dashboard(db, organization_id: int) -> dict:
     invoices_unpaid = db.query(Invoice).filter(Invoice.organization_id == organization_id, Invoice.status == "unpaid").count()
     invoices_paid = db.query(Invoice).filter(Invoice.organization_id == organization_id, Invoice.status == "paid").count()
     invoices_void = db.query(Invoice).filter(Invoice.organization_id == organization_id, Invoice.status == "void").count()
+
+    unpaid_invoice_rows = db.query(Invoice).filter(
+        Invoice.organization_id == organization_id,
+        Invoice.status == "unpaid",
+    ).all()
+    unpaid_total_amount = sum(float(cast(float, inv.amount)) for inv in unpaid_invoice_rows)
+    overdue_count = 0
+    aging_buckets = {
+        "current_not_due": {"count": 0, "amount": 0.0},
+        "days_1_7": {"count": 0, "amount": 0.0},
+        "days_8_14": {"count": 0, "amount": 0.0},
+        "days_15_30": {"count": 0, "amount": 0.0},
+        "days_31_plus": {"count": 0, "amount": 0.0},
+    }
+    for invoice in unpaid_invoice_rows:
+        amount = float(cast(float, invoice.amount))
+        due_at = cast(datetime | None, invoice.due_at)
+        if due_at is None or due_at >= now:
+            bucket_key = "current_not_due"
+        else:
+            overdue_count += 1
+            age_days = (now - due_at).days
+            if age_days <= 7:
+                bucket_key = "days_1_7"
+            elif age_days <= 14:
+                bucket_key = "days_8_14"
+            elif age_days <= 30:
+                bucket_key = "days_15_30"
+            else:
+                bucket_key = "days_31_plus"
+
+        aging_buckets[bucket_key]["count"] += 1
+        aging_buckets[bucket_key]["amount"] = round(float(cast(float, aging_buckets[bucket_key]["amount"])) + amount, 2)
     
     # Overdue invoices by escalation level
     invoices_initial_due = db.query(Invoice).filter(
@@ -366,6 +399,8 @@ def get_operational_dashboard(db, organization_id: int) -> dict:
             "paid": invoices_paid,
             "void": invoices_void,
             "total": invoices_unpaid + invoices_paid + invoices_void,
+            "unpaid_total_amount": round(unpaid_total_amount, 2),
+            "overdue_count": overdue_count,
         },
         "overdue_invoices": {
             "due_today": invoices_initial_due,
@@ -373,6 +408,7 @@ def get_operational_dashboard(db, organization_id: int) -> dict:
             "7_days_overdue": invoices_7days_overdue,
             "14_plus_days_overdue": invoices_14days_overdue,
             "total_overdue": invoices_3days_overdue + invoices_7days_overdue + invoices_14days_overdue,
+            "aging_buckets": aging_buckets,
         },
         "sla_breaches": {
             "stale_dispatched_jobs": stale_dispatched_jobs,

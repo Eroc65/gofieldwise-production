@@ -97,6 +97,9 @@ def test_operational_dashboard_empty_org_returns_zeroes():
     assert body["lead_pipeline"]["total"] == 0
     assert body["job_status"]["total"] == 0
     assert body["invoice_summary"]["total"] == 0
+    assert body["invoice_summary"]["unpaid_total_amount"] == 0.0
+    assert body["invoice_summary"]["overdue_count"] == 0
+    assert body["overdue_invoices"]["aging_buckets"]["current_not_due"]["count"] == 0
     assert body["sla_breaches"]["stale_dispatched_jobs"] == 0
     assert body["sla_breaches"]["severe_overdue_invoices"] == 0
     assert body["sla_breaches"]["pending_total_alerts"] == 0
@@ -157,8 +160,12 @@ def test_operational_dashboard_metrics_and_escalation_breakdown():
     assert body["job_status"]["pending"] == 2
     assert body["invoice_summary"]["paid"] == 1
     assert body["invoice_summary"]["unpaid"] == 1
+    assert body["invoice_summary"]["unpaid_total_amount"] == 200.0
+    assert body["invoice_summary"]["overdue_count"] == 1
     assert body["overdue_invoices"]["14_plus_days_overdue"] >= 1
     assert body["overdue_invoices"]["total_overdue"] >= 1
+    assert body["overdue_invoices"]["aging_buckets"]["days_8_14"]["count"] == 1
+    assert body["overdue_invoices"]["aging_buckets"]["days_8_14"]["amount"] == 200.0
     assert body["sla_breaches"]["stale_dispatched_jobs"] == 1
     assert body["sla_breaches"]["severe_overdue_invoices"] == 1
     assert body["sla_breaches"]["pending_total_alerts"] >= 2
@@ -199,6 +206,9 @@ def test_operational_dashboard_org_isolation():
     assert org1_body["organization_id"] != org2_body["organization_id"]
     assert org2_body["lead_pipeline"]["total"] == 1
     assert org2_body["invoice_summary"]["total"] == 1
+    assert org2_body["invoice_summary"]["unpaid_total_amount"] == 100.0
+    assert org2_body["invoice_summary"]["overdue_count"] == 0
+    assert org2_body["overdue_invoices"]["aging_buckets"]["current_not_due"]["count"] == 1
     assert org2_body["revenue_metrics"]["total_invoiced"] == 100.0
     assert org2_body["sla_breaches"]["pending_total_alerts"] == 0
     assert "action_priorities" in org2_body
