@@ -289,6 +289,19 @@ export async function getOperatorQueue({ token, limit = 5 }) {
   });
 }
 
+export async function acknowledgeOperatorQueueItem({ token, itemType, entityId }) {
+  return apiFetch("/api/reports/operator-queue/ack", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      item_type: itemType,
+      entity_id: Number(entityId),
+    }),
+  });
+}
+
 export async function getLeadActivity({ token, leadId, action, sinceHours }) {
   const query = new URLSearchParams();
   if (action) {

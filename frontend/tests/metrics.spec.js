@@ -117,6 +117,22 @@ test("metrics dashboard flow works", async ({ page }) => {
     });
   });
 
+  await page.route("**/api/reports/operator-queue/ack", async (route) => {
+    const payload = route.request().postDataJSON();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        organization_id: 11,
+        item_type: payload.item_type,
+        entity_id: payload.entity_id,
+        acknowledged: true,
+        already_acknowledged: false,
+        acknowledged_at: new Date().toISOString(),
+      }),
+    });
+  });
+
   await page.goto("/metrics");
 
   await expect(page.getByRole("heading", { name: "Lead Conversion Dashboard" })).toBeVisible();
@@ -151,6 +167,10 @@ test("metrics dashboard flow works", async ({ page }) => {
   await expect(page.getByText("Collect invoice #401")).toBeVisible();
   await expect(page.getByText("#1 (148)")).toBeVisible();
   await expect(page.getByText("Call customer and collect payment today.")).toBeVisible();
+  await page.getByRole("button", { name: "Acknowledge Collect invoice #401" }).click();
+  await expect(page.getByText("Acknowledged: Collect invoice #401")).toBeVisible();
+  const queueRows = page.locator("section.dispatch-card:has(h2:has-text('Operator Priority Queue')) tbody tr");
+  await expect(queueRows.filter({ hasText: "Collect invoice #401" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "8 To 14 Days (Top Action)" })).toHaveCount(0);
   await expect(page.getByText("2026-04-01")).toBeVisible();
 });

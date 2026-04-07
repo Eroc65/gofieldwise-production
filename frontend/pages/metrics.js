@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { getLeadConversionMetrics, getOperationalDashboard, getOperatorQueue, login } from "../lib/api";
+import {
+  acknowledgeOperatorQueueItem,
+  getLeadConversionMetrics,
+  getOperationalDashboard,
+  getOperatorQueue,
+  login,
+} from "../lib/api";
 
 export default function MetricsPage() {
   const [token, setToken] = useState("");
@@ -10,6 +16,8 @@ export default function MetricsPage() {
   const [metrics, setMetrics] = useState(null);
   const [dashboard, setDashboard] = useState(null);
   const [operatorQueue, setOperatorQueue] = useState(null);
+  const [queueNotice, setQueueNotice] = useState("");
+  const [queueBusyKey, setQueueBusyKey] = useState("");
   const [error, setError] = useState("");
   const [busyAction, setBusyAction] = useState("");
 
@@ -92,7 +100,42 @@ export default function MetricsPage() {
       setMetrics(metricsData);
       setDashboard(dashboardData);
       setOperatorQueue(operatorQueueData);
+      setQueueNotice("");
     });
+  }
+
+  async function onAcknowledgeQueueItem(item) {
+    setError("");
+    setQueueNotice("");
+    const queueKey = `${item.item_type}-${item.entity_id}`;
+    setQueueBusyKey(queueKey);
+    try {
+      await acknowledgeOperatorQueueItem({
+        token,
+        itemType: item.item_type,
+        entityId: item.entity_id,
+      });
+
+      setOperatorQueue((current) => {
+        if (!current) {
+          return current;
+        }
+        const nextItems = (current.items || []).filter(
+          (candidate) => !(candidate.item_type === item.item_type && candidate.entity_id === item.entity_id),
+        );
+        const nextTotal = Math.max(0, Number(current.total_candidates || 0) - 1);
+        return {
+          ...current,
+          total_candidates: nextTotal,
+          items: nextItems,
+        };
+      });
+      setQueueNotice(`Acknowledged: ${item.title}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setQueueBusyKey("");
+    }
   }
 
   return (
@@ -239,6 +282,7 @@ export default function MetricsPage() {
               <h2>Operator Priority Queue</h2>
               <p>Top ranked actions to reduce cash risk and close operational gaps.</p>
             </header>
+            {queueNotice ? <div className="panel">{queueNotice}</div> : null}
             {(operatorQueue?.items || []).length > 0 ? (
               <div className="metric-table-wrap">
                 <table className="metric-table">
@@ -248,6 +292,7 @@ export default function MetricsPage() {
                       <th>Task</th>
                       <th>Urgency</th>
                       <th>Action</th>
+                      <th>Queue</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -257,6 +302,16 @@ export default function MetricsPage() {
                         <td>{item.title}</td>
                         <td>{item.urgency}</td>
                         <td>{item.action}</td>
+                        <td>
+                          <button
+                            type="button"
+                            onClick={() => onAcknowledgeQueueItem(item)}
+                            disabled={busyAction !== "" || queueBusyKey === `${item.item_type}-${item.entity_id}`}
+                            aria-label={`Acknowledge ${item.title}`}
+                          >
+                            {queueBusyKey === `${item.item_type}-${item.entity_id}` ? "Saving..." : "Acknowledge"}
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
