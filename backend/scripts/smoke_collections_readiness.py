@@ -149,7 +149,7 @@ escalation = r.json()
 if escalation.get("total_escalations", 0) < 1:
     raise SystemExit("Expected at least one escalation for overdue invoice")
 
-print("9) Mark overdue invoice paid and verify base collection reminder suppression")
+print("9) Mark overdue invoice paid and verify invoice reminder suppression")
 r = requests.patch(
     f"{BASE}/api/invoices/{overdue_invoice_id}/status",
     json={"status": "paid"},
@@ -166,11 +166,37 @@ r = requests.get(
 print("/api/reminders?job_id", r.status_code, r.json())
 require_status(r, 200)
 reminders = r.json()
-base_msg = f"Collect payment for invoice #{overdue_invoice_id}"
-base_reminder = next((rm for rm in reminders if rm.get("message") == base_msg), None)
-if base_reminder is None:
-    raise SystemExit("Expected base collection reminder for overdue invoice")
-if base_reminder.get("status") != "dismissed":
-    raise SystemExit("Expected base collection reminder to be dismissed after payment")
+invoice_marker = f"invoice #{overdue_invoice_id}"
+invoice_reminders = [
+    rm for rm in reminders if invoice_marker in str(rm.get("message", "")).lower()
+]
+if not invoice_reminders:
+    raise SystemExit("Expected at least one invoice-specific reminder for overdue invoice")
+if any(rm.get("status") != "dismissed" for rm in invoice_reminders):
+    raise SystemExit("Expected all invoice-specific reminders to be dismissed after payment")
+
+print("10) Reopen invoice and verify reminder reactivation")
+r = requests.patch(
+    f"{BASE}/api/invoices/{overdue_invoice_id}/status",
+    json={"status": "unpaid"},
+    headers=headers,
+)
+print("/api/invoices/{id}/status reopen", r.status_code, r.json())
+require_status(r, 200)
+
+r = requests.get(
+    f"{BASE}/api/reminders",
+    params={"job_id": job2_id},
+    headers=headers,
+)
+print("/api/reminders?job_id after reopen", r.status_code, r.json())
+require_status(r, 200)
+reopened_reminders = [
+    rm for rm in r.json() if invoice_marker in str(rm.get("message", "")).lower()
+]
+if not reopened_reminders:
+    raise SystemExit("Expected invoice-specific reminders after reopen")
+if any(rm.get("status") != "pending" for rm in reopened_reminders):
+    raise SystemExit("Expected invoice-specific reminders to reactivate on paid->unpaid")
 
 print("OK: collections readiness smoke test passed")
