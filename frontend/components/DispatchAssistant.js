@@ -243,6 +243,26 @@ export default function DispatchAssistant() {
 
   const jobStatus = dispatchResult?.status || selectedJob?.status || "";
 
+  const nextLifecycleAction = useMemo(() => {
+    if (jobStatus === "dispatched") {
+      return { key: "on_my_way", label: "Mark On My Way", handler: onMarkOnMyWay };
+    }
+    if (jobStatus === "on_my_way") {
+      return { key: "in_progress", label: "Mark Started", handler: onMarkStarted };
+    }
+    if (jobStatus === "in_progress") {
+      return { key: "completed", label: "Mark Completed", handler: onCompleteJob };
+    }
+    return null;
+  }, [jobStatus]);
+
+  async function onAdvanceLifecycleStep() {
+    if (!nextLifecycleAction) {
+      return;
+    }
+    await nextLifecycleAction.handler();
+  }
+
   return (
     <section className="dispatch-card">
       <header className="dispatch-head">
@@ -441,6 +461,13 @@ export default function DispatchAssistant() {
           disabled={busyAction !== "" || !token || !jobId || !["dispatched", "on_my_way", "in_progress"].includes(jobStatus)}
         >
           {busyAction === "complete" ? "Completing..." : "Mark Completed"}
+        </button>
+        <button
+          type="button"
+          onClick={onAdvanceLifecycleStep}
+          disabled={busyAction !== "" || !token || !jobId || !nextLifecycleAction}
+        >
+          {busyAction !== "" ? "Updating..." : `Advance Lifecycle (${nextLifecycleAction?.label || "Done"})`}
         </button>
       </div>
 
