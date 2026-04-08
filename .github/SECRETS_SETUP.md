@@ -35,6 +35,8 @@ Examples:
 	- `powershell -ExecutionPolicy Bypass -File .github/scripts/github-ops.ps1 -Action trigger-staging`
 - Trigger production deploy workflow:
 	- `powershell -ExecutionPolicy Bypass -File .github/scripts/github-ops.ps1 -Action trigger-production`
+- Validate deploy hook secret presence before triggering deploys:
+	- `powershell -ExecutionPolicy Bypass -File .github/scripts/github-ops.ps1 -Action validate-hooks`
 
 ## Current Status
 - Validate live secret health with:
@@ -47,6 +49,11 @@ Examples:
 - RENDER_BACKEND_DEPLOY_HOOK_URL
 - RENDER_STAGING_FRONTEND_DEPLOY_HOOK_URL
 - RENDER_STAGING_BACKEND_DEPLOY_HOOK_URL
+
+Validation behavior:
+- Staging and production deploy workflows now fail fast unless each deploy hook matches Render format:
+	- `https://api.render.com/deploy/srv-...?...`
+- This prevents accidental values like database URLs from silently breaking deploy routing.
 
 ## Post-deploy smoke targets (staging)
 - STAGING_API_BASE_URL

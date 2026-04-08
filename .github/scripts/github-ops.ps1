@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("check-secrets", "set-smoke-secrets", "trigger-staging", "trigger-production", "status")]
+    [ValidateSet("check-secrets", "set-smoke-secrets", "trigger-staging", "trigger-production", "validate-hooks", "status")]
     [string]$Action = "status",
     [string]$Repo,
     [string]$StagingApiBaseUrl,
@@ -88,6 +88,58 @@ function Show-SecretHealth {
     }
 }
 
+function Get-SecretValue([string]$name) {
+    $value = gh secret list --repo $Repo --json name,updatedAt | ConvertFrom-Json
+    if (-not $value) {
+        return $null
+    }
+    $match = $value | Where-Object { $_.name -eq $name } | Select-Object -First 1
+    if (-not $match) {
+        return $null
+    }
+    return "present"
+}
+
+function Test-RenderDeployHookFormat([string]$hookUrl) {
+    if ([string]::IsNullOrWhiteSpace($hookUrl)) {
+        return $false
+    }
+    return $hookUrl -match "^https://api\.render\.com/deploy/srv-[A-Za-z0-9]+\?key=[A-Za-z0-9]+$"
+}
+
+function Validate-HookPattern([string]$secretName, [string]$value) {
+    if (-not (Test-RenderDeployHookFormat $value)) {
+        throw "$secretName is not a valid Render deploy hook URL format. Expected: https://api.render.com/deploy/srv-...?..."
+    }
+}
+
+function Validate-DeployHooks {
+    $requiredHookNames = @(
+        "RENDER_FRONTEND_DEPLOY_HOOK_URL",
+        "RENDER_BACKEND_DEPLOY_HOOK_URL",
+        "RENDER_STAGING_FRONTEND_DEPLOY_HOOK_URL",
+        "RENDER_STAGING_BACKEND_DEPLOY_HOOK_URL"
+    )
+
+    $missing = @()
+    foreach ($name in $requiredHookNames) {
+        $present = Get-SecretValue -name $name
+        if (-not $present) {
+            $missing += $name
+        }
+    }
+
+    if ($missing.Count -gt 0) {
+        Write-Output "Missing deploy hook secrets:"
+        $missing | ForEach-Object { Write-Output "- $_" }
+        throw "Deploy hook validation failed."
+    }
+
+    Write-Output "Deploy hook secret names present."
+    Write-Output "Note: GitHub does not allow reading secret values via CLI/API."
+    Write-Output "Run workflow validation steps to verify hook URL formats at execution time."
+}
+
 function Set-SmokeSecrets {
     $requiredValues = @{
         "STAGING_API_BASE_URL" = $StagingApiBaseUrl
@@ -112,7 +164,6 @@ function Set-SmokeSecrets {
 
 function Trigger-Workflow([string]$workflowName) {
     gh workflow run $workflowName --repo $Repo
-    Start-Sleep -Seconds 2
     $runs = gh run list --repo $Repo --workflow $workflowName --limit 1 --json databaseId,status,conclusion,displayTitle,createdAt,url | ConvertFrom-Json
     if ($runs.Count -gt 0) {
         $run = $runs[0]
@@ -140,6 +191,9 @@ switch ($Action) {
     }
     "trigger-production" {
         Trigger-Workflow -workflowName "Deploy Production"
+    }
+    "validate-hooks" {
+        Validate-DeployHooks
     }
     "status" {
         Show-SecretHealth

@@ -12,12 +12,26 @@ jobs:
     steps:
       - name: Validate production deploy hook secrets
         run: |
-          if [ -z "${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK_URL }}" ]; then
+          FRONTEND_HOOK="${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK_URL }}"
+          BACKEND_HOOK="${{ secrets.RENDER_BACKEND_DEPLOY_HOOK_URL }}"
+
+          if [ -z "$FRONTEND_HOOK" ]; then
             echo "Missing secret: RENDER_FRONTEND_DEPLOY_HOOK_URL"
             exit 1
           fi
-          if [ -z "${{ secrets.RENDER_BACKEND_DEPLOY_HOOK_URL }}" ]; then
+
+          if [[ ! "$FRONTEND_HOOK" =~ ^https://api\.render\.com/deploy/srv-[A-Za-z0-9]+\?key=[A-Za-z0-9]+$ ]]; then
+            echo "RENDER_FRONTEND_DEPLOY_HOOK_URL must be a valid Render deploy hook URL"
+            exit 1
+          fi
+
+          if [ -z "$BACKEND_HOOK" ]; then
             echo "Missing secret: RENDER_BACKEND_DEPLOY_HOOK_URL"
+            exit 1
+          fi
+
+          if [[ ! "$BACKEND_HOOK" =~ ^https://api\.render\.com/deploy/srv-[A-Za-z0-9]+\?key=[A-Za-z0-9]+$ ]]; then
+            echo "RENDER_BACKEND_DEPLOY_HOOK_URL must be a valid Render deploy hook URL"
             exit 1
           fi
 
