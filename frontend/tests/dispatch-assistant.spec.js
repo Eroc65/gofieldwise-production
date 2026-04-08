@@ -130,9 +130,8 @@ test("dispatch assistant full flow works", async ({ page }) => {
     });
   });
 
-  await page.goto("/");
+  await page.goto("/dispatch-assistant");
 
-  await expect(page.getByRole("heading", { name: "AI Voice Agents And Automation For Service Businesses" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Dispatch Assistant" })).toBeVisible();
 
   await page.getByLabel("Auth Email").fill("operator@example.com");
@@ -241,7 +240,7 @@ test("dispatch assistant mobile lifecycle can complete in three taps", async ({ 
     });
   });
 
-  await page.goto("/");
+  await page.goto("/dispatch-assistant");
 
   await page.getByLabel("Auth Email").fill("operator@example.com");
   await page.getByLabel("Auth Password").fill("testpass123");
