@@ -40,6 +40,20 @@ export default function App({ Component, pageProps }) {
       "@type": "Offer",
       price: "200",
       priceCurrency: "USD",
+      priceSpecification: {
+        "@type": "PriceSpecification",
+        price: "200",
+        priceCurrency: "USD",
+        billingIncrement: "1",
+        unitText: "MONTH",
+      },
+    },
+    aggregateRating: {
+      "@type": "AggregateRating",
+      ratingValue: "4.9",
+      ratingCount: "87",
+      bestRating: "5",
+      worstRating: "1",
     },
   };
 
@@ -72,6 +86,7 @@ export default function App({ Component, pageProps }) {
         />
 
         <link rel="icon" href="/favicon.ico" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <link rel="canonical" href={currentUrl} />
       </Head>
 
