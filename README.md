@@ -3,11 +3,34 @@
 AI-first front desk software for small trades businesses.
 
 ## Repo Structure
-- `frontend/` — Next.js (React, TypeScript) app
+- `frontend/` — Next.js (React, JavaScript) app
 - `backend/` — FastAPI backend (Python)
 - `.github/` — CI/CD, templates, project management
 - `infra/` — Deployment, environment config
 - `render.yaml` — Render.com deployment config
+
+## Official GoFieldwise Stack
+
+### Frontend
+- Next.js (pages router) with React
+- JavaScript and CSS (global styles + component-level styles)
+
+### Backend
+- FastAPI (Python)
+- Organization-scoped API and auth flows
+
+### Infrastructure
+- Render for web service hosting, deploy pipelines, SSL, and runtime configuration
+- Neon Postgres for persistent application data (users, organizations, jobs, customers, reminders)
+
+### Runtime Request Flow
+1. Browser sends request to the app hosted on Render.
+2. Backend service validates auth/business logic and queries Neon.
+3. Neon returns data to backend.
+4. Backend returns API response/UI data to browser.
+
+### Branding Standard
+- Use `GoFieldwise` consistently in docs, UI, and campaigns.
 
 ## Local Development
 
