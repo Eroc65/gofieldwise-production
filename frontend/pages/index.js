@@ -82,6 +82,33 @@ const comparisonPoints = [
 
 const integrations = ["Retell AI", "Twilio", "Stripe", "QuickBooks-ready", "Google Business Profile", "Website forms", "SMS follow-ups", "Neon Postgres"];
 
+const proOperations = [
+  {
+    title: "Route-ready dispatch",
+    body: "Group jobs by area, urgency, service window, and tech availability so recurring routes and emergency calls can coexist.",
+  },
+  {
+    title: "Customer self-service layer",
+    body: "Confirm appointments, send reminders, share invoice links, collect reviews, and reduce the phone tag after the first call.",
+  },
+  {
+    title: "Digital documents",
+    body: "Prepare estimates, work orders, authorization notes, photos, and signed approvals around the job record.",
+  },
+  {
+    title: "Materials and job notes",
+    body: "Capture parts, chemicals, equipment, access details, and technician notes so billing and callbacks stay clean.",
+  },
+  {
+    title: "Estimate packages",
+    body: "Turn intake into good-better-best options, maintenance plans, and follow-up offers instead of one flat quote.",
+  },
+  {
+    title: "Owner reporting",
+    body: "Track call sources, booked jobs, missed opportunities, invoices, reviews, and reactivation campaigns from one loop.",
+  },
+];
+
 const growthPlays = [
   "Missed-call rescue and instant SMS follow-up",
   "Review request campaigns after completed work",
@@ -492,6 +519,26 @@ export default function Home() {
           </div>
         </section>
 
+        <section className="pro-ops-section">
+          <div className="section-heading">
+            <p className="eyebrow">Pro-grade operations</p>
+            <h2>The AI receptionist is the front door. The operating system behind it still has to be deep.</h2>
+            <p>
+              Route businesses, pest teams, lawn care, cleaning crews, and trade contractors need more than a call
+              transcript. GoFieldwise turns Adrian's intake into the workflow pieces owners expect from mature field
+              service software.
+            </p>
+          </div>
+          <div className="pro-ops-grid">
+            {proOperations.map((item) => (
+              <article className="pro-ops-card" key={item.title}>
+                <h3>{item.title}</h3>
+                <p>{item.body}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
         <section className="pricing-section">
           <div className="pricing-copy">
             <p className="eyebrow">Simple pricing</p>
@@ -622,6 +669,7 @@ export default function Home() {
         .trade-section,
         .modules-section,
         .integrations-section,
+        .pro-ops-section,
         .pricing-section,
         .growth-section,
         .onboarding-section,
@@ -828,6 +876,7 @@ export default function Home() {
         .trade-section,
         .modules-section,
         .integrations-section,
+        .pro-ops-section,
         .pricing-section,
         .growth-section,
         .onboarding-section,
@@ -905,6 +954,7 @@ export default function Home() {
         .price-card,
         .problem-card,
         .comparison-card,
+        .pro-ops-card,
         .onboarding-card,
         .faq-card {
           background: var(--panel);
@@ -935,6 +985,7 @@ export default function Home() {
 
         .problem-card,
         .comparison-card,
+        .pro-ops-card,
         .onboarding-card,
         .faq-card {
           padding: 20px;
@@ -942,6 +993,7 @@ export default function Home() {
 
         .problem-card h3,
         .comparison-card h3,
+        .pro-ops-card h3,
         .onboarding-card h3,
         .faq-card h3 {
           margin: 0;
@@ -950,6 +1002,7 @@ export default function Home() {
 
         .problem-card p,
         .comparison-card p,
+        .pro-ops-card p,
         .onboarding-card p,
         .faq-card p {
           margin: 12px 0 0;
@@ -1228,6 +1281,20 @@ export default function Home() {
           box-shadow: 0 8px 22px rgba(27, 25, 20, 0.08);
         }
 
+        .pro-ops-section {
+          border-bottom: 1px solid var(--line);
+        }
+
+        .pro-ops-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 14px;
+        }
+
+        .pro-ops-card {
+          border-top: 5px solid var(--accent);
+        }
+
         .pricing-section {
           display: grid;
           grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
@@ -1369,6 +1436,7 @@ export default function Home() {
           .module-grid,
           .problem-grid,
           .integration-grid,
+          .pro-ops-grid,
           .onboarding-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
@@ -1398,6 +1466,7 @@ export default function Home() {
           .trade-section,
           .modules-section,
           .integrations-section,
+          .pro-ops-section,
           .pricing-section,
           .growth-section,
           .onboarding-section,
@@ -1432,6 +1501,7 @@ export default function Home() {
           .problem-grid,
           .comparison-grid,
           .integration-grid,
+          .pro-ops-grid,
           .growth-list,
           .onboarding-grid,
           .faq-grid {
