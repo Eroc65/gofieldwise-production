@@ -5,6 +5,10 @@ services:
     name: fieldwise-web
     env: node
     plan: free
+    buildFilter:
+      paths:
+        - frontend/**
+        - render.yaml
     buildCommand: cd frontend && npm ci && npm run build
     startCommand: cd frontend && npm run start -- -p $PORT
     envVars:
@@ -14,6 +18,10 @@ services:
     name: frontend
     env: node
     plan: free
+    buildFilter:
+      paths:
+        - frontend/**
+        - render.yaml
     buildCommand: cd frontend && npm ci && npm run build
     startCommand: cd frontend && npm run start -- -p $PORT
     envVars:
@@ -23,6 +31,12 @@ services:
     name: backend
     env: python
     plan: free
+    buildFilter:
+      paths:
+        - backend/**
+        - alembic/**
+        - alembic.ini
+        - render.yaml
     buildCommand: cd backend && pip install -r requirements.txt
     startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
