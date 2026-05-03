@@ -1,496 +1,1063 @@
 import Head from "next/head";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+import { getDemoTranscriptStreamUrl, startDemoCall } from "../lib/api";
+
+const workflowSteps = [
+  {
+    title: "Call answered",
+    body: "Adrian picks up 24/7, asks trade-smart questions, and captures the job details while you stay on the work.",
+  },
+  {
+    title: "Job booked",
+    body: "Service type, urgency, address, and preferred time become a clean job record instead of a missed voicemail.",
+  },
+  {
+    title: "Tech dispatched",
+    body: "The right tech gets the work order, customer context, and SMS updates without a front-desk scramble.",
+  },
+  {
+    title: "Invoice sent",
+    body: "When the job is done, billing and payment follow-up keep moving without you chasing the customer.",
+  },
+  {
+    title: "Review requested",
+    body: "Completion SMS, invoice nudges, and review requests go out automatically so revenue and reputation keep compounding.",
+  },
+];
+
+const modules = [
+  {
+    title: "AI Receptionist",
+    body: "Adrian answers calls, extracts intake data, routes emergencies, and keeps every lead moving.",
+  },
+  {
+    title: "Dispatch and Scheduling",
+    body: "Jobs land on the board with urgency, service type, customer details, and tech-ready notes.",
+  },
+  {
+    title: "Invoicing and Payments",
+    body: "Invoices, reminders, and payment follow-up happen while the crew stays focused on the field.",
+  },
+  {
+    title: "Follow-up Engine",
+    body: "On-the-way, completion, invoice, review, and reactivation texts run without sticky notes.",
+  },
+];
+
+const trades = ["Plumbing", "HVAC", "Electrical", "Roofing", "Landscaping", "Cleaning"];
+
+function normalizeLines(transcript) {
+  if (!Array.isArray(transcript)) return [];
+  return transcript
+    .map((line) => ({
+      role: line.role || line.speaker || "agent",
+      content: line.content || line.text || "",
+    }))
+    .filter((line) => line.content);
+}
+
+function errorMessage(err) {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return "Something went wrong starting the demo call.";
+  }
+}
 
 export default function Home() {
-  const [demoActive, setDemoActive] = useState(false);
+  const [form, setForm] = useState({ name: "", email: "", phone: "" });
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+  const [callId, setCallId] = useState("");
+  const [transcript, setTranscript] = useState([]);
+  const [summary, setSummary] = useState(null);
+  const streamRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) streamRef.current.close();
+    };
+  }, []);
+
+  function updateField(key, value) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function openTranscriptStream(nextCallId) {
+    if (streamRef.current) streamRef.current.close();
+    const source = new EventSource(getDemoTranscriptStreamUrl(nextCallId));
+    streamRef.current = source;
+
+    source.addEventListener("transcript", (event) => {
+      const payload = JSON.parse(event.data);
+      setTranscript(normalizeLines(payload.transcript));
+    });
+
+    source.addEventListener("call_ended", (event) => {
+      const payload = JSON.parse(event.data);
+      setSummary(payload.extraction || {});
+      setNotice("Call complete. The dispatch summary text is being sent.");
+      source.close();
+    });
+
+    source.onerror = () => {
+      setNotice("Call started. Waiting for Adrian's transcript...");
+    };
+  }
+
+  async function onSubmit(event) {
+    event.preventDefault();
+    setBusy(true);
+    setNotice("");
+    setError("");
+    setCallId("");
+    setTranscript([]);
+    setSummary(null);
+
+    try {
+      const result = await startDemoCall(form);
+      if (!result.call_started) {
+        throw new Error(result.call_error || result.message || "Demo call could not be started.");
+      }
+      setCallId(result.call_sid);
+      setNotice("Adrian is calling now. Keep this page open to watch the transcript.");
+      openTranscriptStream(result.call_sid);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <>
       <Head>
-        <title>GoFieldwise - AI Field Service Management for Home Service Businesses</title>
+        <title>GoFieldwise - AI Operations Manager for Home Service Businesses</title>
         <meta
           name="description"
-          content="Never miss a customer. Automate every job-from first call to paid invoice. AI-powered scheduling, dispatch & invoicing for contractors. $200/mo flat rate. Try live demo."
+          content="GoFieldwise gives plumbers, HVAC, electrical, and roofing businesses an AI front office. Adrian answers calls, books jobs, dispatches techs, sends invoices, and follows up."
         />
-        <meta
-          name="keywords"
-          content="AI field service management, contractor software, plumbing scheduling, HVAC dispatch, electrician invoicing, automated job booking, AI receptionist"
-        />
-        <meta property="og:title" content="GoFieldwise - AI Field Service Management" />
-        <meta
-          property="og:description"
-          content="Stop missing calls & jobs. GoFieldwise answers, books, dispatches, and invoices automatically-even while you sleep."
-        />
-        <meta property="og:image" content="https://gofieldwise.com/og-image.png" />
-        <meta property="og:url" content="https://gofieldwise.com" />
-        <meta name="twitter:card" content="summary_large_image" />
-        <link rel="canonical" href="https://gofieldwise.com" />
       </Head>
 
-      <section className="hero">
-        <div className="container">
-          <h1 className="hero-title">
-            Never Miss a Customer.
-            <br />
-            <span className="highlight">Automate Every Job</span>-From First Call to Paid Invoice.
-          </h1>
-          <p className="hero-subtitle">
-            GoFieldwise is AI-powered field service management built for home service businesses-no surprise pricing, no
-            setup headaches, just more jobs booked and more time for real work.
-          </p>
-          <div className="hero-cta">
-            <Link href="/demo" className="btn btn-primary btn-large">
-              See GoFieldwise in Action-No Signup Needed
-            </Link>
-            <button className="btn btn-secondary btn-large" onClick={() => setDemoActive(true)}>
-              Call Our AI Receptionist: (602) 932-0967
-            </button>
-            <Link href="/marketing-ai" className="btn btn-secondary btn-large">
-              Generate AI Marketing Images
-            </Link>
-          </div>
-          <div className="hero-stats">
-            <div className="stat">
-              <span className="stat-number">24/7</span>
-              <span className="stat-label">Instant Lead Capture</span>
-            </div>
-            <div className="stat">
-              <span className="stat-number">$200/mo</span>
-              <span className="stat-label">Flat Rate, No Hidden Fees</span>
-            </div>
-            <div className="stat">
-              <span className="stat-number">60 min</span>
-              <span className="stat-label">Live in Under an Hour</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="social-proof">
-        <div className="container">
-          <div className="testimonial-card">
-            <div className="stars">★★★★★</div>
-            <p className="testimonial-text">
-              "GoFieldwise replaced my $3,500/mo office manager. We miss zero calls and book jobs even when nobody&apos;s
-              at the office."
-            </p>
-            <div className="testimonial-author">
-              <strong>Dave K.</strong> - Plumber, Phoenix, AZ
-            </div>
-          </div>
-          <div className="metrics">
-            <div className="metric">
-              <div className="metric-value">87</div>
-              <div className="metric-label">Google reviews in 90 days</div>
-            </div>
-            <div className="metric">
-              <div className="metric-value">60s</div>
-              <div className="metric-label">Avg. time from call to job booked</div>
-            </div>
-            <div className="metric">
-              <div className="metric-value">0</div>
-              <div className="metric-label">Missed calls since switching</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="value-prop">
-        <div className="container">
-          <h2>Why Choose GoFieldwise Over "AI Agencies"?</h2>
-          <div className="comparison-grid">
-            <div className="comparison-card">
-              <h3>Most AI Agencies</h3>
-              <ul>
-                <li>Just answer calls & capture leads</li>
-                <li>Custom quotes & hidden pricing</li>
-                <li>No scheduling, dispatch, or invoicing</li>
-                <li>Slow setup (4-5 days)</li>
-                <li>Limited to front-end automation</li>
-              </ul>
-            </div>
-            <div className="comparison-card highlight">
-              <h3>GoFieldwise</h3>
-              <ul>
-                <li>
-                  <strong>Full workflow automation</strong>-calls, booking, dispatch, invoicing, reviews
-                </li>
-                <li>
-                  <strong>$200/mo flat rate</strong>-no surprises, no demo required
-                </li>
-                <li>
-                  <strong>Live in under 60 minutes</strong>-self-serve, no technical knowledge needed
-                </li>
-                <li>
-                  <strong>Built for home service businesses</strong> (1-20 techs)
-                </li>
-                <li>
-                  <strong>End-to-end operations</strong>-not just lead capture
-                </li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="how-it-works">
-        <div className="container">
-          <h2>From First Ring to Five-Star Review-Every Step Automated</h2>
-          <div className="steps">
-            {[
-              { number: "01", title: "Customer Calls", desc: "AI answers 24/7, captures job details" },
-              { number: "02", title: "Job Booked", desc: "Auto-scheduled to best available slot" },
-              { number: "03", title: "Tech Dispatched", desc: "Right person gets all details on their phone" },
-              { number: "04", title: "Invoice Sent", desc: "Auto-generated & sent the moment work is done" },
-              { number: "05", title: "Payment Collected", desc: "Text payment link, paid before tech leaves" },
-              { number: "06", title: "Review Requested", desc: "Auto-follow-up for Google reviews" },
-            ].map((step) => (
-              <div className="step" key={step.number}>
-                <div className="step-number">{step.number}</div>
-                <h3>{step.title}</h3>
-                <p>{step.desc}</p>
+      <main className="landing">
+        <section className="hero">
+          <div className="hero-inner">
+            <div className="hero-copy">
+              <p className="eyebrow">AI operations manager for home service teams</p>
+              <h1>Get your trade back. Let Adrian run the front office.</h1>
+              <p className="hero-lede">
+                GoFieldwise answers calls, books jobs, dispatches techs, sends customer updates, and helps you get paid.
+                Built for owners who are great at the trade, not stuck chasing phones and invoices.
+              </p>
+              <div className="hero-actions">
+                <a className="primary-action" href="#live-demo">
+                  Have Adrian call me
+                </a>
+                <a className="secondary-action" href="tel:+16029320967">
+                  Call Adrian: (602) 932-0967
+                </a>
               </div>
+              <div className="trust-row" aria-label="Key GoFieldwise facts">
+                <span>24/7 call coverage</span>
+                <span>Live in under 60 minutes</span>
+                <span>$200/mo core plan</span>
+              </div>
+            </div>
+
+            <aside className="ops-visual" aria-label="GoFieldwise operations board preview">
+              <div className="visual-topline">
+                <span>Fieldwise Dispatch</span>
+                <strong>Live</strong>
+              </div>
+              <div className="job-board">
+                <div className="job-card emergency">
+                  <span>Burst pipe</span>
+                  <strong>Same-day</strong>
+                  <small>Adrian captured address and shutoff note</small>
+                </div>
+                <div className="job-card">
+                  <span>HVAC tune-up</span>
+                  <strong>Scheduled</strong>
+                  <small>Confirmation SMS sent to customer</small>
+                </div>
+                <div className="job-card paid">
+                  <span>Drain unclog</span>
+                  <strong>Paid</strong>
+                  <small>Invoice link collected in driveway</small>
+                </div>
+              </div>
+              <div className="phone-preview">
+                <p>Adrian</p>
+                <strong>"I can help with that leak. What address should I send the tech to?"</strong>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section id="live-demo" className="demo-section">
+          <div className="section-heading">
+            <p className="eyebrow">The demo is the product</p>
+            <h2>Experience exactly what your customers will experience.</h2>
+            <p>
+              Enter your details, Adrian calls your phone, the call transcript appears live, and a dispatch summary text
+              follows after the call.
+            </p>
+          </div>
+
+          <div className="demo-grid">
+            <form className="demo-form" onSubmit={onSubmit}>
+              <div className="field">
+                <label htmlFor="demo-name">Your name</label>
+                <span>Example: John Smith</span>
+                <input
+                  id="demo-name"
+                  value={form.name}
+                  onChange={(event) => updateField("name", event.target.value)}
+                  placeholder="John Smith"
+                  autoComplete="name"
+                  required
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="demo-email">Email address</label>
+                <span>Used only for demo context.</span>
+                <input
+                  id="demo-email"
+                  type="email"
+                  value={form.email}
+                  onChange={(event) => updateField("email", event.target.value)}
+                  placeholder="john@example.com"
+                  autoComplete="email"
+                  required
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="demo-phone">Phone number</label>
+                <span>Adrian calls this number from (602) 932-0967.</span>
+                <input
+                  id="demo-phone"
+                  value={form.phone}
+                  onChange={(event) => updateField("phone", event.target.value)}
+                  placeholder="4055551234"
+                  autoComplete="tel"
+                  inputMode="tel"
+                  required
+                />
+              </div>
+              <button type="submit" disabled={busy}>
+                {busy ? "Starting call..." : "Have Adrian call me"}
+              </button>
+              <a className="call-link" href="tel:+16029320967">
+                Call instead: (602) 932-0967
+              </a>
+              {notice ? <p className="notice">{notice}</p> : null}
+              {error ? <p className="form-error">{error}</p> : null}
+              {callId ? <p className="call-id">Call ID: {callId}</p> : null}
+            </form>
+
+            <div className="transcript-console">
+              <div className="console-header">
+                <div>
+                  <span>Live call console</span>
+                  <strong>Adrian extraction feed</strong>
+                </div>
+                <b>{transcript.length > 0 ? "Connected" : "Ready"}</b>
+              </div>
+              <div className="transcript-body">
+                {transcript.length > 0 ? (
+                  transcript.map((line, index) => (
+                    <div key={`${line.role}-${index}`} className={line.role === "user" ? "bubble customer" : "bubble"}>
+                      <span>{line.role === "user" ? "Customer" : "Adrian"}</span>
+                      <p>{line.content}</p>
+                    </div>
+                  ))
+                ) : (
+                  <>
+                    <div className="bubble">
+                      <span>Adrian</span>
+                      <p>Fieldwise Demo Services, this is Adrian. How can I help today?</p>
+                    </div>
+                    <div className="empty-state">
+                      The live transcript and extracted dispatch notes will appear here during your demo call.
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="summary-preview">
+                <h3>Dispatch summary SMS</h3>
+                {summary ? (
+                  <dl>
+                    <dt>Service</dt>
+                    <dd>{summary.service_type || "Not captured"}</dd>
+                    <dt>Address</dt>
+                    <dd>{summary.address || "Not captured"}</dd>
+                    <dt>Urgency</dt>
+                    <dd>{summary.urgency || "Not captured"}</dd>
+                    <dt>Preferred time</dt>
+                    <dd>{summary.preferred_time || "Not captured"}</dd>
+                  </dl>
+                ) : (
+                  <p>
+                    Thanks for trying GoFieldwise. Adrian captured service type, address, urgency, preferred time, and
+                    notes for dispatch.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="workflow-section">
+          <div className="section-heading">
+            <p className="eyebrow">From call to cash</p>
+            <h2>One clean workflow instead of front-office chaos.</h2>
+          </div>
+          <div className="workflow">
+            {workflowSteps.map((step, index) => (
+              <article className="workflow-card" key={step.title}>
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                <h3>{step.title}</h3>
+                <p>{step.body}</p>
+              </article>
             ))}
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section className="industry-links">
-        <div className="container">
-          <h2>Built for Your Trade</h2>
-          <p>Explore tailored pages for your business type.</p>
-          <div className="industry-grid">
-            <Link href="/plumbing" className="industry-card">Plumbing</Link>
-            <Link href="/hvac" className="industry-card">HVAC</Link>
-            <Link href="/electrical" className="industry-card">Electrical</Link>
-            <Link href="/landscaping" className="industry-card">Landscaping</Link>
-            <Link href="/cleaning-services" className="industry-card">Cleaning Services</Link>
-          </div>
-        </div>
-      </section>
-
-      <section className="cta-final">
-        <div className="container">
-          <h2>Ready to Stop Missing Calls & Start Growing?</h2>
-          <p>
-            Join hundreds of contractors who trust GoFieldwise to handle their front desk-so they can focus on the work
-            that pays.
-          </p>
-          <div className="cta-buttons">
-            <Link href="/demo" className="btn btn-primary btn-xlarge">
-              Try the Live Demo Now
-            </Link>
-            <Link href="/pricing" className="btn btn-outline btn-xlarge">
-              See Transparent Pricing
-            </Link>
-          </div>
-          <p className="cta-note">
-            <small>No credit card required. Cancel anytime.</small>
-          </p>
-        </div>
-      </section>
-
-      {demoActive && (
-        <div className="demo-modal">
-          <div className="modal-content">
-            <h3>Call Our AI Receptionist Now</h3>
+        <section className="trade-section">
+          <div className="section-heading">
+            <p className="eyebrow">Built for the trades</p>
+            <h2>Not generic CRM software. A front office for field businesses.</h2>
             <p>
-              Dial <strong>(602) 932-0967</strong> to experience how GoFieldwise answers, qualifies, and books jobs-24/7.
+              GoFieldwise is shaped around urgent calls, rolling trucks, job notes, dispatch handoffs, invoices, and
+              customer SMS.
             </p>
-            <button className="btn btn-secondary" onClick={() => setDemoActive(false)}>
-              Close
-            </button>
           </div>
-        </div>
-      )}
+          <div className="trade-grid">
+            {trades.map((trade) => (
+              <span key={trade}>{trade}</span>
+            ))}
+          </div>
+        </section>
+
+        <section className="modules-section">
+          <div className="section-heading">
+            <p className="eyebrow">The digital office</p>
+            <h2>Everything an office manager does, without adding payroll.</h2>
+          </div>
+          <div className="module-grid">
+            {modules.map((module) => (
+              <article className="module-card" key={module.title}>
+                <h3>{module.title}</h3>
+                <p>{module.body}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="pricing-section">
+          <div className="pricing-copy">
+            <p className="eyebrow">Simple pricing</p>
+            <h2>Start with operations. Add growth when you are ready.</h2>
+            <p>
+              Core automation starts at $200/month. Teams that want done-for-you marketing can expand into a growth
+              package as lead volume becomes the next bottleneck.
+            </p>
+          </div>
+          <div className="pricing-grid">
+            <article className="price-card">
+              <span>Core Operations</span>
+              <strong>$200/mo</strong>
+              <p>Adrian, intake, dispatch, customer SMS, invoicing workflows, and the real-time job board.</p>
+            </article>
+            <article className="price-card growth">
+              <span>Growth + Marketing</span>
+              <strong>$700-950/mo</strong>
+              <p>Everything in core plus done-for-you campaigns, follow-up assets, reactivation, and marketing support.</p>
+            </article>
+          </div>
+        </section>
+
+        <section className="proof-section">
+          <blockquote>
+            "Fieldwise replaces the evening admin work: missed calls, scheduling texts, invoices, and review asks. It
+            feels like an office manager that never forgets the next step."
+          </blockquote>
+          <div className="proof-metrics">
+            <span>
+              <strong>100%</strong>
+              call coverage target
+            </span>
+            <span>
+              <strong>60 sec</strong>
+              speed-to-lead goal
+            </span>
+            <span>
+              <strong>1-20</strong>
+              tech teams supported
+            </span>
+          </div>
+        </section>
+
+        <section className="final-cta">
+          <h2>Stop wearing six hats. Put Adrian on the phones.</h2>
+          <p>
+            Your customers get a fast answer. Your techs get clean job details. You get your trade back.
+          </p>
+          <div className="hero-actions">
+            <a className="primary-action" href="#live-demo">
+              Try the live call demo
+            </a>
+            <Link className="secondary-action" href="/platform">
+              See the platform
+            </Link>
+          </div>
+        </section>
+      </main>
 
       <style jsx>{`
+        .landing {
+          background: var(--paper);
+          color: var(--ink);
+        }
+
         .hero {
-          padding: 5rem 1rem;
-          background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-          color: white;
-          text-align: center;
+          background: linear-gradient(120deg, #19333c, #274f5d 62%, #2f6678);
+          color: #fffdf8;
+          border-radius: 0;
+          box-shadow: none;
+          padding: 64px 20px 40px;
         }
-        .container {
-          max-width: 1200px;
+
+        .hero-inner,
+        .demo-section,
+        .workflow-section,
+        .trade-section,
+        .modules-section,
+        .pricing-section,
+        .proof-section,
+        .final-cta {
+          max-width: 1120px;
           margin: 0 auto;
-          padding: 0 1rem;
         }
-        .hero-title {
-          font-size: 3.5rem;
-          line-height: 1.1;
-          margin-bottom: 1.5rem;
-        }
-        .highlight {
-          color: #3b82f6;
-        }
-        .hero-subtitle {
-          font-size: 1.25rem;
-          max-width: 800px;
-          margin: 0 auto 2.5rem;
-          opacity: 0.9;
-        }
-        .hero-cta {
-          display: flex;
-          gap: 1rem;
-          justify-content: center;
-          flex-wrap: wrap;
-          margin-bottom: 3rem;
-        }
-        .btn {
-          padding: 1rem 2rem;
-          border-radius: 8px;
-          font-weight: 600;
-          text-decoration: none;
-          display: inline-block;
-          cursor: pointer;
-          border: none;
-          transition: all 0.2s;
-        }
-        .btn-primary {
-          background: #3b82f6;
-          color: white;
-        }
-        .btn-primary:hover {
-          background: #2563eb;
-        }
-        .btn-secondary {
-          background: transparent;
-          color: white;
-          border: 2px solid #64748b;
-        }
-        .btn-secondary:hover {
-          border-color: #3b82f6;
-          color: #3b82f6;
-        }
-        .btn-large {
-          font-size: 1.125rem;
-          padding: 1.25rem 2.5rem;
-        }
-        .btn-xlarge {
-          font-size: 1.25rem;
-          padding: 1.5rem 3rem;
-        }
-        .btn-outline {
-          background: transparent;
-          border: 2px solid white;
-          color: white;
-        }
-        .hero-stats {
-          display: flex;
-          justify-content: center;
-          gap: 3rem;
-          margin-top: 3rem;
-        }
-        .stat {
-          text-align: center;
-        }
-        .stat-number {
-          display: block;
-          font-size: 2.5rem;
-          font-weight: 700;
-          color: #3b82f6;
-        }
-        .stat-label {
-          font-size: 0.95rem;
-          opacity: 0.8;
-        }
-        .social-proof {
-          padding: 4rem 1rem;
-          background: #f8fafc;
-        }
-        .testimonial-card {
-          max-width: 700px;
-          margin: 0 auto 3rem;
-          padding: 2rem;
-          background: white;
-          border-radius: 12px;
-          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
-          text-align: center;
-        }
-        .stars {
-          font-size: 1.5rem;
-          color: #fbbf24;
-          margin-bottom: 1rem;
-        }
-        .testimonial-text {
-          font-size: 1.25rem;
-          font-style: italic;
-          margin-bottom: 1rem;
-        }
-        .metrics {
-          display: flex;
-          justify-content: center;
-          gap: 4rem;
-          flex-wrap: wrap;
-        }
-        .metric-value {
-          font-size: 2.5rem;
-          font-weight: 700;
-          color: #0f172a;
-        }
-        .metric-label {
-          font-size: 0.95rem;
-          color: #64748b;
-        }
-        .value-prop {
-          padding: 5rem 1rem;
-        }
-        .value-prop h2 {
-          text-align: center;
-          font-size: 2.5rem;
-          margin-bottom: 3rem;
-        }
-        .comparison-grid {
+
+        .hero-inner {
           display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 2rem;
-          max-width: 1000px;
-          margin: 0 auto;
+          grid-template-columns: minmax(0, 1fr) 430px;
+          gap: 34px;
+          align-items: center;
         }
-        .comparison-card {
-          padding: 2rem;
-          border-radius: 12px;
-          border: 2px solid #e2e8f0;
+
+        .eyebrow {
+          margin: 0 0 10px;
+          color: #ffd9ae;
+          font-size: 0.78rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.12em;
         }
-        .comparison-card.highlight {
-          border-color: #3b82f6;
-          background: #eff6ff;
+
+        h1,
+        h2,
+        h3,
+        p {
+          overflow-wrap: anywhere;
         }
-        .comparison-card h3 {
-          margin-top: 0;
-          margin-bottom: 1.5rem;
-        }
-        .comparison-card ul {
-          padding-left: 1.5rem;
+
+        h1 {
           margin: 0;
+          max-width: 780px;
+          font-size: 3.75rem;
+          line-height: 1.02;
         }
-        .comparison-card li {
-          margin-bottom: 0.75rem;
+
+        .hero-lede {
+          max-width: 680px;
+          margin: 20px 0 0;
+          font-size: 1.18rem;
+          line-height: 1.7;
+          color: #f7efe1;
         }
-        .how-it-works {
-          padding: 5rem 1rem;
-          background: #f8fafc;
-        }
-        .industry-links {
-          padding: 5rem 1rem;
-          background: white;
-          text-align: center;
-        }
-        .industry-links p {
-          margin: 0 auto 2rem;
-          color: #64748b;
-        }
-        .industry-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-          gap: 1rem;
-          max-width: 900px;
-          margin: 0 auto;
-        }
-        .industry-card {
-          display: inline-block;
-          border: 1px solid #cbd5e1;
-          border-radius: 12px;
-          padding: 1rem;
-          text-decoration: none;
-          color: #0f172a;
-          font-weight: 600;
-          transition: all 0.2s;
-          background: #f8fafc;
-        }
-        .industry-card:hover {
-          border-color: #3b82f6;
-          background: #eff6ff;
-          color: #1d4ed8;
-        }
-        .how-it-works h2 {
-          text-align: center;
-          font-size: 2.5rem;
-          margin-bottom: 3rem;
-        }
-        .steps {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-          gap: 2rem;
-          max-width: 1200px;
-          margin: 0 auto;
-        }
-        .step {
-          text-align: center;
-          padding: 2rem;
-          background: white;
-          border-radius: 12px;
-          box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
-        }
-        .step-number {
-          font-size: 2rem;
-          font-weight: 700;
-          color: #3b82f6;
-          margin-bottom: 1rem;
-        }
-        .cta-final {
-          padding: 5rem 1rem;
-          background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-          color: white;
-          text-align: center;
-        }
-        .cta-final h2 {
-          font-size: 2.5rem;
-          margin-bottom: 1.5rem;
-        }
-        .cta-final p {
-          font-size: 1.25rem;
-          max-width: 700px;
-          margin: 0 auto 3rem;
-          opacity: 0.9;
-        }
-        .cta-buttons {
+
+        .hero-actions {
           display: flex;
-          gap: 1.5rem;
-          justify-content: center;
           flex-wrap: wrap;
-          margin-bottom: 1.5rem;
+          gap: 12px;
+          margin-top: 28px;
         }
-        .demo-modal {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0, 0, 0, 0.7);
-          display: flex;
+
+        .primary-action,
+        .secondary-action,
+        .call-link,
+        .demo-form button {
+          min-height: 48px;
+          display: inline-flex;
           align-items: center;
           justify-content: center;
-          z-index: 1000;
+          border-radius: 8px;
+          padding: 0 18px;
+          font-weight: 800;
+          text-decoration: none;
         }
-        .modal-content {
-          background: white;
-          padding: 3rem;
-          border-radius: 12px;
-          max-width: 500px;
+
+        .primary-action,
+        .demo-form button {
+          border: 0;
+          background: linear-gradient(120deg, var(--accent), #db6330);
+          color: #fffdf8;
+          cursor: pointer;
+        }
+
+        .secondary-action,
+        .call-link {
+          border: 1px solid rgba(255, 217, 174, 0.62);
+          color: #fffdf8;
+          background: rgba(255, 255, 255, 0.08);
+        }
+
+        .trust-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin-top: 26px;
+        }
+
+        .trust-row span {
+          border: 1px solid rgba(255, 255, 255, 0.22);
+          border-radius: 999px;
+          padding: 8px 11px;
+          background: rgba(255, 255, 255, 0.08);
+          color: #f7efe1;
+          font-weight: 700;
+          font-size: 0.92rem;
+        }
+
+        .ops-visual {
+          border: 1px solid rgba(255, 255, 255, 0.22);
+          border-radius: 8px;
+          background: #fffdf8;
+          color: var(--ink);
+          box-shadow: var(--shadow);
+          padding: 18px;
+        }
+
+        .visual-topline,
+        .console-header {
+          display: flex;
+          justify-content: space-between;
+          gap: 14px;
+          align-items: center;
+        }
+
+        .visual-topline span,
+        .console-header span {
+          color: #4e6a74;
+          font-weight: 800;
+          font-size: 0.78rem;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+        }
+
+        .visual-topline strong,
+        .console-header b {
+          border-radius: 999px;
+          padding: 6px 10px;
+          background: #e8f5ed;
+          color: #17643a;
+          font-size: 0.78rem;
+        }
+
+        .job-board {
+          display: grid;
+          gap: 10px;
+          margin-top: 16px;
+        }
+
+        .job-card {
+          border: 1px solid var(--line);
+          border-left: 5px solid var(--info);
+          border-radius: 8px;
+          padding: 12px;
+          background: #fffcf7;
+          display: grid;
+          gap: 4px;
+        }
+
+        .job-card.emergency {
+          border-left-color: var(--accent);
+        }
+
+        .job-card.paid {
+          border-left-color: #247a4d;
+        }
+
+        .job-card span {
+          color: #4e6a74;
+          font-weight: 700;
+        }
+
+        .job-card strong {
+          font-size: 1.05rem;
+        }
+
+        .job-card small {
+          color: #647c84;
+          line-height: 1.4;
+        }
+
+        .phone-preview {
+          margin-top: 14px;
+          border-radius: 8px;
+          background: #19333c;
+          color: #fffdf8;
+          padding: 14px;
+        }
+
+        .phone-preview p {
+          margin: 0 0 6px;
+          color: #ffd9ae;
+          font-weight: 800;
+        }
+
+        .phone-preview strong {
+          line-height: 1.45;
+        }
+
+        .demo-section,
+        .workflow-section,
+        .trade-section,
+        .modules-section,
+        .pricing-section,
+        .proof-section,
+        .final-cta {
+          padding: 64px 20px;
+        }
+
+        .section-heading {
+          max-width: 760px;
+          margin-bottom: 26px;
+        }
+
+        .section-heading h2,
+        .pricing-copy h2,
+        .final-cta h2 {
+          margin: 0;
+          font-size: 2.35rem;
+          line-height: 1.08;
+        }
+
+        .section-heading p,
+        .pricing-copy p,
+        .final-cta p {
+          margin: 12px 0 0;
+          color: #35505b;
+          font-size: 1.04rem;
+          line-height: 1.65;
+        }
+
+        .demo-grid {
+          display: grid;
+          grid-template-columns: 410px minmax(0, 1fr);
+          gap: 18px;
+          align-items: stretch;
+        }
+
+        .demo-form,
+        .transcript-console,
+        .workflow-card,
+        .module-card,
+        .price-card {
+          background: var(--panel);
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          box-shadow: var(--shadow);
+        }
+
+        .demo-form {
+          padding: 20px;
+          display: grid;
+          gap: 14px;
+        }
+
+        .field {
+          display: grid;
+          gap: 6px;
+        }
+
+        .field label {
+          font-weight: 850;
+          display: block;
+        }
+
+        .field span {
+          color: #607a84;
+          font-size: 0.9rem;
+        }
+
+        .field input {
+          min-height: 48px;
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          background: #fff;
+          padding: 0 12px;
+          font-size: 1rem;
+        }
+
+        .demo-form button {
+          width: 100%;
+          font-size: 1rem;
+        }
+
+        .demo-form button:disabled {
+          cursor: wait;
+          opacity: 0.68;
+        }
+
+        .call-link {
+          color: #183743;
+          background: #fff4de;
+          border-color: #edc17c;
+        }
+
+        .notice,
+        .form-error,
+        .call-id {
+          margin: 0;
+          font-weight: 800;
+          line-height: 1.45;
+        }
+
+        .notice {
+          color: #17643a;
+        }
+
+        .form-error {
+          color: var(--error);
+        }
+
+        .call-id {
+          color: #607a84;
+          font-size: 0.88rem;
+        }
+
+        .transcript-console {
+          overflow: hidden;
+          background: #19333c;
+          color: #fffdf8;
+          display: grid;
+          grid-template-rows: auto 1fr auto;
+        }
+
+        .console-header {
+          padding: 16px 18px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+        }
+
+        .console-header strong {
+          display: block;
+          margin-top: 4px;
+        }
+
+        .transcript-body {
+          padding: 18px;
+          display: grid;
+          align-content: start;
+          gap: 12px;
+          min-height: 280px;
+        }
+
+        .bubble {
+          max-width: 86%;
+          border-radius: 8px;
+          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          padding: 12px;
+        }
+
+        .bubble.customer {
+          margin-left: auto;
+          background: #fff4de;
+          color: #19333c;
+        }
+
+        .bubble span {
+          display: block;
+          margin-bottom: 4px;
+          color: #ffd9ae;
+          font-weight: 900;
+          font-size: 0.82rem;
+        }
+
+        .bubble.customer span {
+          color: var(--accent);
+        }
+
+        .bubble p,
+        .empty-state,
+        .summary-preview p {
+          margin: 0;
+          line-height: 1.55;
+        }
+
+        .empty-state {
+          color: #c5d4d8;
+        }
+
+        .summary-preview {
+          background: #fffdf8;
+          color: var(--ink);
+          padding: 16px 18px;
+        }
+
+        .summary-preview h3 {
+          margin: 0 0 10px;
+        }
+
+        .summary-preview dl {
+          display: grid;
+          grid-template-columns: 120px minmax(0, 1fr);
+          gap: 8px 12px;
+          margin: 0;
+        }
+
+        .summary-preview dt {
+          color: #607a84;
+          font-weight: 800;
+        }
+
+        .summary-preview dd {
+          margin: 0;
+        }
+
+        .workflow {
+          display: grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 12px;
+        }
+
+        .workflow-card,
+        .module-card,
+        .price-card {
+          padding: 18px;
+        }
+
+        .workflow-card span {
+          color: var(--accent);
+          font-weight: 900;
+        }
+
+        .workflow-card h3,
+        .module-card h3 {
+          margin: 10px 0 8px;
+          font-size: 1.08rem;
+        }
+
+        .workflow-card p,
+        .module-card p,
+        .price-card p {
+          margin: 0;
+          color: #35505b;
+          line-height: 1.55;
+        }
+
+        .trade-section {
+          background: #fff8ee;
+          max-width: none;
+        }
+
+        .trade-section .section-heading,
+        .trade-grid {
+          max-width: 1120px;
+          margin-left: auto;
+          margin-right: auto;
+        }
+
+        .trade-grid {
+          display: grid;
+          grid-template-columns: repeat(6, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .trade-grid span {
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          background: #fffdf8;
+          padding: 14px 10px;
+          text-align: center;
+          font-weight: 850;
+          color: #234452;
+        }
+
+        .module-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 14px;
+        }
+
+        .pricing-section {
+          display: grid;
+          grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+          gap: 24px;
+          align-items: center;
+        }
+
+        .pricing-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 14px;
+        }
+
+        .price-card {
+          display: grid;
+          gap: 10px;
+          background: #fffdf8;
+        }
+
+        .price-card.growth {
+          border-color: #98b7bf;
+          background: linear-gradient(160deg, #fffdf8, #eef7f8);
+        }
+
+        .price-card span {
+          color: #4e6a74;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          font-size: 0.76rem;
+        }
+
+        .price-card strong {
+          color: #19333c;
+          font-size: 2rem;
+          line-height: 1;
+        }
+
+        .proof-section {
+          border-top: 1px solid var(--line);
+          border-bottom: 1px solid var(--line);
+          display: grid;
+          grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+          gap: 24px;
+          align-items: center;
+        }
+
+        blockquote {
+          margin: 0;
+          font-size: 1.55rem;
+          line-height: 1.35;
+          color: #19333c;
+          font-weight: 850;
+        }
+
+        .proof-metrics {
+          display: grid;
+          gap: 12px;
+        }
+
+        .proof-metrics span {
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          background: var(--panel);
+          padding: 16px;
+          display: grid;
+          gap: 4px;
+          color: #4e6a74;
+          font-weight: 700;
+        }
+
+        .proof-metrics strong {
+          color: var(--accent);
+          font-size: 1.6rem;
+        }
+
+        .final-cta {
           text-align: center;
         }
-        @media (max-width: 768px) {
-          .hero-title {
-            font-size: 2.5rem;
-          }
-          .hero-cta {
-            flex-direction: column;
-            align-items: center;
-          }
-          .hero-stats,
-          .metrics {
-            flex-direction: column;
-            gap: 2rem;
-          }
-          .comparison-grid {
+
+        .final-cta .hero-actions {
+          justify-content: center;
+        }
+
+        .final-cta .secondary-action {
+          color: #19333c;
+          border-color: var(--line);
+          background: #fffdf8;
+        }
+
+        @media (max-width: 980px) {
+          .hero-inner,
+          .demo-grid,
+          .pricing-section,
+          .proof-section {
             grid-template-columns: 1fr;
           }
-          .cta-buttons {
+
+          .ops-visual {
+            max-width: 560px;
+          }
+
+          .workflow,
+          .module-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
+          .trade-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+          }
+        }
+
+        @media (max-width: 680px) {
+          .hero {
+            padding: 42px 14px 28px;
+          }
+
+          h1 {
+            font-size: 2.65rem;
+          }
+
+          .hero-lede {
+            font-size: 1rem;
+          }
+
+          .demo-section,
+          .workflow-section,
+          .trade-section,
+          .modules-section,
+          .pricing-section,
+          .proof-section,
+          .final-cta {
+            padding: 42px 14px;
+          }
+
+          .section-heading h2,
+          .pricing-copy h2,
+          .final-cta h2 {
+            font-size: 1.9rem;
+          }
+
+          .hero-actions,
+          .trust-row {
             flex-direction: column;
-            align-items: center;
+          }
+
+          .primary-action,
+          .secondary-action {
+            width: 100%;
+          }
+
+          .workflow,
+          .module-grid,
+          .pricing-grid,
+          .trade-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .summary-preview dl {
+            grid-template-columns: 1fr;
           }
         }
       `}</style>

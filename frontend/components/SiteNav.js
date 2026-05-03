@@ -40,6 +40,13 @@ export default function SiteNav() {
           text-decoration: none;
           white-space: nowrap;
         }
+        .site-nav-inner :global(a.brand) {
+          color: #ffffff;
+          text-decoration: none;
+        }
+        .site-nav-inner :global(a.brand:hover) {
+          color: #ffd9ae;
+        }
         .links {
           display: flex;
           align-items: center;
