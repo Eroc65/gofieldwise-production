@@ -20,6 +20,38 @@ class MissedCallIntake(BaseModel):
     call_sid: Optional[str] = None
 
 
+class PublicAttributionIn(BaseModel):
+    cta_name: Optional[str] = None
+    landing_page: Optional[str] = None
+    referrer_url: Optional[str] = None
+    utm_source: Optional[str] = None
+    utm_medium: Optional[str] = None
+    utm_campaign: Optional[str] = None
+    utm_term: Optional[str] = None
+    utm_content: Optional[str] = None
+    gclid: Optional[str] = None
+    msclkid: Optional[str] = None
+    fbclid: Optional[str] = None
+    raw_message: Optional[str] = None
+
+
+class DemoCallIntake(PublicAttributionIn):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+
+
+class IntentIntake(PublicAttributionIn):
+    pass
+
+
+class SupportChatIntake(BaseModel):
+    message: str
+    context_key: Optional[str] = None
+    trade: Optional[str] = None
+    limit: int = 3
+
+
 class LeadStatusUpdate(BaseModel):
     status: str
 

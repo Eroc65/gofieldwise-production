@@ -21,6 +21,8 @@ from ..crud.lead import (
 from ..crud.reminder import create_lead_booking_reminder, create_lead_followup_reminder
 from ..models.core import Organization, User
 from ..schemas.lead import (
+    DemoCallIntake,
+    IntentIntake,
     LeadBookInput,
     LeadBookOut,
     LeadActivityOut,
@@ -32,6 +34,8 @@ from ..schemas.lead import (
     LeadStatusUpdate,
     MissedCallIntake,
     MissedCallRecoveryOut,
+    PublicAttributionIn,
+    SupportChatIntake,
 )
 
 router = APIRouter()
@@ -74,6 +78,73 @@ def _create_intake_lead(db: Session, payload: LeadIntake, org_id: int):
         lead_name=cast(str | None, lead.name),
     )
     return lead
+
+
+def _attribution_lines(payload: PublicAttributionIn) -> list[str]:
+    lines: list[str] = []
+    for label, value in [
+        ("CTA", payload.cta_name),
+        ("Landing page", payload.landing_page),
+        ("Referrer", payload.referrer_url),
+        ("UTM source", payload.utm_source),
+        ("UTM medium", payload.utm_medium),
+        ("UTM campaign", payload.utm_campaign),
+        ("UTM term", payload.utm_term),
+        ("UTM content", payload.utm_content),
+        ("GCLID", payload.gclid),
+        ("MSCLKID", payload.msclkid),
+        ("FBCLID", payload.fbclid),
+    ]:
+        if value:
+            lines.append(f"{label}: {value}")
+    if payload.raw_message:
+        lines.append(payload.raw_message)
+    return lines
+
+
+def _create_public_tracking_lead(
+    db: Session,
+    *,
+    org_id: int,
+    source: str,
+    payload: PublicAttributionIn,
+    fallback_message: str,
+):
+    raw_lines = _attribution_lines(payload)
+    raw_message = "\n".join([fallback_message, *raw_lines]).strip()
+    lead_payload = {
+        "name": getattr(payload, "name", None),
+        "phone": getattr(payload, "phone", None),
+        "email": getattr(payload, "email", None),
+        "source": source,
+        "raw_message": raw_message,
+    }
+    lead = create_lead(db, lead_payload, org_id)
+    create_lead_followup_reminder(
+        db,
+        int(cast(int, lead.id)),
+        org_id,
+        lead_name=cast(str | None, lead.name),
+        hours=0,
+    )
+    return lead
+
+
+def _demo_transcript(call_sid: str) -> list[dict[str, str]]:
+    return [
+        {
+            "speaker": "adrian",
+            "text": "Hi, this is Adrian with GoFieldwise. I can capture the job details and help route the request.",
+        },
+        {
+            "speaker": "customer",
+            "text": "I need help with a service request and want someone to follow up.",
+        },
+        {
+            "speaker": "adrian",
+            "text": f"Got it. I saved the request under demo call {call_sid} and alerted the team.",
+        },
+    ]
 
 
 def _recover_missed_call_lead(db: Session, payload: MissedCallIntake, org_id: int) -> MissedCallRecoveryOut:
@@ -135,6 +206,125 @@ def intake(org_id: int, payload: LeadIntake, db: Session = Depends(get_db)):
 def intake_by_key(intake_key: str, payload: LeadIntake, db: Session = Depends(get_db)):
     org = _resolve_org_for_intake(db, intake_key=intake_key)
     return _create_intake_lead(db, payload, int(cast(int, org.id)))
+
+
+@router.post(
+    "/leads/intake/demo-call/{org_id}",
+    status_code=status.HTTP_201_CREATED,
+    tags=["intake"],
+)
+def intake_demo_call(org_id: int, payload: DemoCallIntake, db: Session = Depends(get_db)):
+    org = _resolve_org_for_intake(db, org_id=org_id)
+    lead = _create_public_tracking_lead(
+        db,
+        org_id=int(cast(int, org.id)),
+        source="demo_call",
+        payload=payload,
+        fallback_message="Demo call request captured from gofieldwise.com.",
+    )
+    call_sid = f"DEMO{int(cast(int, lead.id))}"
+    return {
+        "ok": True,
+        "lead_id": int(cast(int, lead.id)),
+        "call_started": False,
+        "call_sid": call_sid,
+        "message": "Demo request captured. The team can follow up from the lead inbox.",
+    }
+
+
+@router.post(
+    "/leads/intake/demo-call/by-key/{intake_key}",
+    status_code=status.HTTP_201_CREATED,
+    tags=["intake"],
+)
+def intake_demo_call_by_key(intake_key: str, payload: DemoCallIntake, db: Session = Depends(get_db)):
+    org = _resolve_org_for_intake(db, intake_key=intake_key)
+    return intake_demo_call(int(cast(int, org.id)), payload, db)
+
+
+@router.post(
+    "/leads/intake/intent/{org_id}",
+    status_code=status.HTTP_201_CREATED,
+    tags=["intake"],
+)
+def intake_intent(org_id: int, payload: IntentIntake, db: Session = Depends(get_db)):
+    org = _resolve_org_for_intake(db, org_id=org_id)
+    lead = _create_public_tracking_lead(
+        db,
+        org_id=int(cast(int, org.id)),
+        source="web_intent",
+        payload=payload,
+        fallback_message="Website intent click captured from gofieldwise.com.",
+    )
+    return {"ok": True, "lead_id": int(cast(int, lead.id))}
+
+
+@router.post(
+    "/leads/intake/intent/by-key/{intake_key}",
+    status_code=status.HTTP_201_CREATED,
+    tags=["intake"],
+)
+def intake_intent_by_key(intake_key: str, payload: IntentIntake, db: Session = Depends(get_db)):
+    org = _resolve_org_for_intake(db, intake_key=intake_key)
+    return intake_intent(int(cast(int, org.id)), payload, db)
+
+
+@router.post(
+    "/leads/intake/support-chat/{org_id}",
+    tags=["intake"],
+)
+def intake_support_chat(org_id: int, payload: SupportChatIntake, db: Session = Depends(get_db)):
+    org = _resolve_org_for_intake(db, org_id=org_id)
+    limit = min(max(payload.limit, 1), 5)
+    answers = [
+        "GoFieldwise captures calls and web leads so the shop can follow up fast.",
+        "The platform keeps jobs, reminders, dispatch, and customer communication organized in one workflow.",
+        "For setup, the next best step is to request a demo call or call (602) 932-0967.",
+    ][:limit]
+    lead = create_lead(
+        db,
+        {
+            "name": "Website support chat",
+            "source": "support_chat",
+            "raw_message": (
+                f"Support chat question: {payload.message}\n"
+                f"Context: {payload.context_key or 'general'}\n"
+                f"Trade: {payload.trade or 'general'}"
+            ),
+        },
+        int(cast(int, org.id)),
+    )
+    return {
+        "ok": True,
+        "lead_id": int(cast(int, lead.id)),
+        "answers": answers,
+        "messages": [{"speaker": "adrian", "text": answer} for answer in answers],
+    }
+
+
+@router.post(
+    "/leads/intake/support-chat/by-key/{intake_key}",
+    tags=["intake"],
+)
+def intake_support_chat_by_key(intake_key: str, payload: SupportChatIntake, db: Session = Depends(get_db)):
+    org = _resolve_org_for_intake(db, intake_key=intake_key)
+    return intake_support_chat(int(cast(int, org.id)), payload, db)
+
+
+@router.get("/demo-call/transcript/{call_sid}", tags=["intake"])
+def demo_call_transcript(call_sid: str):
+    return {"ok": True, "call_sid": call_sid, "transcript": _demo_transcript(call_sid)}
+
+
+@router.post("/demo-call/send-summary/{call_sid}", tags=["intake"])
+def send_demo_call_summary(call_sid: str):
+    return {
+        "ok": True,
+        "call_sid": call_sid,
+        "to": "(602) 932-0967",
+        "sent": False,
+        "message": "Demo summary queued for follow-up.",
+    }
 
 
 @router.post(

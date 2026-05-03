@@ -123,3 +123,79 @@ def test_missed_call_by_key_creates_lead():
     body = resp.json()
     assert body["deduplicated"] is False
     assert body["lead"]["source"] == "missed_call"
+
+
+def test_demo_call_intake_by_key_creates_lead_and_returns_transcript():
+    client = TestClient(app)
+    intake_key = _get_org_intake_key()
+
+    resp = client.post(
+        f"/api/leads/intake/demo-call/by-key/{intake_key}",
+        json={
+            "name": "Demo Caller",
+            "email": "demo@example.com",
+            "phone": "555-4777",
+            "raw_message": "Needs an HVAC tune-up",
+            "cta_name": "demo_call_request",
+            "landing_page": "https://www.gofieldwise.com/demo",
+        },
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["lead_id"] > 0
+    assert body["call_sid"].startswith("DEMO")
+
+    transcript = client.get(f"/api/demo-call/transcript/{body['call_sid']}")
+    assert transcript.status_code == 200
+    assert len(transcript.json()["transcript"]) >= 1
+
+
+def test_demo_call_sms_summary_endpoint_matches_frontend_contract():
+    client = TestClient(app)
+
+    resp = client.post("/api/demo-call/send-summary/1")
+
+    assert resp.status_code == 200
+    assert resp.json()["to"] == "(602) 932-0967"
+
+
+def test_intent_and_support_chat_routes_do_not_404():
+    client = TestClient(app)
+    org_id = _get_org_id()
+
+    intent = client.post(
+        f"/api/leads/intake/intent/{org_id}",
+        json={
+            "cta_name": "see_pricing",
+            "landing_page": "https://www.gofieldwise.com/demo",
+            "raw_message": "Intent click captured for demo",
+        },
+    )
+    assert intent.status_code == 201
+    assert intent.json()["ok"] is True
+
+    support = client.post(
+        f"/api/leads/intake/support-chat/{org_id}",
+        json={"message": "How does the demo call work?", "context_key": "demo", "trade": "hvac", "limit": 2},
+    )
+    assert support.status_code == 200
+    assert support.json()["ok"] is True
+    assert len(support.json()["messages"]) == 2
+
+
+def test_public_demo_routes_allow_gofieldwise_cors_origin():
+    client = TestClient(app)
+    org_id = _get_org_id()
+
+    resp = client.options(
+        f"/api/leads/intake/demo-call/{org_id}",
+        headers={
+            "Origin": "https://www.gofieldwise.com",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+
+    assert resp.status_code == 200
+    assert resp.headers["access-control-allow-origin"] == "https://www.gofieldwise.com"
