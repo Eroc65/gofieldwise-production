@@ -1,7 +1,8 @@
+import html
 from typing import List, cast
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from ..api.auth import get_current_user
@@ -19,7 +20,7 @@ from ..crud.lead import (
     upsert_missed_call_lead,
 )
 from ..crud.reminder import create_lead_booking_reminder, create_lead_followup_reminder
-from ..models.core import Organization, User
+from ..models.core import Lead, Organization, User
 from ..schemas.lead import (
     DemoCallIntake,
     IntentIntake,
@@ -37,6 +38,7 @@ from ..schemas.lead import (
     PublicAttributionIn,
     SupportChatIntake,
 )
+from ..services.twilio_gateway import start_demo_voice_call
 
 router = APIRouter()
 
@@ -147,6 +149,26 @@ def _demo_transcript(call_sid: str) -> list[dict[str, str]]:
     ]
 
 
+def _demo_twiml(name: str | None) -> str:
+    safe_name = html.escape((name or "there").strip() or "there")
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        "<Response>"
+        f"<Say voice=\"alice\">Hi {safe_name}. This is Adrian, the GoFieldwise AI receptionist demo.</Say>"
+        "<Pause length=\"1\"/>"
+        "<Say voice=\"alice\">I captured your request and alerted the team. "
+        "GoFieldwise helps home service businesses answer calls, organize leads, and follow up fast.</Say>"
+        "<Pause length=\"1\"/>"
+        "<Say voice=\"alice\">Thanks for trying the demo. Someone can follow up from the lead inbox.</Say>"
+        "</Response>"
+    )
+
+
+def _twiml_url(request: Request, lead_id: int) -> str:
+    base_url = str(request.base_url).rstrip("/")
+    return f"{base_url}/api/demo-call/twiml/{lead_id}"
+
+
 def _recover_missed_call_lead(db: Session, payload: MissedCallIntake, org_id: int) -> MissedCallRecoveryOut:
     raw_message = payload.raw_message
     if payload.call_sid:
@@ -213,7 +235,12 @@ def intake_by_key(intake_key: str, payload: LeadIntake, db: Session = Depends(ge
     status_code=status.HTTP_201_CREATED,
     tags=["intake"],
 )
-def intake_demo_call(org_id: int, payload: DemoCallIntake, db: Session = Depends(get_db)):
+def intake_demo_call(
+    org_id: int,
+    payload: DemoCallIntake,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     org = _resolve_org_for_intake(db, org_id=org_id)
     lead = _create_public_tracking_lead(
         db,
@@ -222,13 +249,25 @@ def intake_demo_call(org_id: int, payload: DemoCallIntake, db: Session = Depends
         payload=payload,
         fallback_message="Demo call request captured from gofieldwise.com.",
     )
-    call_sid = f"DEMO{int(cast(int, lead.id))}"
+    lead_id = int(cast(int, lead.id))
+    call_started, twilio_call_sid, call_error = start_demo_voice_call(
+        db,
+        organization_id=int(cast(int, org.id)),
+        to_phone=payload.phone,
+        twiml_url=_twiml_url(request, lead_id),
+    )
+    call_sid = twilio_call_sid or f"DEMO{lead_id}"
     return {
         "ok": True,
-        "lead_id": int(cast(int, lead.id)),
-        "call_started": False,
+        "lead_id": lead_id,
+        "call_started": call_started,
         "call_sid": call_sid,
-        "message": "Demo request captured. The team can follow up from the lead inbox.",
+        "call_error": call_error,
+        "message": (
+            "Demo call started."
+            if call_started
+            else "Demo request captured. The team can follow up from the lead inbox."
+        ),
     }
 
 
@@ -237,9 +276,14 @@ def intake_demo_call(org_id: int, payload: DemoCallIntake, db: Session = Depends
     status_code=status.HTTP_201_CREATED,
     tags=["intake"],
 )
-def intake_demo_call_by_key(intake_key: str, payload: DemoCallIntake, db: Session = Depends(get_db)):
+def intake_demo_call_by_key(
+    intake_key: str,
+    payload: DemoCallIntake,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     org = _resolve_org_for_intake(db, intake_key=intake_key)
-    return intake_demo_call(int(cast(int, org.id)), payload, db)
+    return intake_demo_call(int(cast(int, org.id)), payload, request, db)
 
 
 @router.post(
@@ -314,6 +358,13 @@ def intake_support_chat_by_key(intake_key: str, payload: SupportChatIntake, db: 
 @router.get("/demo-call/transcript/{call_sid}", tags=["intake"])
 def demo_call_transcript(call_sid: str):
     return {"ok": True, "call_sid": call_sid, "transcript": _demo_transcript(call_sid)}
+
+
+@router.get("/demo-call/twiml/{lead_id}", tags=["intake"])
+def demo_call_twiml(lead_id: int, db: Session = Depends(get_db)):
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    name = cast(str | None, lead.name) if lead else None
+    return Response(content=_demo_twiml(name), media_type="application/xml")
 
 
 @router.post("/demo-call/send-summary/{call_sid}", tags=["intake"])

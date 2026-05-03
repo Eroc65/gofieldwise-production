@@ -87,3 +87,48 @@ def send_sms_message(
         return True, str(sid) if sid else None, None
     except Exception as exc:  # pragma: no cover
         return False, None, str(exc)
+
+
+def start_demo_voice_call(
+    db: Session,
+    *,
+    organization_id: int,
+    to_phone: str | None,
+    twiml_url: str,
+) -> tuple[bool, str | None, str | None]:
+    """Start an outbound Twilio voice call for the public demo flow.
+
+    Returns: (ok, call_sid, error)
+    """
+    profile = _resolve_twilio_profile(db, organization_id)
+    account_sid = (profile.get("account_sid") or "").strip()
+    auth_token = (profile.get("auth_token") or "").strip()
+    from_phone = (profile.get("from_phone") or "").strip()
+    destination = (to_phone or "").strip()
+
+    if not destination:
+        return False, None, "Phone number is required to start a demo call"
+    if not account_sid or not auth_token or not from_phone:
+        return False, None, "Twilio voice credentials are not configured"
+
+    payload = {
+        "To": destination,
+        "From": from_phone,
+        "Url": twiml_url,
+        "Method": "GET",
+    }
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Calls.json"
+    try:
+        resp = httpx.post(
+            url,
+            data=payload,
+            auth=(account_sid, auth_token),
+            timeout=20.0,
+        )
+        if resp.status_code >= 400:
+            return False, None, f"Twilio voice error {resp.status_code}: {resp.text[:300]}"
+        data = resp.json()
+        sid = data.get("sid")
+        return True, str(sid) if sid else None, None
+    except Exception as exc:  # pragma: no cover
+        return False, None, str(exc)

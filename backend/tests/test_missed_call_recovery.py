@@ -145,10 +145,51 @@ def test_demo_call_intake_by_key_creates_lead_and_returns_transcript():
     assert body["ok"] is True
     assert body["lead_id"] > 0
     assert body["call_sid"].startswith("DEMO")
+    assert body["call_started"] is False
 
     transcript = client.get(f"/api/demo-call/transcript/{body['call_sid']}")
     assert transcript.status_code == 200
     assert len(transcript.json()["transcript"]) >= 1
+
+    twiml = client.get(f"/api/demo-call/twiml/{body['lead_id']}")
+    assert twiml.status_code == 200
+    assert "GoFieldwise AI receptionist demo" in twiml.text
+
+
+def test_demo_call_intake_starts_twilio_call_when_configured(monkeypatch):
+    calls = []
+
+    class FakeResponse:
+        status_code = 201
+        text = '{"sid":"CA123"}'
+
+        def json(self):
+            return {"sid": "CA123"}
+
+    def fake_post(url, data, auth, timeout):
+        calls.append({"url": url, "data": data, "auth": auth, "timeout": timeout})
+        return FakeResponse()
+
+    monkeypatch.setenv("TWILIO_ACCOUNT_SID", "AC123")
+    monkeypatch.setenv("TWILIO_AUTH_TOKEN", "secret")
+    monkeypatch.setenv("TWILIO_PHONE_NUMBER", "+16029320967")
+    monkeypatch.setattr("app.services.twilio_gateway.httpx.post", fake_post)
+
+    client = TestClient(app)
+    intake_key = _get_org_intake_key()
+    resp = client.post(
+        f"/api/leads/intake/demo-call/by-key/{intake_key}",
+        json={"name": "Demo Caller", "phone": "+16025550123", "email": "demo@example.com"},
+    )
+
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["call_started"] is True
+    assert body["call_sid"] == "CA123"
+    assert calls[0]["url"] == "https://api.twilio.com/2010-04-01/Accounts/AC123/Calls.json"
+    assert calls[0]["data"]["To"] == "+16025550123"
+    assert calls[0]["data"]["From"] == "+16029320967"
+    assert calls[0]["data"]["Url"].endswith(f"/api/demo-call/twiml/{body['lead_id']}")
 
 
 def test_demo_call_sms_summary_endpoint_matches_frontend_contract():
