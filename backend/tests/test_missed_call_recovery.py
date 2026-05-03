@@ -134,7 +134,7 @@ def test_demo_call_intake_by_key_creates_lead_and_returns_transcript():
         json={
             "name": "Demo Caller",
             "email": "demo@example.com",
-            "phone": "555-4777",
+            "phone": "4055554777",
             "raw_message": "Needs an HVAC tune-up",
             "cta_name": "demo_call_request",
             "landing_page": "https://www.gofieldwise.com/demo",
@@ -158,24 +158,24 @@ def test_demo_call_intake_by_key_creates_lead_and_returns_transcript():
     assert "+16029320967" in twiml.text
 
 
-def test_demo_call_intake_starts_twilio_call_when_configured(monkeypatch):
+def test_demo_call_intake_starts_retell_call_when_configured(monkeypatch):
     calls = []
 
     class FakeResponse:
         status_code = 201
-        text = '{"sid":"CA123"}'
+        text = '{"call_id":"CALL123"}'
 
         def json(self):
-            return {"sid": "CA123"}
+            return {"call_id": "CALL123", "call_status": "registered"}
 
-    def fake_post(url, data, auth, timeout):
-        calls.append({"url": url, "data": data, "auth": auth, "timeout": timeout})
+    def fake_post(url, json, headers, timeout):
+        calls.append({"url": url, "json": json, "headers": headers, "timeout": timeout})
         return FakeResponse()
 
-    monkeypatch.setenv("TWILIO_ACCOUNT_SID", "AC123")
-    monkeypatch.setenv("TWILIO_AUTH_TOKEN", "secret")
-    monkeypatch.setenv("TWILIO_PHONE_NUMBER", "+16029320967")
-    monkeypatch.setattr("app.services.twilio_gateway.httpx.post", fake_post)
+    monkeypatch.setenv("RETELL_API_KEY", "retell_secret")
+    monkeypatch.setenv("RETELL_FROM_NUMBER", "+16029320967")
+    monkeypatch.setenv("RETELL_AGENT_ID", "agent_08985605972e2e1b5d8a92dd52")
+    monkeypatch.setattr("app.services.retell_gateway.httpx.post", fake_post)
 
     client = TestClient(app)
     intake_key = _get_org_intake_key()
@@ -187,11 +187,67 @@ def test_demo_call_intake_starts_twilio_call_when_configured(monkeypatch):
     assert resp.status_code == 201
     body = resp.json()
     assert body["call_started"] is True
-    assert body["call_sid"] == "CA123"
-    assert calls[0]["url"] == "https://api.twilio.com/2010-04-01/Accounts/AC123/Calls.json"
-    assert calls[0]["data"]["To"] == "+16025550123"
-    assert calls[0]["data"]["From"] == "+16029320967"
-    assert calls[0]["data"]["Url"].endswith(f"/api/demo-call/twiml/{body['lead_id']}")
+    assert body["call_sid"] == "CALL123"
+    assert calls[0]["url"] == "https://api.retellai.com/v2/create-phone-call"
+    assert calls[0]["headers"]["Authorization"] == "Bearer retell_secret"
+    assert calls[0]["json"]["to_number"] == "+16025550123"
+    assert calls[0]["json"]["from_number"] == "+16029320967"
+    assert calls[0]["json"]["override_agent_id"] == "agent_08985605972e2e1b5d8a92dd52"
+    assert calls[0]["json"]["metadata"]["demo_mode"] is True
+
+
+def test_canonical_demo_call_endpoint_and_retell_end_event_send_summary(monkeypatch):
+    retell_calls = []
+    sms_calls = []
+
+    class FakeRetellResponse:
+        status_code = 201
+        text = '{"call_id":"CALL_CANONICAL"}'
+
+        def json(self):
+            return {"call_id": "CALL_CANONICAL", "call_status": "registered"}
+
+    def fake_retell_post(url, json, headers, timeout):
+        retell_calls.append({"url": url, "json": json, "headers": headers})
+        return FakeRetellResponse()
+
+    def fake_send_sms(db, *, organization_id, to_phone, body):
+        sms_calls.append({"organization_id": organization_id, "to_phone": to_phone, "body": body})
+        return True, "SM123", None
+
+    monkeypatch.setenv("RETELL_API_KEY", "retell_secret")
+    monkeypatch.setattr("app.services.retell_gateway.httpx.post", fake_retell_post)
+    monkeypatch.setattr("app.services.twilio_gateway.send_sms_message", fake_send_sms)
+
+    client = TestClient(app)
+    start = client.post(
+        "/api/demo/call?org_id=1",
+        json={"name": "Jane Customer", "email": "jane@example.com", "phone": "4055550100"},
+    )
+    assert start.status_code == 201
+    assert start.json()["call_sid"] == "CALL_CANONICAL"
+    assert retell_calls[0]["json"]["metadata"]["caller_name"] == "Jane Customer"
+
+    ended = client.post(
+        "/api/retell/events",
+        json={
+            "event": "call_ended",
+            "call_id": "CALL_CANONICAL",
+            "call_status": "completed",
+            "transcript": [{"role": "user", "content": "My water heater is leaking."}],
+            "ai_anthropic_extraction": {
+                "name": "Jane Customer",
+                "address": "1234 Oak Street, Oklahoma City, OK",
+                "service_type": "Water heater leak",
+                "urgency": "same-day",
+                "preferred_time": "Today afternoon",
+                "notes": "Active leak in garage",
+            },
+        },
+    )
+    assert ended.status_code == 200
+    assert sms_calls[0]["to_phone"] == "+14055550100"
+    assert "Water heater leak" in sms_calls[0]["body"]
 
 
 def test_demo_call_sms_summary_endpoint_matches_frontend_contract():

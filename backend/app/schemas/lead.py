@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -39,6 +39,30 @@ class DemoCallIntake(PublicAttributionIn):
     name: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
+
+
+class DemoCallRequest(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+
+
+class RetellInboundCallIn(BaseModel):
+    call_id: Optional[str] = None
+    from_number: Optional[str] = None
+    to_number: Optional[str] = None
+
+
+class RetellEventIn(BaseModel):
+    event: str
+    call_id: str
+    call_status: Optional[str] = None
+    transcript: Optional[list[dict[str, Any]]] = None
+    ai_anthropic_extraction: Optional[dict[str, Any]] = None
+    metadata: Optional[dict[str, Any]] = None
+    recording_url: Optional[str] = None
+    duration: Optional[int] = None
+    quality_score: Optional[int] = None
 
 
 class IntentIntake(PublicAttributionIn):

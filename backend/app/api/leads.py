@@ -1,8 +1,11 @@
 import html
+import json
+import re
 from typing import List, cast
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from ..api.auth import get_current_user
@@ -23,6 +26,7 @@ from ..crud.reminder import create_lead_booking_reminder, create_lead_followup_r
 from ..models.core import Lead, Organization, User
 from ..schemas.lead import (
     DemoCallIntake,
+    DemoCallRequest,
     IntentIntake,
     LeadBookInput,
     LeadBookOut,
@@ -36,14 +40,19 @@ from ..schemas.lead import (
     MissedCallIntake,
     MissedCallRecoveryOut,
     PublicAttributionIn,
+    RetellEventIn,
+    RetellInboundCallIn,
     SupportChatIntake,
 )
-from ..services.twilio_gateway import normalize_us_phone, resolve_demo_connect_number, start_demo_voice_call
+from ..services.twilio_gateway import normalize_us_phone, resolve_demo_connect_number
+from ..services.retell_gateway import create_demo_phone_call
+from ..services import demo_call_store
 
 router = APIRouter()
 
 LEAD_QUALIFY_ROLES = {"owner", "admin", "dispatcher"}
 LEAD_BOOK_ROLES = {"owner", "admin", "dispatcher"}
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 def _ensure_user_role(current_user: User, allowed_roles: set[str], action: str) -> None:
@@ -130,6 +139,38 @@ def _create_public_tracking_lead(
         hours=0,
     )
     return lead
+
+
+def _validate_demo_request(payload: DemoCallRequest) -> tuple[str, str, str]:
+    name = (payload.name or "").strip()
+    email = (payload.email or "").strip()
+    phone = normalize_us_phone(payload.phone)
+    if len(name) < 2:
+        raise HTTPException(status_code=422, detail="Name must be at least 2 characters")
+    if not _EMAIL_RE.match(email):
+        raise HTTPException(status_code=422, detail="Email must be a valid email address")
+    if not phone.startswith("+") or len(re.sub(r"\D", "", phone)) < 11:
+        raise HTTPException(status_code=422, detail="Phone must be a valid US phone number")
+    return name, email, phone
+
+
+def _sms_summary_body(name: str | None, extraction: dict) -> str:
+    service = extraction.get("service_type") or "Service request"
+    address = extraction.get("address") or "Not captured"
+    urgency = extraction.get("urgency") or "Not captured"
+    preferred_time = extraction.get("preferred_time") or "Not captured"
+    notes = extraction.get("notes") or "No extra notes"
+    greeting = f"Thanks for trying GoFieldwise, {name or 'there'}!"
+    return (
+        f"{greeting}\n"
+        "Here's what Adrian captured:\n"
+        f"Service: {service}\n"
+        f"Address: {address}\n"
+        f"Urgency: {urgency}\n"
+        f"Preferred time: {preferred_time}\n"
+        f"Notes: {notes}\n"
+        "Ready to automate your front office? https://gofieldwise.com"
+    )
 
 
 def _demo_transcript(call_sid: str) -> list[dict[str, str]]:
@@ -242,7 +283,12 @@ def intake_demo_call(
     request: Request,
     db: Session = Depends(get_db),
 ):
+    demo_payload = DemoCallRequest(name=payload.name, email=payload.email, phone=payload.phone)
+    name, email, phone = _validate_demo_request(demo_payload)
     org = _resolve_org_for_intake(db, org_id=org_id)
+    payload.name = name
+    payload.email = email
+    payload.phone = phone
     lead = _create_public_tracking_lead(
         db,
         org_id=int(cast(int, org.id)),
@@ -251,13 +297,27 @@ def intake_demo_call(
         fallback_message="Demo call request captured from gofieldwise.com.",
     )
     lead_id = int(cast(int, lead.id))
-    call_started, twilio_call_sid, call_error = start_demo_voice_call(
+    call_started, retell_call, call_error = create_demo_phone_call(
         db,
         organization_id=int(cast(int, org.id)),
-        to_phone=payload.phone,
-        twiml_url=_twiml_url(request, lead_id),
+        to_number=phone,
+        caller_name=name,
+        caller_email=email,
+        lead_id=lead_id,
     )
-    call_sid = twilio_call_sid or f"DEMO{lead_id}"
+    call_sid = str((retell_call or {}).get("call_id") or f"DEMO{lead_id}")
+    demo_call_store.upsert_call(
+        call_sid,
+        {
+            "lead_id": lead_id,
+            "organization_id": int(cast(int, org.id)),
+            "name": name,
+            "email": email,
+            "phone": phone,
+            "metadata": {"demo_mode": True},
+            "retell_response": retell_call,
+        },
+    )
     return {
         "ok": True,
         "lead_id": lead_id,
@@ -285,6 +345,13 @@ def intake_demo_call_by_key(
 ):
     org = _resolve_org_for_intake(db, intake_key=intake_key)
     return intake_demo_call(int(cast(int, org.id)), payload, request, db)
+
+
+@router.post("/demo/call", status_code=status.HTTP_201_CREATED, tags=["demo"])
+def start_demo_call(payload: DemoCallRequest, request: Request, db: Session = Depends(get_db)):
+    org_id = int(request.query_params.get("org_id", "1"))
+    compat_payload = DemoCallIntake(name=payload.name, email=payload.email, phone=payload.phone)
+    return intake_demo_call(org_id, compat_payload, request, db)
 
 
 @router.post(
@@ -358,7 +425,90 @@ def intake_support_chat_by_key(intake_key: str, payload: SupportChatIntake, db: 
 
 @router.get("/demo-call/transcript/{call_sid}", tags=["intake"])
 def demo_call_transcript(call_sid: str):
-    return {"ok": True, "call_sid": call_sid, "transcript": _demo_transcript(call_sid)}
+    record = demo_call_store.get_call(call_sid)
+    return {
+        "ok": True,
+        "call_sid": call_sid,
+        "transcript": (record or {}).get("transcript") or _demo_transcript(call_sid),
+    }
+
+
+@router.get("/demo/transcript-stream/{call_id}", tags=["demo"])
+def demo_transcript_stream(call_id: str):
+    q = demo_call_store.subscribe(call_id)
+
+    def events():
+        try:
+            yield f"event: connected\ndata: {json.dumps({'call_id': call_id})}\n\n"
+            while True:
+                event = demo_call_store.next_event(q)
+                if event is None:
+                    yield f"event: ping\ndata: {json.dumps({'call_id': call_id})}\n\n"
+                    continue
+                event_name = str(event.get("event") or "message")
+                yield f"event: {event_name}\ndata: {json.dumps(event)}\n\n"
+                if event_name == "call_ended":
+                    break
+        finally:
+            demo_call_store.unsubscribe(call_id, q)
+
+    return StreamingResponse(events(), media_type="text/event-stream")
+
+
+@router.post("/retell/inbound-call", tags=["retell"])
+def retell_inbound_call(payload: RetellInboundCallIn):
+    return {
+        "tenant_id": "demo",
+        "agent_override": None,
+        "variables": {
+            "business_name": "GoFieldwise",
+            "trade": "home services",
+            "hours": "Mon-Fri 8-5",
+            "service_area": "OKC and surrounding areas",
+            "pricing": "Starting at $200/mo",
+            "emergency_rules": "Same-day for active leaks",
+            "booking_url": "https://gofieldwise.com/book",
+            "review_url": "https://gofieldwise.com/reviews",
+        },
+    }
+
+
+@router.post("/retell/events", tags=["retell"])
+def retell_events(payload: RetellEventIn, db: Session = Depends(get_db)):
+    event = payload.event
+    call_id = payload.call_id
+    update = {
+        "call_status": payload.call_status,
+        "recording_url": payload.recording_url,
+        "duration": payload.duration,
+        "quality_score": payload.quality_score,
+    }
+    if payload.metadata is not None:
+        update["metadata"] = payload.metadata
+    record = demo_call_store.upsert_call(call_id, update)
+
+    if payload.transcript is not None:
+        demo_call_store.append_transcript(call_id, payload.transcript)
+        demo_call_store.publish(call_id, "transcript", {"transcript": payload.transcript})
+
+    if event == "call_ended":
+        extraction = payload.ai_anthropic_extraction or {}
+        demo_call_store.upsert_call(call_id, {"extraction": extraction})
+        demo_call_store.publish(call_id, "call_ended", {"extraction": extraction})
+        metadata = record.get("metadata") or {}
+        if metadata.get("demo_mode") is True and record.get("phone") and extraction:
+            from ..services.twilio_gateway import send_sms_message
+
+            send_sms_message(
+                db,
+                organization_id=int(record.get("organization_id") or 1),
+                to_phone=str(record["phone"]),
+                body=_sms_summary_body(record.get("name"), extraction),
+            )
+    else:
+        demo_call_store.publish(call_id, event, payload.model_dump(exclude_none=True))
+
+    return {"ok": True, "call_id": call_id, "event": event}
 
 
 @router.get("/demo-call/twiml/{lead_id}", tags=["intake"])

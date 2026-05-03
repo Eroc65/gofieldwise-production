@@ -352,6 +352,20 @@ async def twilio_inbound_message(
     return {"ok": True, "action": "message_received"}
 
 
+@router.post("/twilio/sms/inbound")
+async def twilio_sms_inbound_alias(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    org_id = 1
+    return await twilio_inbound_message(org_id, request, db)
+
+
+@router.post("/automation/job-status-changed")
+async def automation_job_status_changed(payload: dict):
+    return {"ok": True, "event": "job-status-changed", "received": payload}
+
+
 @router.post("/integrations/twilio/status")
 async def twilio_message_status(
     request: Request,

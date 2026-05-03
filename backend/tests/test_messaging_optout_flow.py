@@ -173,3 +173,20 @@ def test_twilio_form_encoded_status_marks_delivery() -> None:
         assert stored.delivered_at is not None
     finally:
         db.close()
+
+
+def test_contract_alias_endpoints_exist() -> None:
+    with TestClient(app) as client:
+        inbound = client.post(
+            "/api/twilio/sms/inbound",
+            data={"From": "+16025550199", "Body": "HELP", "MessageSid": "SMHELP1"},
+        )
+        assert inbound.status_code == 200
+        assert inbound.json()["action"] == "help_requested"
+
+        event = client.post(
+            "/api/automation/job-status-changed",
+            json={"job_id": 1, "from_status": "pending", "to_status": "completed"},
+        )
+        assert event.status_code == 200
+        assert event.json()["ok"] is True
