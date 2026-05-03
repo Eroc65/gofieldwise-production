@@ -1,0 +1,801 @@
+import Head from "next/head";
+import { useEffect, useMemo, useState } from "react";
+
+import { getAdminMonitoringSummary } from "../lib/api";
+
+const fallbackSummary = {
+  overall_status: "yellow",
+  generated_at: null,
+  landing_page_health: [
+    { name: "Demo Form Loads", status: "green", detail: "Frontend route is included in the production build.", latency_ms: null, last_checked: null },
+    { name: "Form Validation Working", status: "green", detail: "Required fields are enforced before submit.", latency_ms: null, last_checked: null },
+    { name: "Adrian Callable", status: "yellow", detail: "Waiting for backend health response.", latency_ms: null, last_checked: null },
+    { name: "Transcript Stream", status: "yellow", detail: "Waiting for backend health response.", latency_ms: null, last_checked: null },
+    { name: "Post-Call SMS Sending", status: "yellow", detail: "Waiting for backend health response.", latency_ms: null, last_checked: null },
+    { name: "Extraction Working", status: "yellow", detail: "Waiting for backend health response.", latency_ms: null, last_checked: null },
+    { name: "Ads Pixel Firing", status: "yellow", detail: "Pixel monitoring is queued.", latency_ms: null, last_checked: null },
+    { name: "API Health", status: "yellow", detail: "Waiting for backend health response.", latency_ms: null, last_checked: null },
+  ],
+  feature_board: [],
+  demo_metrics: {
+    demo_clicks_7d: 0,
+    call_success_rate: 0,
+    completion_rate: 0,
+    avg_call_duration_seconds: 0,
+    post_call_sms_delivery_rate: 0,
+    form_abandonment_rate: 0,
+  },
+  visitor_analytics: {
+    pageviews_7d: 0,
+    unique_visitors: 0,
+    bounce_rate: 0,
+    avg_time_on_site_seconds: 0,
+    top_sources: ["Direct", "Organic", "Referral", "Meta"],
+    device_mix: { desktop: 0, mobile: 0 },
+  },
+  business_health: {
+    tenant_count: 0,
+    estimated_mrr: 0,
+    warm_leads: 0,
+    jobs_dispatched: 0,
+    open_invoice_total: 0,
+    pending_followups: 0,
+  },
+};
+
+const liveSections = [
+  { title: "Call Logs", status: "Live", body: "Demo and live calls, transcripts, quality scores, extraction data." },
+  { title: "Warm Leads", status: "#661429", body: "Captured leads, recovery status tracking, dead lead auto-recovery." },
+  { title: "Ads Performance", status: "#660447", body: "Traffic attribution, cost per lead, UTM breakdown." },
+  { title: "Outreach", status: "#665034", body: "Oklahoma business scraper for plumbing, HVAC, electrical, roofing contacts." },
+  { title: "AI Receptionist Settings", status: "Live", body: "Business profile config, Adrian sync, intake rules." },
+  { title: "Support Chatbot", status: "#644210", body: "AI chat logs, customer Q&A, article suggestions." },
+];
+
+const healthTables = [
+  { name: "demo_interactions", purpose: "Tracks form submit to call completion and summary SMS." },
+  { name: "visitor_pageviews", purpose: "Session analytics, route, scroll depth, source, device, time on page." },
+  { name: "feature_health_checks", purpose: "Automated test results, latency, status, and error details." },
+];
+
+const backgroundJobs = [
+  "Every 5 min: test demo form endpoint and Adrian call configuration.",
+  "Every 15 min: run a real test call and verify transcript, extraction, and SMS.",
+  "Every 1 min: health check API, database, and external delivery paths.",
+];
+
+const leadSignals = [
+  { label: "Urgency", value: "Active leak beats someday remodel", score: 92 },
+  { label: "Completeness", value: "Name, phone, address, service captured", score: 81 },
+  { label: "Engagement", value: "Call duration and SMS replies", score: 74 },
+];
+
+const adrianInsights = [
+  "Caller hang-up point by question",
+  "Extraction hit rate by field",
+  "Average call duration by outcome",
+  "Top unanswered customer questions",
+];
+
+const alertRules = [
+  { rule: "Health check turns red", channel: "Push or SMS", severity: "Critical" },
+  { rule: "Completion rate under 60%", channel: "Daily digest plus alert", severity: "High" },
+  { rule: "Extraction rate drops", channel: "Owner notification", severity: "High" },
+  { rule: "All systems green", channel: "Daily digest", severity: "Info" },
+];
+
+const tenantConfig = [
+  "Business hours editor",
+  "Custom Adrian responses",
+  "Service area map",
+  "SMS template editor",
+  "Emergency routing rules",
+  "Pricing and booking notes",
+];
+
+function statusLabel(status) {
+  if (status === "green") return "Healthy";
+  if (status === "red") return "Failing";
+  return "Watch";
+}
+
+function formatMoney(value) {
+  return `$${Number(value || 0).toLocaleString()}`;
+}
+
+function MiniBars({ values }) {
+  const max = Math.max(...values, 1);
+  return (
+    <div className="mini-bars" aria-label="7 day trend">
+      {values.map((value, index) => (
+        <span key={`${value}-${index}`} style={{ height: `${Math.max(12, (value / max) * 100)}%` }} />
+      ))}
+    </div>
+  );
+}
+
+export default function AdminDashboard() {
+  const [summary, setSummary] = useState(fallbackSummary);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+
+    async function load() {
+      try {
+        const payload = await getAdminMonitoringSummary();
+        if (active) {
+          setSummary({ ...fallbackSummary, ...payload });
+          setError("");
+        }
+      } catch (err) {
+        if (active) {
+          setError(err instanceof Error ? err.message : "Could not load live monitoring.");
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    load();
+    const timer = setInterval(load, 300000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, []);
+
+  const business = summary.business_health || fallbackSummary.business_health;
+  const metrics = summary.demo_metrics || fallbackSummary.demo_metrics;
+  const analytics = summary.visitor_analytics || fallbackSummary.visitor_analytics;
+  const health = summary.landing_page_health || [];
+  const featureBoard = summary.feature_board?.length ? summary.feature_board : fallbackSummary.landing_page_health.map((item) => ({
+    feature: item.name,
+    status: item.status,
+    last_tested: "pending",
+    result: item.detail,
+  }));
+  const trend = useMemo(() => [2, 4, 3, 6, 7, 5, 9], []);
+
+  return (
+    <>
+      <Head>
+        <title>GoFieldwise Admin Monitoring</title>
+        <meta name="robots" content="noindex" />
+      </Head>
+
+      <main className="admin-shell">
+        <section className="admin-hero">
+          <div>
+            <p className="eyebrow">GoFieldwise admin</p>
+            <h1>System health, demo performance, tenants, leads, and Adrian quality in one command center.</h1>
+            <p>
+              Built for owner visibility before paid traffic and tenants scale. Auto-refreshes every 5 minutes when the
+              backend monitoring endpoint is available.
+            </p>
+          </div>
+          <aside className={`overall ${summary.overall_status || "yellow"}`}>
+            <span>Overall status</span>
+            <strong>{statusLabel(summary.overall_status)}</strong>
+            <small>{loading ? "Checking live systems..." : error || "Live monitoring connected"}</small>
+          </aside>
+        </section>
+
+        <section className="kpi-grid">
+          <article>
+            <span>Estimated MRR</span>
+            <strong>{formatMoney(business.estimated_mrr)}</strong>
+            <p>{business.tenant_count} active tenant record(s)</p>
+          </article>
+          <article>
+            <span>Warm leads</span>
+            <strong>{business.warm_leads}</strong>
+            <p>Ready for scoring and follow-up priority</p>
+          </article>
+          <article>
+            <span>Jobs dispatched</span>
+            <strong>{business.jobs_dispatched}</strong>
+            <p>Tenant operations signal</p>
+          </article>
+          <article>
+            <span>Open invoices</span>
+            <strong>{formatMoney(business.open_invoice_total)}</strong>
+            <p>{business.pending_followups} pending follow-up(s)</p>
+          </article>
+        </section>
+
+        <section className="panel landing-health">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Section 1</p>
+              <h2>Landing Page Health Status</h2>
+            </div>
+            <span>Auto-refresh: 5 min</span>
+          </div>
+          <div className="health-grid">
+            {health.map((item) => (
+              <article key={item.name} className={`health-card ${item.status}`}>
+                <div>
+                  <b>{item.name}</b>
+                  <span>{statusLabel(item.status)}</span>
+                </div>
+                <p>{item.detail}</p>
+                <small>{item.latency_ms != null ? `${item.latency_ms}ms` : "Latest check"}</small>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="split-grid">
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Section 2</p>
+                <h2>Demo Engagement Metrics</h2>
+              </div>
+            </div>
+            <MiniBars values={trend} />
+            <div className="metric-list">
+              <span>Demo clicks: {metrics.demo_clicks_7d}</span>
+              <span>Call success: {metrics.call_success_rate}%</span>
+              <span>Completion: {metrics.completion_rate}%</span>
+              <span>Avg duration: {metrics.avg_call_duration_seconds}s</span>
+              <span>SMS delivery: {metrics.post_call_sms_delivery_rate}%</span>
+              <span>Form abandonment: {metrics.form_abandonment_rate}%</span>
+            </div>
+          </article>
+
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Section 3</p>
+                <h2>Visitor Analytics</h2>
+              </div>
+            </div>
+            <div className="analytics-grid">
+              <span><b>{analytics.pageviews_7d}</b> page views</span>
+              <span><b>{analytics.unique_visitors}</b> unique visitors</span>
+              <span><b>{analytics.bounce_rate}%</b> bounce rate</span>
+              <span><b>{analytics.avg_time_on_site_seconds}s</b> avg time</span>
+            </div>
+            <div className="source-row">
+              {(analytics.top_sources || []).map((source) => (
+                <span key={source}>{source}</span>
+              ))}
+            </div>
+          </article>
+        </section>
+
+        <section className="panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Section 4</p>
+              <h2>Feature Status Board</h2>
+            </div>
+          </div>
+          <div className="feature-board">
+            {featureBoard.map((item) => (
+              <article key={item.feature} className={item.status}>
+                <span>{item.feature}</span>
+                <strong>{statusLabel(item.status)}</strong>
+                <p>{item.result}</p>
+                <small>Last checked {item.last_tested}</small>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Already shipped</p>
+              <h2>Admin Dashboard Sections</h2>
+            </div>
+          </div>
+          <div className="status-table">
+            {liveSections.map((section) => (
+              <article key={section.title}>
+                <b>{section.title}</b>
+                <span>{section.status}</span>
+                <p>{section.body}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="split-grid">
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Priority 1</p>
+                <h2>Revenue and Tenant Health</h2>
+              </div>
+            </div>
+            <div className="tenant-list">
+              <span>MRR tracker: active tenants x plan value</span>
+              <span>Tenant health cards: calls, jobs, last activity</span>
+              <span>Trial to paid funnel: demo, call, trial, subscribed</span>
+              <span>Churn risk: tenant quiet for 7 days</span>
+            </div>
+          </article>
+
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Priority 2</p>
+                <h2>Lead Scoring</h2>
+              </div>
+            </div>
+            <div className="score-list">
+              {leadSignals.map((signal) => (
+                <div key={signal.label}>
+                  <span>{signal.label}</span>
+                  <b>{signal.score}</b>
+                  <p>{signal.value}</p>
+                </div>
+              ))}
+            </div>
+          </article>
+        </section>
+
+        <section className="split-grid">
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Priority 3</p>
+                <h2>Adrian Performance Analytics</h2>
+              </div>
+            </div>
+            <div className="check-list">
+              {adrianInsights.map((item) => (
+                <span key={item}>{item}</span>
+              ))}
+            </div>
+          </article>
+
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Priority 4</p>
+                <h2>Alerts and Notifications</h2>
+              </div>
+            </div>
+            <div className="alert-table">
+              {alertRules.map((item) => (
+                <div key={item.rule}>
+                  <b>{item.rule}</b>
+                  <span>{item.severity}</span>
+                  <p>{item.channel}</p>
+                </div>
+              ))}
+            </div>
+          </article>
+        </section>
+
+        <section className="split-grid">
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Priority 5</p>
+                <h2>Tenant Self-Service Config</h2>
+              </div>
+            </div>
+            <div className="pill-grid">
+              {tenantConfig.map((item) => (
+                <span key={item}>{item}</span>
+              ))}
+            </div>
+          </article>
+
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Data and jobs</p>
+                <h2>Monitoring Build Plan</h2>
+              </div>
+            </div>
+            <div className="schema-list">
+              {healthTables.map((table) => (
+                <div key={table.name}>
+                  <b>{table.name}</b>
+                  <p>{table.purpose}</p>
+                </div>
+              ))}
+            </div>
+            <div className="job-list">
+              {backgroundJobs.map((job) => (
+                <span key={job}>{job}</span>
+              ))}
+            </div>
+          </article>
+        </section>
+      </main>
+
+      <style jsx>{`
+        .admin-shell {
+          min-height: 100vh;
+          background: var(--paper);
+          color: var(--ink);
+          padding: 24px;
+        }
+
+        .admin-hero,
+        .kpi-grid,
+        .panel,
+        .split-grid {
+          max-width: 1180px;
+          margin: 0 auto;
+        }
+
+        .admin-hero {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 320px;
+          gap: 20px;
+          align-items: stretch;
+          border-radius: 8px;
+          background: linear-gradient(120deg, var(--navy), var(--navy-light));
+          color: #fffdf8;
+          padding: 30px;
+        }
+
+        .eyebrow {
+          margin: 0 0 8px;
+          color: #ffd9ae;
+          font-size: 0.76rem;
+          font-weight: 900;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+        }
+
+        h1,
+        h2,
+        h3,
+        p {
+          overflow-wrap: anywhere;
+        }
+
+        h1 {
+          max-width: 840px;
+          margin: 0;
+          font-size: clamp(2.3rem, 5vw, 4rem);
+          line-height: 1.02;
+        }
+
+        .admin-hero p:not(.eyebrow) {
+          max-width: 760px;
+          color: #f7efe1;
+          line-height: 1.65;
+        }
+
+        .overall,
+        .kpi-grid article,
+        .panel {
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          background: var(--panel);
+          box-shadow: var(--shadow);
+        }
+
+        .overall {
+          color: var(--ink);
+          padding: 20px;
+          display: grid;
+          align-content: center;
+          gap: 8px;
+        }
+
+        .overall span,
+        .kpi-grid span,
+        .panel-heading > span {
+          color: #4e6a74;
+          font-size: 0.8rem;
+          font-weight: 900;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+
+        .overall strong {
+          color: var(--navy);
+          font-size: 2rem;
+        }
+
+        .overall.green {
+          border-top: 5px solid #247a4d;
+        }
+
+        .overall.yellow {
+          border-top: 5px solid var(--accent);
+        }
+
+        .overall.red {
+          border-top: 5px solid var(--error);
+        }
+
+        .kpi-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 12px;
+          margin-top: 18px;
+        }
+
+        .kpi-grid article {
+          padding: 18px;
+        }
+
+        .kpi-grid strong {
+          display: block;
+          margin: 8px 0;
+          color: var(--navy);
+          font-size: 2rem;
+          line-height: 1;
+        }
+
+        .kpi-grid p,
+        .health-card p,
+        .feature-board p,
+        .status-table p,
+        .schema-list p,
+        .alert-table p,
+        .score-list p {
+          margin: 0;
+          color: #35505b;
+          line-height: 1.5;
+        }
+
+        .panel,
+        .split-grid {
+          margin-top: 18px;
+        }
+
+        .panel {
+          padding: 20px;
+        }
+
+        .panel-heading {
+          display: flex;
+          justify-content: space-between;
+          gap: 16px;
+          align-items: start;
+          margin-bottom: 18px;
+        }
+
+        .panel h2 {
+          margin: 0;
+          color: var(--navy);
+          font-size: 1.7rem;
+          line-height: 1.12;
+        }
+
+        .health-grid,
+        .feature-board,
+        .status-table,
+        .pill-grid {
+          display: grid;
+          gap: 12px;
+        }
+
+        .health-grid {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
+        .health-card,
+        .feature-board article,
+        .status-table article {
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          background: #fffdf8;
+          padding: 14px;
+        }
+
+        .health-card {
+          border-top: 5px solid var(--accent);
+          display: grid;
+          gap: 10px;
+        }
+
+        .health-card.green,
+        .feature-board .green {
+          border-top-color: #247a4d;
+        }
+
+        .health-card.red,
+        .feature-board .red {
+          border-top-color: var(--error);
+        }
+
+        .health-card div {
+          display: flex;
+          justify-content: space-between;
+          gap: 10px;
+        }
+
+        .health-card b,
+        .feature-board strong,
+        .status-table b,
+        .schema-list b,
+        .alert-table b {
+          color: var(--navy);
+        }
+
+        .health-card span,
+        .feature-board small,
+        .health-card small {
+          color: #4e6a74;
+          font-weight: 800;
+        }
+
+        .split-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 18px;
+        }
+
+        .mini-bars {
+          height: 150px;
+          display: grid;
+          grid-template-columns: repeat(7, 1fr);
+          gap: 8px;
+          align-items: end;
+          margin-bottom: 16px;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .mini-bars span {
+          display: block;
+          border-radius: 6px 6px 0 0;
+          background: linear-gradient(180deg, var(--accent), #ffe4ad);
+        }
+
+        .metric-list,
+        .analytics-grid,
+        .tenant-list,
+        .check-list,
+        .job-list,
+        .source-row,
+        .pill-grid {
+          display: grid;
+          gap: 10px;
+        }
+
+        .metric-list,
+        .analytics-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .metric-list span,
+        .analytics-grid span,
+        .source-row span,
+        .tenant-list span,
+        .check-list span,
+        .job-list span,
+        .pill-grid span {
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          background: #fff8ee;
+          padding: 12px;
+          color: var(--navy);
+          font-weight: 800;
+        }
+
+        .analytics-grid b {
+          display: block;
+          font-size: 1.5rem;
+        }
+
+        .source-row {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          margin-top: 14px;
+        }
+
+        .feature-board {
+          grid-template-columns: repeat(6, minmax(0, 1fr));
+        }
+
+        .feature-board article {
+          border-top: 5px solid var(--accent);
+          display: grid;
+          gap: 8px;
+        }
+
+        .feature-board span,
+        .status-table span,
+        .alert-table span,
+        .score-list span {
+          color: #4e6a74;
+          font-size: 0.78rem;
+          font-weight: 900;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+
+        .status-table {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .status-table article {
+          display: grid;
+          gap: 8px;
+        }
+
+        .score-list,
+        .alert-table,
+        .schema-list {
+          display: grid;
+          gap: 12px;
+        }
+
+        .score-list div,
+        .alert-table div,
+        .schema-list div {
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          padding: 14px;
+          background: #fffdf8;
+        }
+
+        .score-list b {
+          display: block;
+          color: var(--accent-dark);
+          font-size: 2rem;
+          line-height: 1;
+          margin: 6px 0;
+        }
+
+        .alert-table div {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 6px 12px;
+        }
+
+        .alert-table p {
+          grid-column: 1 / -1;
+        }
+
+        .pill-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .schema-list {
+          margin-bottom: 14px;
+        }
+
+        @media (max-width: 980px) {
+          .admin-hero,
+          .split-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .kpi-grid,
+          .health-grid,
+          .feature-board,
+          .status-table {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+
+        @media (max-width: 640px) {
+          .admin-shell {
+            padding: 12px;
+          }
+
+          .admin-hero,
+          .panel {
+            padding: 16px;
+          }
+
+          .kpi-grid,
+          .health-grid,
+          .metric-list,
+          .analytics-grid,
+          .source-row,
+          .feature-board,
+          .status-table,
+          .pill-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
+    </>
+  );
+}

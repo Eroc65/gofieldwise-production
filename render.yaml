@@ -15,19 +15,6 @@ services:
       - key: NODE_ENV
         value: production
   - type: web
-    name: frontend
-    env: node
-    plan: free
-    buildFilter:
-      paths:
-        - frontend/**
-        - render.yaml
-    buildCommand: cd frontend && npm ci && npm run build
-    startCommand: cd frontend && npm run start -- -p $PORT
-    envVars:
-      - key: NODE_ENV
-        value: production
-  - type: web
     name: backend
     env: python
     plan: free

@@ -615,6 +615,10 @@ export async function getPublicStatus() {
   return apiFetch("/api/status", { method: "GET" });
 }
 
+export async function getAdminMonitoringSummary() {
+  return apiFetch("/api/admin/monitoring/summary", { method: "GET" });
+}
+
 export async function startDemoCall({ name, email, phone }) {
   return apiFetch("/api/demo/call", {
     method: "POST",
