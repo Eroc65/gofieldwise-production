@@ -1,7 +1,11 @@
 import Head from "next/head";
 import { useEffect, useMemo, useState } from "react";
 
-import { getAdminMonitoringSummary } from "../lib/api";
+import { getAdminMonitoringSummary, login } from "../lib/api";
+
+const ADMIN_EMAIL = "support@gofieldwise.com";
+const ADMIN_TOKEN_KEY = "gofieldwise.admin.token";
+const ADMIN_EMAIL_KEY = "gofieldwise.admin.email";
 
 const fallbackSummary = {
   overall_status: "yellow",
@@ -116,15 +120,29 @@ function MiniBars({ values }) {
 
 export default function AdminDashboard() {
   const [summary, setSummary] = useState(fallbackSummary);
+  const [token, setToken] = useState("");
+  const [email, setEmail] = useState(ADMIN_EMAIL);
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(true);
+  const [authenticating, setAuthenticating] = useState(false);
   const [error, setError] = useState("");
+  const [authError, setAuthError] = useState("");
+
+  useEffect(() => {
+    const savedToken = window.localStorage.getItem(ADMIN_TOKEN_KEY) || "";
+    const savedEmail = window.localStorage.getItem(ADMIN_EMAIL_KEY) || ADMIN_EMAIL;
+    if (savedEmail.toLowerCase() === ADMIN_EMAIL) setEmail(savedEmail);
+    if (savedToken) setToken(savedToken);
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
     let active = true;
 
     async function load() {
+      if (!token) return;
       try {
-        const payload = await getAdminMonitoringSummary();
+        const payload = await getAdminMonitoringSummary({ token });
         if (active) {
           setSummary({ ...fallbackSummary, ...payload });
           setError("");
@@ -132,6 +150,10 @@ export default function AdminDashboard() {
       } catch (err) {
         if (active) {
           setError(err instanceof Error ? err.message : "Could not load live monitoring.");
+          if (String(err instanceof Error ? err.message : err).includes("401") || String(err instanceof Error ? err.message : err).includes("403")) {
+            setToken("");
+            window.localStorage.removeItem(ADMIN_TOKEN_KEY);
+          }
         }
       } finally {
         if (active) setLoading(false);
@@ -144,7 +166,38 @@ export default function AdminDashboard() {
       active = false;
       clearInterval(timer);
     };
-  }, []);
+  }, [token]);
+
+  async function onLogin(event) {
+    event.preventDefault();
+    setAuthError("");
+    const normalizedEmail = email.trim().toLowerCase();
+    if (normalizedEmail !== ADMIN_EMAIL) {
+      setAuthError(`Admin access is restricted to ${ADMIN_EMAIL}.`);
+      return;
+    }
+    setAuthenticating(true);
+    try {
+      const result = await login({ email: normalizedEmail, password });
+      if (!result.access_token) {
+        throw new Error("Login succeeded but no access token was returned.");
+      }
+      window.localStorage.setItem(ADMIN_TOKEN_KEY, result.access_token);
+      window.localStorage.setItem(ADMIN_EMAIL_KEY, normalizedEmail);
+      setToken(result.access_token);
+      setPassword("");
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : "Admin login failed.");
+    } finally {
+      setAuthenticating(false);
+    }
+  }
+
+  function onSignOut() {
+    setToken("");
+    setSummary(fallbackSummary);
+    window.localStorage.removeItem(ADMIN_TOKEN_KEY);
+  }
 
   const business = summary.business_health || fallbackSummary.business_health;
   const metrics = summary.demo_metrics || fallbackSummary.demo_metrics;
@@ -166,6 +219,33 @@ export default function AdminDashboard() {
       </Head>
 
       <main className="admin-shell">
+        {!token ? (
+          <section className="login-card">
+            <p className="eyebrow">Restricted admin</p>
+            <h1>GoFieldwise admin requires owner access.</h1>
+            <p>Sign in with {ADMIN_EMAIL} to view system health, tenant metrics, alerts, and monitoring data.</p>
+            <form onSubmit={onLogin}>
+              <label>
+                Admin email
+                <input value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />
+              </label>
+              <label>
+                Password
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete="current-password"
+                />
+              </label>
+              <button type="submit" disabled={authenticating || !email || !password}>
+                {authenticating ? "Checking access..." : "Open Admin Portal"}
+              </button>
+            </form>
+            {authError ? <p className="auth-error">{authError}</p> : null}
+          </section>
+        ) : (
+          <>
         <section className="admin-hero">
           <div>
             <p className="eyebrow">GoFieldwise admin</p>
@@ -179,6 +259,7 @@ export default function AdminDashboard() {
             <span>Overall status</span>
             <strong>{statusLabel(summary.overall_status)}</strong>
             <small>{loading ? "Checking live systems..." : error || "Live monitoring connected"}</small>
+            <button type="button" onClick={onSignOut}>Sign out</button>
           </aside>
         </section>
 
@@ -410,6 +491,8 @@ export default function AdminDashboard() {
             </div>
           </article>
         </section>
+          </>
+        )}
       </main>
 
       <style jsx>{`
@@ -422,10 +505,77 @@ export default function AdminDashboard() {
 
         .admin-hero,
         .kpi-grid,
+        .login-card,
         .panel,
         .split-grid {
           max-width: 1180px;
           margin: 0 auto;
+        }
+
+        .login-card {
+          max-width: 520px;
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          background: var(--panel);
+          box-shadow: var(--shadow);
+          padding: 24px;
+        }
+
+        .login-card .eyebrow {
+          color: var(--accent-dark);
+        }
+
+        .login-card h1 {
+          color: var(--navy);
+          font-size: clamp(2rem, 5vw, 3rem);
+        }
+
+        .login-card p {
+          color: #35505b;
+          line-height: 1.6;
+        }
+
+        .login-card form {
+          display: grid;
+          gap: 14px;
+          margin-top: 20px;
+        }
+
+        .login-card label {
+          display: grid;
+          gap: 6px;
+          color: var(--navy);
+          font-weight: 850;
+        }
+
+        .login-card input {
+          min-height: 48px;
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          padding: 0 12px;
+          font-size: 1rem;
+        }
+
+        .login-card button,
+        .overall button {
+          min-height: 44px;
+          border: 0;
+          border-radius: 8px;
+          background: linear-gradient(120deg, var(--navy-deep), var(--navy-light));
+          color: #fffdf8;
+          font-weight: 850;
+          cursor: pointer;
+        }
+
+        .login-card button:disabled {
+          cursor: wait;
+          opacity: 0.7;
+        }
+
+        .auth-error {
+          margin-top: 14px;
+          color: var(--error);
+          font-weight: 850;
         }
 
         .admin-hero {

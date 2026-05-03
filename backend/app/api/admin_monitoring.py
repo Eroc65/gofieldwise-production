@@ -4,15 +4,17 @@ import os
 import time
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
+from ..api.auth import get_current_user
 from ..core.db import get_db
-from ..models.core import Invoice, Job, Lead, Organization, Reminder
+from ..models.core import Invoice, Job, Lead, Organization, Reminder, User
 
 
 router = APIRouter()
+ADMIN_EMAIL = "support@gofieldwise.com"
 
 
 def _now_iso() -> str:
@@ -47,7 +49,13 @@ def _safe_scalar(query, default=0):
 
 
 @router.get("/admin/monitoring/summary")
-def admin_monitoring_summary(db: Session = Depends(get_db)) -> dict:
+def admin_monitoring_summary(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    if str(current_user.email).strip().lower() != ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Admin monitoring is restricted to support@gofieldwise.com.")
+
     started = time.perf_counter()
     db_ok = True
     db_error = ""
