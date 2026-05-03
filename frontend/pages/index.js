@@ -80,7 +80,16 @@ const comparisonPoints = [
   },
 ];
 
-const integrations = ["Retell AI", "Twilio", "Stripe", "QuickBooks-ready", "Google Business Profile", "Website forms", "SMS follow-ups", "Neon Postgres"];
+const customerTouchpoints = [
+  "AI phone answering",
+  "Customer text updates",
+  "Website lead capture",
+  "Invoice follow-up",
+  "Review requests",
+  "Booking confirmations",
+  "Missed-call recovery",
+  "Owner reporting",
+];
 
 const proOperations = [
   {
@@ -504,16 +513,17 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="integrations-section">
+        <section className="touchpoints-section">
           <div className="section-heading">
-            <p className="eyebrow">Connected office stack</p>
-            <h2>Voice, SMS, payments, forms, and reporting in one operational loop.</h2>
+            <p className="eyebrow">What your customers feel</p>
+            <h2>Fast answers, clear updates, clean billing, and follow-up that actually happens.</h2>
             <p>
-              The promise is not another dashboard. It is a connected path from first call to paid invoice and review.
+              The technology stays behind the scenes. Customers experience a professional front office that answers,
+              books, confirms, updates, and follows through.
             </p>
           </div>
-          <div className="integration-grid">
-            {integrations.map((item) => (
+          <div className="touchpoint-grid">
+            {customerTouchpoints.map((item) => (
               <span key={item}>{item}</span>
             ))}
           </div>
@@ -668,7 +678,7 @@ export default function Home() {
         .positioning-section,
         .trade-section,
         .modules-section,
-        .integrations-section,
+        .touchpoints-section,
         .pro-ops-section,
         .pricing-section,
         .growth-section,
@@ -875,7 +885,7 @@ export default function Home() {
         .positioning-section,
         .trade-section,
         .modules-section,
-        .integrations-section,
+        .touchpoints-section,
         .pro-ops-section,
         .pricing-section,
         .growth-section,
@@ -1251,25 +1261,25 @@ export default function Home() {
           gap: 14px;
         }
 
-        .integrations-section {
+        .touchpoints-section {
           background: #fff8ee;
           max-width: none;
         }
 
-        .integrations-section .section-heading,
-        .integration-grid {
+        .touchpoints-section .section-heading,
+        .touchpoint-grid {
           max-width: 1120px;
           margin-left: auto;
           margin-right: auto;
         }
 
-        .integration-grid {
+        .touchpoint-grid {
           display: grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
           gap: 10px;
         }
 
-        .integration-grid span,
+        .touchpoint-grid span,
         .growth-list span {
           border: 1px solid var(--line);
           border-radius: 8px;
@@ -1435,7 +1445,7 @@ export default function Home() {
           .workflow,
           .module-grid,
           .problem-grid,
-          .integration-grid,
+          .touchpoint-grid,
           .pro-ops-grid,
           .onboarding-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1465,7 +1475,7 @@ export default function Home() {
           .positioning-section,
           .trade-section,
           .modules-section,
-          .integrations-section,
+          .touchpoints-section,
           .pro-ops-section,
           .pricing-section,
           .growth-section,
@@ -1500,7 +1510,7 @@ export default function Home() {
           .outcome-strip,
           .problem-grid,
           .comparison-grid,
-          .integration-grid,
+          .touchpoint-grid,
           .pro-ops-grid,
           .growth-list,
           .onboarding-grid,
