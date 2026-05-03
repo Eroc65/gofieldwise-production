@@ -1,9 +1,12 @@
 :root {
   --ink: #132126;
+  --navy: #19333c;
+  --navy-light: #274f5d;
+  --navy-deep: #10262e;
   --paper: #f5f2eb;
   --panel: #fffdf8;
-  --accent: #cc4b1f;
-  --accent-dark: #a53a15;
+  --accent: #f2b544;
+  --accent-dark: #c7891e;
   --info: #0e6a7a;
   --error: #ad2231;
   --line: #d5c8b7;
@@ -331,15 +334,15 @@ button {
   font-weight: 700;
   font-size: 0.95rem;
   color: #fff;
-  background: linear-gradient(120deg, var(--accent), #db6330);
+  background: linear-gradient(120deg, var(--navy), var(--navy-light));
   cursor: pointer;
   transition: transform 120ms ease, box-shadow 120ms ease, background 140ms ease;
 }
 
 button:hover {
   transform: translateY(-1px);
-  box-shadow: 0 8px 16px rgba(204, 75, 31, 0.26);
-  background: linear-gradient(120deg, var(--accent-dark), #c64f1f);
+  box-shadow: 0 8px 16px rgba(25, 51, 60, 0.28);
+  background: linear-gradient(120deg, var(--navy-deep), var(--navy));
 }
 
 button:disabled {

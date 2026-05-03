@@ -155,7 +155,7 @@ export default function IndustryPage({
 
         .industry-hero {
           padding: 64px 20px 48px;
-          background: linear-gradient(120deg, #19333c, #274f5d 62%, #2f6678);
+          background: linear-gradient(120deg, var(--navy), var(--navy-light) 62%, #2f6678);
           color: #fffdf8;
         }
 
@@ -241,12 +241,13 @@ export default function IndustryPage({
 
         :global(a.btn-primary) {
           color: #fffdf8;
-          background: linear-gradient(120deg, var(--accent), #db6330);
-          border: 1px solid rgba(255, 255, 255, 0.08);
+          background: linear-gradient(120deg, var(--navy-deep), var(--navy-light));
+          border: 1px solid rgba(242, 181, 68, 0.48);
         }
 
         :global(a.btn-primary:hover) {
-          background: linear-gradient(120deg, var(--accent-dark), #c64f1f);
+          color: var(--navy-deep);
+          background: var(--accent);
         }
 
         :global(a.btn-secondary) {
@@ -324,7 +325,7 @@ export default function IndustryPage({
         }
 
         .scenario-meta strong {
-          color: var(--accent-dark);
+          color: var(--navy);
         }
 
         .operator-promise,

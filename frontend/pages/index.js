@@ -426,7 +426,7 @@ export default function Home() {
         }
 
         .hero {
-          background: linear-gradient(120deg, #19333c, #274f5d 62%, #2f6678);
+          background: linear-gradient(120deg, var(--navy), var(--navy-light) 62%, #2f6678);
           color: #fffdf8;
           border-radius: 0;
           box-shadow: none;
@@ -507,9 +507,16 @@ export default function Home() {
         .primary-action,
         .demo-form button {
           border: 0;
-          background: linear-gradient(120deg, var(--accent), #db6330);
+          background: linear-gradient(120deg, var(--navy-deep), var(--navy-light));
           color: #fffdf8;
           cursor: pointer;
+          box-shadow: inset 0 0 0 1px rgba(242, 181, 68, 0.44);
+        }
+
+        .primary-action:hover,
+        .demo-form button:hover {
+          background: var(--accent);
+          color: var(--navy-deep);
         }
 
         .secondary-action,
