@@ -4,155 +4,164 @@ import { useEffect, useRef, useState } from "react";
 
 import { getDemoTranscriptStreamUrl, startDemoCall } from "../lib/api";
 
-const workflowSteps = [
+const stats = [
+  { value: "$$$", label: "Missed calls quietly cost contractors thousands in lost revenue." },
+  { value: "$200", label: "Per month. Not a $2,000 enterprise platform." },
+  { value: "24/7", label: "Never calls in sick. Never quits on a busy Monday." },
+];
+
+const dashboardJobs = [
+  { customer: "Hernandez", job: "Water heater replacement", status: "En route", tone: "live" },
+  { customer: "Thompson", job: "HVAC tune-up at 10 AM", status: "Scheduled", tone: "scheduled" },
+  { customer: "Park", job: "Drain unclog, invoice sent", status: "Paid", tone: "paid" },
+  { customer: "Martinez", job: "2 PM leak captured by Adrian", status: "New", tone: "new" },
+];
+
+const storySteps = [
   {
-    title: "Call answered",
-    body: "Adrian picks up 24/7, asks trade-smart questions, and captures the job details while you stay on the work.",
+    time: "7:02 AM",
+    title: "Customer calls",
+    body: "A pipe burst overnight. Adrian answers instantly, gets the address, confirms urgency, and captures the details while the owner is still asleep.",
   },
   {
+    time: "7:03 AM",
     title: "Job booked",
-    body: "Service type, urgency, address, and preferred time become a clean job record instead of a missed voicemail.",
+    body: "The job lands on the board. The closest available tech gets the dispatch note, customer context, and arrival window.",
   },
   {
-    title: "Tech dispatched",
-    body: "The right tech gets the work order, customer context, and SMS updates without a front-desk scramble.",
+    time: "9:45 AM",
+    title: "Job complete",
+    body: "The tech marks it done. The invoice goes out while the truck is still in the driveway. No paperwork waiting for tonight.",
   },
   {
-    title: "Invoice sent",
-    body: "When the job is done, billing and payment follow-up keep moving without you chasing the customer.",
-  },
-  {
-    title: "Review requested",
-    body: "Completion SMS, invoice nudges, and review requests go out automatically so revenue and reputation keep compounding.",
+    time: "10:15 AM",
+    title: "Review request sent",
+    body: "Once the job is wrapped, GoFieldwise sends the review request and keeps the customer relationship warm.",
   },
 ];
 
-const modules = [
+const testimonials = [
   {
-    title: "AI Receptionist",
-    body: "Adrian answers calls, extracts intake data, routes emergencies, and keeps every lead moving.",
+    quote:
+      "GoFieldwise replaced the part of my office manager role that kept eating nights and weekends: calls, scheduling, invoices, and review asks.",
+    name: "Dave K.",
+    role: "Plumbing owner, Phoenix",
   },
   {
-    title: "Dispatch and Scheduling",
-    body: "Jobs land on the board with urgency, service type, customer details, and tech-ready notes.",
+    quote:
+      "I thought customers would know they were talking to AI. They did not. They just cared that someone answered and booked the job fast.",
+    name: "Marcus T.",
+    role: "HVAC operator, Atlanta",
   },
   {
-    title: "Invoicing and Payments",
-    body: "Invoices, reminders, and payment follow-up happen while the crew stays focused on the field.",
-  },
-  {
-    title: "Follow-up Engine",
-    body: "On-the-way, completion, invoice, review, and reactivation texts run without sticky notes.",
-  },
-];
-
-const outcomes = [
-  { value: "24/7", label: "call answering without adding payroll" },
-  { value: "<60s", label: "speed-to-lead target for new calls" },
-  { value: "5 steps", label: "call, book, dispatch, invoice, review" },
-];
-
-const frontOfficeProblems = [
-  {
-    title: "Missed calls become missed revenue",
-    body: "Most home service buyers call the next company if nobody answers. Adrian picks up, qualifies, and keeps the lead warm.",
-  },
-  {
-    title: "Dispatch notes are too thin",
-    body: "A tech should not arrive with 'leak' as the whole job description. GoFieldwise captures urgency, address, access, and trade-specific context.",
-  },
-  {
-    title: "Follow-up dies after the job",
-    body: "Invoice nudges, review requests, and reactivation texts keep moving after the truck leaves.",
+    quote:
+      "I can grow past six vans without adding a dispatcher for every new headache. The system keeps the day moving.",
+    name: "Jessica R.",
+    role: "Electrical contractor, Dallas",
   },
 ];
 
-const comparisonPoints = [
+const automationSteps = [
+  ["01", "Customer calls", "Any time, any channel"],
+  ["02", "AI intake", "Captures the job details"],
+  ["03", "Quote sent", "Estimate goes out cleanly"],
+  ["04", "Schedule", "Booked to the right slot"],
+  ["05", "Dispatch", "Best tech assigned"],
+  ["06", "Job done", "Work completed on-site"],
+  ["07", "Invoice", "Sent when the job closes"],
+  ["08", "Payment", "Customer pays online"],
+  ["09", "Follow-up", "Review request and rebook nudge"],
+];
+
+const stages = [
   {
-    label: "Traditional field service software",
-    title: "You manage the software",
-    body: "Calendars, invoices, pipelines, automations, add-ons, setup calls, and training still need a human operator.",
+    title: "One van",
+    body: "You need every call answered, every lead captured, and every invoice sent without hiring office staff too early.",
   },
   {
-    label: "GoFieldwise",
-    title: "Adrian runs the workflow",
-    body: "The AI answers the call, creates usable intake, triggers dispatch updates, and pushes the next admin step forward.",
+    title: "Small crew",
+    body: "You need dispatch visibility, cleaner schedules, customer updates, and fewer jobs living in your head.",
+  },
+  {
+    title: "Growing team",
+    body: "You need repeatable operations, owner reporting, permissions, and automation that does not break when call volume rises.",
   },
 ];
 
-const customerTouchpoints = [
-  "AI phone answering",
-  "Customer text updates",
-  "Website lead capture",
-  "Invoice follow-up",
-  "Review requests",
-  "Booking confirmations",
-  "Missed-call recovery",
-  "Owner reporting",
-];
-
-const proOperations = [
+const platformCards = [
   {
-    title: "Route-ready dispatch",
-    body: "Group jobs by area, urgency, service window, and tech availability so recurring routes and emergency calls can coexist.",
+    title: "AI Dispatcher",
+    body: "Adrian answers inbound calls, qualifies the request, captures context, and starts the booking flow.",
   },
   {
-    title: "Customer self-service layer",
-    body: "Confirm appointments, send reminders, share invoice links, collect reviews, and reduce the phone tag after the first call.",
+    title: "Lean Operations",
+    body: "Track jobs, tech availability, customer updates, invoices, follow-ups, and owner visibility in one workflow.",
   },
   {
-    title: "Digital documents",
-    body: "Prepare estimates, work orders, authorization notes, photos, and signed approvals around the job record.",
-  },
-  {
-    title: "Materials and job notes",
-    body: "Capture parts, chemicals, equipment, access details, and technician notes so billing and callbacks stay clean.",
-  },
-  {
-    title: "Estimate packages",
-    body: "Turn intake into good-better-best options, maintenance plans, and follow-up offers instead of one flat quote.",
-  },
-  {
-    title: "Owner reporting",
-    body: "Track call sources, booked jobs, missed opportunities, invoices, reviews, and reactivation campaigns from one loop.",
+    title: "Scale Without Overhead",
+    body: "Add more work and more techs without turning the owner into a full-time admin department.",
   },
 ];
 
-const growthPlays = [
-  "Missed-call rescue and instant SMS follow-up",
-  "Review request campaigns after completed work",
-  "Dormant customer reactivation for seasonal services",
-  "Trade-specific landing pages and offer testing",
-  "Google Business Profile and local conversion support",
-  "Lead source tracking from call to booked job",
+const painPoints = [
+  ["Missed calls become lost jobs", "When you are under a sink or on a roof, Adrian can still answer and qualify the lead."],
+  ["Scheduling turns into guesswork", "Jobs need urgency, location, skills, and time windows, not sticky notes and memory."],
+  ["Follow-up never happens", "Invoices, payment links, review asks, and rebook reminders should not depend on Friday-night admin."],
+  ["An office manager is expensive", "At the early stage, full-time admin payroll is hard to justify. GoFieldwise fills the gap."],
 ];
 
-const onboardingSteps = [
-  { title: "Connect", body: "Point your phone flow, form, and SMS number into GoFieldwise." },
-  { title: "Train", body: "Load business hours, service area, emergency rules, pricing notes, and trade scripts." },
-  { title: "Launch", body: "Test Adrian live, confirm summary SMS, then send real calls through the workflow." },
+const productFeatures = [
+  {
+    title: "Job Management",
+    body: "New jobs land on the board, move through status changes, and keep notes, photos, customers, techs, invoices, and reminders connected.",
+    tag: "Full visibility",
+  },
+  {
+    title: "Automated Customer Updates",
+    body: "Appointment confirmations, on-the-way alerts, completion texts, invoice links, and review requests go out without manual sending.",
+    tag: "Zero manual follow-up",
+  },
+  {
+    title: "Instant Invoicing",
+    body: "Professional invoices can go out the moment work is complete, so customers can pay while the job is still fresh.",
+    tag: "Paid faster",
+  },
+  {
+    title: "AI Customer Intake",
+    body: "Adrian captures calls, web inquiries, after-hours issues, urgency, service type, address, and notes before dispatch.",
+    tag: "Runs automatically",
+  },
+  {
+    title: "Smart Scheduling",
+    body: "Assign work based on who is available, who is nearby, and what the job requires. Fewer bad routes, fewer missed windows.",
+    tag: "AI-assisted",
+  },
+  {
+    title: "Real-Time Dashboard",
+    body: "See jobs, techs, statuses, revenue signals, warm leads, and follow-up risk from the office or the road.",
+    tag: "Owner view",
+  },
 ];
 
-const faqs = [
-  {
-    question: "Is this another CRM my team has to manage?",
-    answer: "No. GoFieldwise is positioned as an AI operator first. The CRM-style records exist so calls, dispatch, billing, and follow-up have somewhere clean to land.",
-  },
-  {
-    question: "Can customers talk to the same Adrian from the demo?",
-    answer: "Yes. The demo is designed to mirror production: Adrian answers, captures job context, displays transcript data, and sends a summary text.",
-  },
-  {
-    question: "Who is this best for?",
-    answer: "Owner-led plumbing, HVAC, electrical, roofing, landscaping, and cleaning teams that need office-manager coverage before they are ready to hire a full-time dispatcher.",
-  },
-  {
-    question: "What makes the marketing add-on different?",
-    answer: "It is tied to operations. Campaigns are built around answered calls, booked jobs, completed work, reviews, and reactivation instead of disconnected ad spend.",
-  },
+const comparisonRows = [
+  ["Customer intake", "Manually logged by staff", "Adrian captures it automatically"],
+  ["Job dispatch", "Drag-and-drop, you decide", "AI-assisted assignment and routing"],
+  ["Customer follow-up", "Templates someone has to send", "Sent automatically at the right moment"],
+  ["Invoicing", "Requires manual action", "Triggered when the job closes"],
+  ["Admin overhead", "Still needs someone to run it", "Built to operate the front office"],
+  ["Pricing", "$500 to $2,000+ per month", "$200/month core plan"],
+  ["Team growth", "Per-user or per-tech fees are common", "No per-tech pricing in the core offer"],
 ];
 
-const trades = ["Plumbing", "HVAC", "Electrical", "Roofing", "Landscaping", "Cleaning"];
+const pricingBullets = [
+  "AI customer intake and job capture",
+  "Scheduling and dispatch workflow",
+  "Automatic follow-ups and reminders",
+  "Invoicing and billing automation",
+  "Real-time job board and owner dashboard",
+  "Unlimited technicians in the core plan",
+  "Unlimited jobs in the core plan",
+];
 
 function normalizeLines(transcript) {
   if (!Array.isArray(transcript)) return [];
@@ -243,152 +252,118 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>GoFieldwise - AI Operations Manager for Home Service Businesses</title>
+        <title>GoFieldwise - AI That Runs the Front Office for Home Service Businesses</title>
         <meta
           name="description"
-          content="GoFieldwise gives plumbers, HVAC, electrical, and roofing businesses an AI front office. Adrian answers calls, books jobs, dispatches techs, sends invoices, and follows up."
+          content="GoFieldwise answers calls, books jobs, dispatches techs, sends invoices, and follows up for plumbing, HVAC, electrical, roofing, landscaping, and cleaning businesses."
         />
       </Head>
 
-      <main className="landing">
+      <main className="business-page">
         <section className="hero">
           <div className="hero-inner">
             <div className="hero-copy">
-              <p className="eyebrow">AI operations manager for home service teams</p>
-              <h1>Get your trade back. Let Adrian run the front office.</h1>
-              <p className="hero-lede">
-                GoFieldwise answers calls, books jobs, dispatches techs, sends customer updates, and helps you get paid.
-                Built for owners who are great at the trade, not stuck chasing phones and invoices.
+              <p className="eyebrow">Solo operator to crew of 20</p>
+              <h1>Built for the first van. Ready for the full crew.</h1>
+              <p>
+                GoFieldwise handles customer intake, scheduling, dispatch, invoicing, and follow-up automatically, so
+                owners can focus on the work that pays.
               </p>
-              <div className="hero-actions">
-                <a className="primary-action" href="#live-demo">
-                  Have Adrian call me
-                </a>
-                <a className="secondary-action" href="tel:+16029320967">
-                  Call Adrian: (602) 932-0967
-                </a>
+              <div className="actions">
+                <a className="primary-action" href="#live-demo">Have Adrian call me</a>
+                <a className="secondary-action" href="#sandbox">Explore the product</a>
               </div>
-              <div className="trust-row" aria-label="Key GoFieldwise facts">
-                <span>24/7 call coverage</span>
-                <span>Live in under 60 minutes</span>
-                <span>$200/mo core plan</span>
-              </div>
+              <small>Demo is instant. Core plan starts at $200/month.</small>
             </div>
 
-            <aside className="ops-visual" aria-label="GoFieldwise operations board preview">
-              <div className="visual-topline">
-                <span>Fieldwise Dispatch</span>
-                <strong>Live</strong>
+            <aside className="hero-card" aria-label="GoFieldwise dashboard preview">
+              <div className="card-top">
+                <span>gofieldwise · Dashboard</span>
+                <b>Live</b>
               </div>
-              <div className="job-board">
-                <div className="job-card emergency">
-                  <span>Burst pipe</span>
-                  <strong>Same-day</strong>
-                  <small>Adrian captured address and shutoff note</small>
-                </div>
-                <div className="job-card">
-                  <span>HVAC tune-up</span>
-                  <strong>Scheduled</strong>
-                  <small>Confirmation SMS sent to customer</small>
-                </div>
-                <div className="job-card paid">
-                  <span>Drain unclog</span>
-                  <strong>Paid</strong>
-                  <small>Invoice link collected in driveway</small>
-                </div>
+              <div className="mini-stats">
+                <div><strong>7</strong><span>Jobs Today</span></div>
+                <div><strong>3</strong><span>Techs Out</span></div>
+                <div><strong>$4.2k</strong><span>Invoiced</span></div>
               </div>
-              <div className="phone-preview">
-                <p>Adrian</p>
-                <strong>"I can help with that leak. What address should I send the tech to?"</strong>
+              <div className="job-list">
+                {dashboardJobs.map((job) => (
+                  <div className={`job-row ${job.tone}`} key={`${job.customer}-${job.status}`}>
+                    <span>{job.customer} — {job.job}</span>
+                    <b>{job.status}</b>
+                  </div>
+                ))}
               </div>
+              <p>This is the product shape: calls become jobs, jobs become dispatch, dispatch becomes invoices.</p>
             </aside>
           </div>
         </section>
 
-        <section className="outcome-strip" aria-label="GoFieldwise outcomes">
-          {outcomes.map((item) => (
-            <div key={item.value}>
-              <strong>{item.value}</strong>
-              <span>{item.label}</span>
-            </div>
+        <section className="stat-strip">
+          {stats.map((stat) => (
+            <article key={stat.value}>
+              <strong>{stat.value}</strong>
+              <span>{stat.label}</span>
+            </article>
           ))}
         </section>
 
-        <section className="problem-section">
+        <section id="sandbox" className="product-demo">
           <div className="section-heading">
-            <p className="eyebrow">Why owners switch</p>
-            <h2>The front office is where good trade businesses leak money.</h2>
+            <p className="eyebrow">Try it right now</p>
+            <h2>The full product. No signup. No card.</h2>
             <p>
-              Competitors sell software to organize the work. GoFieldwise starts one step earlier: the moment a
-              customer calls, texts, or fills out a form.
+              Walk through a real Monday morning: Adrian answers the call, books the job, dispatches the tech, and
+              sends the invoice. This is what day one should feel like.
             </p>
           </div>
-          <div className="problem-grid">
-            {frontOfficeProblems.map((problem) => (
-              <article className="problem-card" key={problem.title}>
-                <h3>{problem.title}</h3>
-                <p>{problem.body}</p>
-              </article>
-            ))}
+          <div className="sandbox-board">
+            <div className="board-column">
+              <span>Call captured</span>
+              <h3>Martinez leak</h3>
+              <p>Address, urgency, shutoff status, preferred arrival window, and notes captured by Adrian.</p>
+            </div>
+            <div className="board-column">
+              <span>Dispatch ready</span>
+              <h3>Mike assigned</h3>
+              <p>Closest available tech gets the work order and customer context before rolling.</p>
+            </div>
+            <div className="board-column">
+              <span>Cash collected</span>
+              <h3>Invoice sent</h3>
+              <p>Customer receives the invoice link and review request without the owner chasing it down.</p>
+            </div>
           </div>
         </section>
 
-        <section id="live-demo" className="demo-section">
+        <section id="live-demo" className="live-demo">
           <div className="section-heading">
-            <p className="eyebrow">The demo is the product</p>
-            <h2>Experience exactly what your customers will experience.</h2>
+            <p className="eyebrow">Live demo flow</p>
+            <h2>Experience what your customers will experience.</h2>
             <p>
-              Enter your details, Adrian calls your phone, the call transcript appears live, and a dispatch summary text
+              Enter your details, Adrian calls your phone, the transcript appears live, and a dispatch summary text
               follows after the call.
             </p>
           </div>
-
           <div className="demo-grid">
             <form className="demo-form" onSubmit={onSubmit}>
-              <div className="field">
-                <label htmlFor="demo-name">Your name</label>
+              <label>
+                Your name
                 <span>Example: John Smith</span>
-                <input
-                  id="demo-name"
-                  value={form.name}
-                  onChange={(event) => updateField("name", event.target.value)}
-                  placeholder="John Smith"
-                  autoComplete="name"
-                  required
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="demo-email">Email address</label>
+                <input value={form.name} onChange={(event) => updateField("name", event.target.value)} required />
+              </label>
+              <label>
+                Email address
                 <span>Used only for demo context.</span>
-                <input
-                  id="demo-email"
-                  type="email"
-                  value={form.email}
-                  onChange={(event) => updateField("email", event.target.value)}
-                  placeholder="john@example.com"
-                  autoComplete="email"
-                  required
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="demo-phone">Phone number</label>
+                <input type="email" value={form.email} onChange={(event) => updateField("email", event.target.value)} required />
+              </label>
+              <label>
+                Phone number
                 <span>Adrian calls this number from (602) 932-0967.</span>
-                <input
-                  id="demo-phone"
-                  value={form.phone}
-                  onChange={(event) => updateField("phone", event.target.value)}
-                  placeholder="4055551234"
-                  autoComplete="tel"
-                  inputMode="tel"
-                  required
-                />
-              </div>
-              <button type="submit" disabled={busy}>
-                {busy ? "Starting call..." : "Have Adrian call me"}
-              </button>
-              <a className="call-link" href="tel:+16029320967">
-                Call instead: (602) 932-0967
-              </a>
+                <input value={form.phone} onChange={(event) => updateField("phone", event.target.value)} inputMode="tel" required />
+              </label>
+              <button type="submit" disabled={busy}>{busy ? "Starting call..." : "Have Adrian call me"}</button>
+              <a className="call-link" href="tel:+16029320967">Call instead: (602) 932-0967</a>
               {notice ? <p className="notice">{notice}</p> : null}
               {error ? <p className="form-error">{error}</p> : null}
               {callId ? <p className="call-id">Call ID: {callId}</p> : null}
@@ -416,9 +391,7 @@ export default function Home() {
                       <span>Adrian</span>
                       <p>Fieldwise Demo Services, this is Adrian. How can I help today?</p>
                     </div>
-                    <div className="empty-state">
-                      The live transcript and extracted dispatch notes will appear here during your demo call.
-                    </div>
+                    <div className="empty-state">The live transcript and extracted dispatch notes appear here during the demo call.</div>
                   </>
                 )}
               </div>
@@ -426,266 +399,255 @@ export default function Home() {
                 <h3>Dispatch summary SMS</h3>
                 {summary ? (
                   <dl>
-                    <dt>Service</dt>
-                    <dd>{summary.service_type || "Not captured"}</dd>
-                    <dt>Address</dt>
-                    <dd>{summary.address || "Not captured"}</dd>
-                    <dt>Urgency</dt>
-                    <dd>{summary.urgency || "Not captured"}</dd>
-                    <dt>Preferred time</dt>
-                    <dd>{summary.preferred_time || "Not captured"}</dd>
+                    <dt>Service</dt><dd>{summary.service_type || "Not captured"}</dd>
+                    <dt>Address</dt><dd>{summary.address || "Not captured"}</dd>
+                    <dt>Urgency</dt><dd>{summary.urgency || "Not captured"}</dd>
+                    <dt>Preferred time</dt><dd>{summary.preferred_time || "Not captured"}</dd>
                   </dl>
                 ) : (
-                  <p>
-                    Thanks for trying GoFieldwise. Adrian captured service type, address, urgency, preferred time, and
-                    notes for dispatch.
-                  </p>
+                  <p>Adrian captures service type, address, urgency, preferred time, and notes for dispatch.</p>
                 )}
               </div>
             </div>
           </div>
         </section>
 
-        <section className="workflow-section">
+        <section className="story-section">
           <div className="section-heading">
-            <p className="eyebrow">From call to cash</p>
-            <h2>One clean workflow instead of front-office chaos.</h2>
+            <p className="eyebrow">How it works in real life</p>
+            <h2>A Monday morning with GoFieldwise.</h2>
+            <p>
+              Sarah runs a 3-person plumbing crew. Here is what changes when the owner stops doing every office task
+              personally.
+            </p>
           </div>
-          <div className="workflow">
-            {workflowSteps.map((step, index) => (
-              <article className="workflow-card" key={step.title}>
-                <span>{String(index + 1).padStart(2, "0")}</span>
-                <h3>{step.title}</h3>
-                <p>{step.body}</p>
+          <div className="story-grid">
+            <div className="story-card">
+              <span>Sarah's story · Plumbing</span>
+              <h3>Before GoFieldwise, Monday started with missed calls and handwritten notes.</h3>
+              <p>Now the system answers, books, routes, bills, and follows up before Sarah opens the laptop.</p>
+            </div>
+            <div className="timeline">
+              {storySteps.map((step) => (
+                <article key={step.time}>
+                  <span>{step.time}</span>
+                  <h3>{step.title}</h3>
+                  <p>{step.body}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="testimonials">
+          {testimonials.map((item) => (
+            <article key={item.name}>
+              <strong>★★★★★</strong>
+              <p>"{item.quote}"</p>
+              <span>{item.name}</span>
+              <small>{item.role}</small>
+            </article>
+          ))}
+        </section>
+
+        <section className="automation-section">
+          <div className="section-heading center">
+            <p className="eyebrow">How it works</p>
+            <h2>From first call to five-star review.</h2>
+            <p>Nine steps. Minimal manual work. GoFieldwise handles the busywork so the owner does not have to.</p>
+          </div>
+          <div className="automation-grid">
+            {automationSteps.map(([number, title, body]) => (
+              <article key={number}>
+                <span>{number}</span>
+                <h3>{title}</h3>
+                <p>{body}</p>
               </article>
             ))}
           </div>
         </section>
 
-        <section className="positioning-section">
-          <div className="section-heading">
-            <p className="eyebrow">Different by design</p>
-            <h2>Field software records the business. GoFieldwise operates it.</h2>
+        <section className="stages-section">
+          <div className="section-heading center">
+            <p className="eyebrow">Who it is for</p>
+            <h2>Built for every stage of your growth.</h2>
             <p>
-              ServiceTitan, Jobber, Housecall Pro, and Workiz prove the category is real. GoFieldwise wins by making the
-              AI operator the front door, not a buried add-on.
+              Too big for sticky notes, too early for an office army. That gap is exactly where GoFieldwise lives.
             </p>
           </div>
-          <div className="comparison-grid">
-            {comparisonPoints.map((point) => (
-              <article className="comparison-card" key={point.label}>
-                <span>{point.label}</span>
-                <h3>{point.title}</h3>
-                <p>{point.body}</p>
+          <div className="three-grid">
+            {stages.map((stage) => (
+              <article key={stage.title}>
+                <h3>{stage.title}</h3>
+                <p>{stage.body}</p>
               </article>
             ))}
           </div>
         </section>
 
-        <section className="trade-section">
-          <div className="section-heading">
-            <p className="eyebrow">Built for the trades</p>
-            <h2>Not generic CRM software. A front office for field businesses.</h2>
-            <p>
-              GoFieldwise is shaped around urgent calls, rolling trucks, job notes, dispatch handoffs, invoices, and
-              customer SMS.
-            </p>
-          </div>
-          <div className="trade-grid">
-            {trades.map((trade) => (
-              <span key={trade}>{trade}</span>
-            ))}
-          </div>
-        </section>
-
-        <section className="modules-section">
+        <section className="platform-section">
           <div className="section-heading">
             <p className="eyebrow">The digital office</p>
-            <h2>Everything an office manager does, without adding payroll.</h2>
+            <h2>One platform. Three things that change the business.</h2>
           </div>
-          <div className="module-grid">
-            {modules.map((module) => (
-              <article className="module-card" key={module.title}>
-                <h3>{module.title}</h3>
-                <p>{module.body}</p>
+          <div className="three-grid">
+            {platformCards.map((card) => (
+              <article key={card.title}>
+                <h3>{card.title}</h3>
+                <p>{card.body}</p>
               </article>
             ))}
           </div>
         </section>
 
-        <section className="touchpoints-section">
+        <section className="pain-section">
           <div className="section-heading">
-            <p className="eyebrow">What your customers feel</p>
-            <h2>Fast answers, clear updates, clean billing, and follow-up that actually happens.</h2>
+            <p className="eyebrow">Sound familiar?</p>
+            <h2>You are still answering phones from the crawlspace.</h2>
             <p>
-              The technology stays behind the scenes. Customers experience a professional front office that answers,
-              books, confirms, updates, and follows through.
+              You got into the trade to do the work, not to chase invoices at midnight. GoFieldwise removes the admin
+              drag that keeps small shops stuck.
             </p>
           </div>
-          <div className="touchpoint-grid">
-            {customerTouchpoints.map((item) => (
-              <span key={item}>{item}</span>
+          <div className="pain-list">
+            {painPoints.map(([title, body], index) => (
+              <article key={title}>
+                <span>{index + 1}</span>
+                <div>
+                  <h3>{title}</h3>
+                  <p>{body}</p>
+                </div>
+              </article>
             ))}
           </div>
         </section>
 
-        <section className="pro-ops-section">
-          <div className="section-heading">
-            <p className="eyebrow">Pro-grade operations</p>
-            <h2>The AI receptionist is the front door. The operating system behind it still has to be deep.</h2>
-            <p>
-              Route businesses, pest teams, lawn care, cleaning crews, and trade contractors need more than a call
-              transcript. GoFieldwise turns Adrian's intake into the workflow pieces owners expect from mature field
-              service software.
-            </p>
+        <section className="features-section">
+          <div className="section-heading center">
+            <p className="eyebrow">What you get</p>
+            <h2>Everything an office manager does. None of the overhead.</h2>
+            <p>GoFieldwise does the actual work, not just organizes it.</p>
           </div>
-          <div className="pro-ops-grid">
-            {proOperations.map((item) => (
-              <article className="pro-ops-card" key={item.title}>
-                <h3>{item.title}</h3>
-                <p>{item.body}</p>
+          <div className="feature-grid">
+            {productFeatures.map((feature) => (
+              <article key={feature.title}>
+                <h3>{feature.title}</h3>
+                <p>{feature.body}</p>
+                <span>{feature.tag}</span>
               </article>
             ))}
           </div>
+        </section>
+
+        <section className="comparison-section">
+          <div className="section-heading">
+            <p className="eyebrow">Why GoFieldwise</p>
+            <h2>Most software organizes your work. GoFieldwise does it.</h2>
+            <p>
+              Traditional field service tools still need a human operator. GoFieldwise is built to run the front office
+              from first call to final payment.
+            </p>
+          </div>
+          <div className="comparison-table">
+            <div className="table-head">
+              <span>Capability</span>
+              <span>Traditional tools</span>
+              <span>GoFieldwise</span>
+            </div>
+            {comparisonRows.map(([capability, traditional, fieldwise]) => (
+              <div className="table-row" key={capability}>
+                <b>{capability}</b>
+                <span>{traditional}</span>
+                <strong>{fieldwise}</strong>
+              </div>
+            ))}
+          </div>
+          <p className="pricing-note">No per-technician pricing. No surprise add-on fees. $200/month for the core operating system.</p>
         </section>
 
         <section className="pricing-section">
-          <div className="pricing-copy">
+          <div className="section-heading center">
             <p className="eyebrow">Simple pricing</p>
-            <h2>Start with operations. Add growth when you are ready.</h2>
-            <p>
-              Core automation starts at $200/month. Teams that want done-for-you marketing can expand into a growth
-              package as lead volume becomes the next bottleneck.
-            </p>
+            <h2>One core price. Everything included.</h2>
+            <p>No per-user fees. No module add-ons. No "contact sales" maze.</p>
           </div>
-          <div className="pricing-grid">
-            <article className="price-card">
-              <span>Core Operations</span>
-              <strong>$200/mo</strong>
-              <p>Adrian, intake, dispatch, customer SMS, invoicing workflows, and the real-time job board.</p>
-            </article>
-            <article className="price-card growth">
-              <span>Growth + Marketing</span>
-              <strong>$700-950/mo</strong>
-              <p>Everything in core plus done-for-you campaigns, follow-up assets, reactivation, and marketing support.</p>
-            </article>
-          </div>
-        </section>
-
-        <section className="growth-section">
-          <div className="growth-copy">
-            <p className="eyebrow">Marketing that follows operations</p>
-            <h2>The growth add-on is not generic ads. It turns completed work into more work.</h2>
-            <p>
-              Once the phones, dispatch, and follow-up are clean, GoFieldwise can layer in campaigns that compound from
-              the jobs your team already wins.
-            </p>
-          </div>
-          <div className="growth-list">
-            {growthPlays.map((play) => (
-              <span key={play}>{play}</span>
-            ))}
-          </div>
-        </section>
-
-        <section className="onboarding-section">
-          <div className="section-heading">
-            <p className="eyebrow">Fast launch</p>
-            <h2>No six-month implementation. Start with one working phone flow.</h2>
-          </div>
-          <div className="onboarding-grid">
-            {onboardingSteps.map((step, index) => (
-              <article className="onboarding-card" key={step.title}>
-                <span>{String(index + 1).padStart(2, "0")}</span>
-                <h3>{step.title}</h3>
-                <p>{step.body}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="proof-section">
-          <blockquote>
-            "Fieldwise replaces the evening admin work: missed calls, scheduling texts, invoices, and review asks. It
-            feels like an office manager that never forgets the next step."
-          </blockquote>
-          <div className="proof-metrics">
-            <span>
-              <strong>100%</strong>
-              call coverage target
-            </span>
-            <span>
-              <strong>60 sec</strong>
-              speed-to-lead goal
-            </span>
-            <span>
-              <strong>1-20</strong>
-              tech teams supported
-            </span>
-          </div>
-        </section>
-
-        <section className="faq-section">
-          <div className="section-heading">
-            <p className="eyebrow">Questions buyers ask</p>
-            <h2>Built for the owner who needs leverage before another hire.</h2>
-          </div>
-          <div className="faq-grid">
-            {faqs.map((item) => (
-              <article className="faq-card" key={item.question}>
-                <h3>{item.question}</h3>
-                <p>{item.answer}</p>
-              </article>
-            ))}
+          <div className="price-card">
+            <span>Core Operations</span>
+            <strong>$200 <small>/month</small></strong>
+            <p>Less than a week of office-manager payroll.</p>
+            <ul>
+              {pricingBullets.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+            <div className="actions">
+              <a className="primary-action" href="#live-demo">Try the live demo</a>
+              <Link className="secondary-action light" href="/platform">See the platform</Link>
+            </div>
           </div>
         </section>
 
         <section className="final-cta">
-          <h2>Stop wearing six hats. Put Adrian on the phones.</h2>
+          <h2>Stop wearing six hats. Let Adrian handle the office.</h2>
           <p>
-            Your customers get a fast answer. Your techs get clean job details. You get your trade back.
+            You started this business to do the work you are good at, not to return missed calls, chase invoices, and
+            play dispatcher from the truck.
           </p>
-          <div className="hero-actions">
-            <a className="primary-action" href="#live-demo">
-              Try the live call demo
-            </a>
-            <Link className="secondary-action" href="/platform">
-              See the platform
-            </Link>
+          <div className="actions">
+            <a className="primary-action" href="#live-demo">Have Adrian call me</a>
+            <a className="secondary-action light" href="mailto:support@gofieldwise.com">Contact support@gofieldwise.com</a>
           </div>
+        </section>
+
+        <section className="origin-section">
+          <p className="eyebrow">Nationwide</p>
+          <h2>Built for tradespeople who are drowning in admin.</h2>
+          <p>
+            GoFieldwise is built for plumbers, HVAC techs, electricians, roofers, landscapers, cleaners, and the small
+            crews who run on hustle and word of mouth. The software that existed was often too expensive, too
+            complicated, or just a prettier spreadsheet. So GoFieldwise focuses on the missing piece: a front office
+            that actually runs itself.
+          </p>
+          <footer>
+            <span>support@gofieldwise.com</span>
+            <nav>
+              <Link href="/privacy">Privacy Policy</Link>
+              <Link href="/terms">Terms of Service</Link>
+              <a href="mailto:support@gofieldwise.com">Contact Us</a>
+            </nav>
+          </footer>
         </section>
       </main>
 
       <style jsx>{`
-        .landing {
+        .business-page {
           background: var(--paper);
           color: var(--ink);
+          overflow-x: hidden;
         }
 
         .hero {
-          background: linear-gradient(120deg, var(--navy), var(--navy-light) 62%, #2f6678);
+          padding: 70px 20px 42px;
           color: #fffdf8;
-          border-radius: 0;
-          box-shadow: none;
-          padding: 64px 20px 40px;
+          background: linear-gradient(120deg, var(--navy), var(--navy-light));
         }
 
         .hero-inner,
-        .outcome-strip,
-        .problem-section,
-        .demo-section,
-        .workflow-section,
-        .positioning-section,
-        .trade-section,
-        .modules-section,
-        .touchpoints-section,
-        .pro-ops-section,
+        .stat-strip,
+        .product-demo,
+        .live-demo,
+        .story-section,
+        .testimonials,
+        .automation-section,
+        .stages-section,
+        .platform-section,
+        .pain-section,
+        .features-section,
+        .comparison-section,
         .pricing-section,
-        .growth-section,
-        .onboarding-section,
-        .proof-section,
-        .faq-section,
-        .final-cta {
+        .final-cta,
+        .origin-section {
+          width: 100%;
           max-width: 1120px;
           margin: 0 auto;
         }
@@ -693,7 +655,7 @@ export default function Home() {
         .hero-inner {
           display: grid;
           grid-template-columns: minmax(0, 1fr) 430px;
-          gap: 34px;
+          gap: 36px;
           align-items: center;
         }
 
@@ -701,9 +663,9 @@ export default function Home() {
           margin: 0 0 10px;
           color: #ffd9ae;
           font-size: 0.78rem;
-          font-weight: 800;
-          text-transform: uppercase;
+          font-weight: 900;
           letter-spacing: 0.12em;
+          text-transform: uppercase;
         }
 
         h1,
@@ -715,24 +677,32 @@ export default function Home() {
 
         h1 {
           margin: 0;
-          max-width: 780px;
-          font-size: 3.75rem;
-          line-height: 1.02;
+          max-width: 760px;
+          font-size: clamp(3rem, 6vw, 5.5rem);
+          line-height: 0.95;
         }
 
-        .hero-lede {
-          max-width: 680px;
+        .hero-copy p:not(.eyebrow),
+        .section-heading p,
+        .final-cta p,
+        .origin-section p {
+          color: #35505b;
+          line-height: 1.65;
+          font-size: 1.05rem;
+        }
+
+        .hero-copy p:not(.eyebrow) {
+          max-width: 690px;
           margin: 20px 0 0;
-          font-size: 1.18rem;
-          line-height: 1.7;
           color: #f7efe1;
+          font-size: 1.18rem;
         }
 
-        .hero-actions {
+        .actions {
           display: flex;
           flex-wrap: wrap;
           gap: 12px;
-          margin-top: 28px;
+          margin-top: 26px;
         }
 
         .primary-action,
@@ -745,17 +715,16 @@ export default function Home() {
           justify-content: center;
           border-radius: 8px;
           padding: 0 18px;
-          font-weight: 800;
+          font-weight: 900;
           text-decoration: none;
         }
 
         .primary-action,
         .demo-form button {
-          border: 0;
+          border: 1px solid rgba(242, 181, 68, 0.42);
           background: linear-gradient(120deg, var(--navy-deep), var(--navy-light));
           color: #fffdf8;
           cursor: pointer;
-          box-shadow: inset 0 0 0 1px rgba(242, 181, 68, 0.44);
         }
 
         .primary-action:hover,
@@ -766,38 +735,47 @@ export default function Home() {
 
         .secondary-action,
         .call-link {
-          border: 1px solid rgba(255, 217, 174, 0.62);
+          border: 1px solid rgba(255, 217, 174, 0.72);
           color: #fffdf8;
           background: rgba(255, 255, 255, 0.08);
         }
 
-        .trust-row {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 10px;
-          margin-top: 26px;
+        .secondary-action.light,
+        .call-link {
+          color: var(--navy);
+          background: #fff4de;
+          border-color: #edc17c;
         }
 
-        .trust-row span {
-          border: 1px solid rgba(255, 255, 255, 0.22);
-          border-radius: 999px;
-          padding: 8px 11px;
-          background: rgba(255, 255, 255, 0.08);
+        .hero-copy small {
+          display: block;
+          margin-top: 12px;
           color: #f7efe1;
-          font-weight: 700;
-          font-size: 0.92rem;
+          font-weight: 800;
         }
 
-        .ops-visual {
-          border: 1px solid rgba(255, 255, 255, 0.22);
+        .hero-card,
+        .sandbox-board,
+        .demo-form,
+        .transcript-console,
+        .story-card,
+        .testimonials article,
+        .three-grid article,
+        .pain-list article,
+        .feature-grid article,
+        .price-card {
+          border: 1px solid var(--line);
           border-radius: 8px;
-          background: #fffdf8;
-          color: var(--ink);
+          background: var(--panel);
           box-shadow: var(--shadow);
-          padding: 18px;
         }
 
-        .visual-topline,
+        .hero-card {
+          padding: 18px;
+          color: var(--ink);
+        }
+
+        .card-top,
         .console-header {
           display: flex;
           justify-content: space-between;
@@ -805,16 +783,16 @@ export default function Home() {
           align-items: center;
         }
 
-        .visual-topline span,
+        .card-top span,
         .console-header span {
           color: #4e6a74;
-          font-weight: 800;
           font-size: 0.78rem;
-          text-transform: uppercase;
+          font-weight: 900;
           letter-spacing: 0.08em;
+          text-transform: uppercase;
         }
 
-        .visual-topline strong,
+        .card-top b,
         .console-header b {
           border-radius: 999px;
           padding: 6px 10px;
@@ -823,109 +801,102 @@ export default function Home() {
           font-size: 0.78rem;
         }
 
-        .job-board {
+        .mini-stats {
           display: grid;
-          gap: 10px;
-          margin-top: 16px;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 8px;
+          margin: 16px 0;
         }
 
-        .job-card {
+        .mini-stats div,
+        .job-row,
+        .sandbox-board .board-column {
           border: 1px solid var(--line);
-          border-left: 5px solid var(--info);
           border-radius: 8px;
-          padding: 12px;
           background: #fffcf7;
-          display: grid;
-          gap: 4px;
+          padding: 12px;
         }
 
-        .job-card.emergency {
-          border-left-color: var(--accent);
+        .mini-stats strong {
+          display: block;
+          color: var(--navy);
+          font-size: 1.6rem;
         }
 
-        .job-card.paid {
-          border-left-color: #247a4d;
-        }
-
-        .job-card span {
+        .mini-stats span,
+        .hero-card p,
+        .job-row span {
           color: #4e6a74;
-          font-weight: 700;
-        }
-
-        .job-card strong {
-          font-size: 1.05rem;
-        }
-
-        .job-card small {
-          color: #647c84;
-          line-height: 1.4;
-        }
-
-        .phone-preview {
-          margin-top: 14px;
-          border-radius: 8px;
-          background: #19333c;
-          color: #fffdf8;
-          padding: 14px;
-        }
-
-        .phone-preview p {
-          margin: 0 0 6px;
-          color: #ffd9ae;
-          font-weight: 800;
-        }
-
-        .phone-preview strong {
           line-height: 1.45;
         }
 
-        .demo-section,
-        .workflow-section,
-        .problem-section,
-        .positioning-section,
-        .trade-section,
-        .modules-section,
-        .touchpoints-section,
-        .pro-ops-section,
-        .pricing-section,
-        .growth-section,
-        .onboarding-section,
-        .proof-section,
-        .faq-section,
-        .final-cta {
-          padding: 64px 20px;
+        .job-list {
+          display: grid;
+          gap: 8px;
         }
 
-        .outcome-strip {
-          margin-top: -22px;
+        .job-row {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          border-left: 5px solid var(--accent);
+        }
+
+        .job-row.paid {
+          border-left-color: #247a4d;
+        }
+
+        .job-row.live {
+          border-left-color: #0e6a7a;
+        }
+
+        .job-row b {
+          color: var(--navy);
+          white-space: nowrap;
+        }
+
+        .stat-strip {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 12px;
-          padding: 0 20px;
+          padding: 20px;
+          margin-top: -26px;
           position: relative;
-          z-index: 2;
         }
 
-        .outcome-strip div {
+        .stat-strip article {
           border: 1px solid var(--line);
           border-radius: 8px;
           background: var(--panel);
           box-shadow: var(--shadow);
           padding: 18px;
-          display: grid;
-          gap: 5px;
         }
 
-        .outcome-strip strong {
+        .stat-strip strong {
+          display: block;
           color: var(--navy);
           font-size: 2rem;
-          line-height: 1;
         }
 
-        .outcome-strip span {
+        .stat-strip span {
           color: #4e6a74;
+          line-height: 1.4;
           font-weight: 750;
-          line-height: 1.35;
+        }
+
+        .product-demo,
+        .live-demo,
+        .story-section,
+        .automation-section,
+        .stages-section,
+        .platform-section,
+        .pain-section,
+        .features-section,
+        .comparison-section,
+        .pricing-section,
+        .final-cta,
+        .origin-section {
+          padding: 64px 20px;
         }
 
         .section-heading {
@@ -933,111 +904,64 @@ export default function Home() {
           margin-bottom: 26px;
         }
 
-        .section-heading h2,
-        .pricing-copy h2,
-        .final-cta h2 {
-          margin: 0;
-          font-size: 2.35rem;
-          line-height: 1.08;
+        .section-heading.center,
+        .final-cta,
+        .pricing-section .section-heading {
+          text-align: center;
+          margin-left: auto;
+          margin-right: auto;
         }
 
-        .section-heading p,
-        .pricing-copy p,
-        .final-cta p {
-          margin: 12px 0 0;
+        .section-heading h2,
+        .final-cta h2,
+        .origin-section h2 {
+          margin: 0;
+          color: var(--navy);
+          font-size: clamp(2.2rem, 4.5vw, 3.4rem);
+          line-height: 1.04;
+        }
+
+        .sandbox-board {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 12px;
+          padding: 16px;
+        }
+
+        .board-column span,
+        .feature-grid article span,
+        .price-card > span {
+          color: #4e6a74;
+          font-size: 0.78rem;
+          font-weight: 900;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+
+        .board-column h3,
+        .three-grid h3,
+        .feature-grid h3,
+        .pain-list h3 {
+          margin: 10px 0 8px;
+          color: var(--navy);
+        }
+
+        .board-column p,
+        .three-grid p,
+        .feature-grid p,
+        .pain-list p,
+        .testimonials p,
+        .story-card p,
+        .timeline p {
+          margin: 0;
           color: #35505b;
-          font-size: 1.04rem;
-          line-height: 1.65;
+          line-height: 1.58;
         }
 
         .demo-grid {
           display: grid;
           grid-template-columns: 410px minmax(0, 1fr);
           gap: 18px;
-          align-items: stretch;
-        }
-
-        .demo-form,
-        .transcript-console,
-        .workflow-card,
-        .module-card,
-        .price-card,
-        .problem-card,
-        .comparison-card,
-        .pro-ops-card,
-        .onboarding-card,
-        .faq-card {
-          background: var(--panel);
-          border: 1px solid var(--line);
-          border-radius: 8px;
-          box-shadow: var(--shadow);
-        }
-
-        .problem-grid,
-        .comparison-grid,
-        .onboarding-grid,
-        .faq-grid {
-          display: grid;
-          gap: 14px;
-        }
-
-        .problem-grid {
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-        }
-
-        .comparison-grid {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-
-        .faq-grid {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-
-        .problem-card,
-        .comparison-card,
-        .pro-ops-card,
-        .onboarding-card,
-        .faq-card {
-          padding: 20px;
-        }
-
-        .problem-card h3,
-        .comparison-card h3,
-        .pro-ops-card h3,
-        .onboarding-card h3,
-        .faq-card h3 {
-          margin: 0;
-          color: var(--navy);
-        }
-
-        .problem-card p,
-        .comparison-card p,
-        .pro-ops-card p,
-        .onboarding-card p,
-        .faq-card p {
-          margin: 12px 0 0;
-          color: #35505b;
-          line-height: 1.62;
-        }
-
-        .comparison-card {
-          border-top: 5px solid var(--line);
-        }
-
-        .comparison-card:last-child {
-          border-top-color: var(--accent);
-          background: linear-gradient(160deg, #fffdf8, #fff4de);
-        }
-
-        .comparison-card span,
-        .onboarding-card span {
-          display: block;
-          margin-bottom: 10px;
-          color: #4e6a74;
-          font-size: 0.76rem;
-          font-weight: 900;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
         }
 
         .demo-form {
@@ -1046,51 +970,35 @@ export default function Home() {
           gap: 14px;
         }
 
-        .field {
+        .demo-form label {
           display: grid;
           gap: 6px;
-        }
-
-        .field label {
+          color: var(--navy);
           font-weight: 850;
-          display: block;
         }
 
-        .field span {
+        .demo-form label span {
           color: #607a84;
           font-size: 0.9rem;
         }
 
-        .field input {
+        .demo-form input {
           min-height: 48px;
           border: 1px solid var(--line);
           border-radius: 8px;
-          background: #fff;
           padding: 0 12px;
           font-size: 1rem;
         }
 
         .demo-form button {
           width: 100%;
-          font-size: 1rem;
-        }
-
-        .demo-form button:disabled {
-          cursor: wait;
-          opacity: 0.68;
-        }
-
-        .call-link {
-          color: #183743;
-          background: #fff4de;
-          border-color: #edc17c;
         }
 
         .notice,
         .form-error,
         .call-id {
           margin: 0;
-          font-weight: 800;
+          font-weight: 850;
           line-height: 1.45;
         }
 
@@ -1109,7 +1017,7 @@ export default function Home() {
 
         .transcript-console {
           overflow: hidden;
-          background: #19333c;
+          background: var(--navy);
           color: #fffdf8;
           display: grid;
           grid-template-rows: auto 1fr auto;
@@ -1126,25 +1034,25 @@ export default function Home() {
         }
 
         .transcript-body {
+          min-height: 280px;
           padding: 18px;
           display: grid;
           align-content: start;
           gap: 12px;
-          min-height: 280px;
         }
 
         .bubble {
           max-width: 86%;
+          border: 1px solid rgba(255, 255, 255, 0.12);
           border-radius: 8px;
           background: rgba(255, 255, 255, 0.1);
-          border: 1px solid rgba(255, 255, 255, 0.12);
           padding: 12px;
         }
 
         .bubble.customer {
           margin-left: auto;
           background: #fff4de;
-          color: #19333c;
+          color: var(--navy);
         }
 
         .bubble span {
@@ -1156,7 +1064,7 @@ export default function Home() {
         }
 
         .bubble.customer span {
-          color: var(--accent);
+          color: var(--accent-dark);
         }
 
         .bubble p,
@@ -1178,6 +1086,7 @@ export default function Home() {
 
         .summary-preview h3 {
           margin: 0 0 10px;
+          color: var(--navy);
         }
 
         .summary-preview dl {
@@ -1189,338 +1098,381 @@ export default function Home() {
 
         .summary-preview dt {
           color: #607a84;
-          font-weight: 800;
+          font-weight: 850;
         }
 
         .summary-preview dd {
           margin: 0;
         }
 
-        .workflow {
+        .story-grid {
           display: grid;
-          grid-template-columns: repeat(5, minmax(0, 1fr));
+          grid-template-columns: 360px minmax(0, 1fr);
+          gap: 18px;
+          align-items: start;
+        }
+
+        .story-card {
+          padding: 22px;
+          background: #fff8ee;
+        }
+
+        .story-card span {
+          color: var(--accent-dark);
+          font-weight: 900;
+        }
+
+        .story-card h3 {
+          margin: 12px 0;
+          color: var(--navy);
+          font-size: 1.45rem;
+        }
+
+        .timeline {
+          display: grid;
           gap: 12px;
         }
 
-        .workflow-card,
-        .module-card,
-        .price-card {
-          padding: 18px;
-        }
-
-        .workflow-card span {
-          color: var(--accent);
-          font-weight: 900;
-        }
-
-        .workflow-card h3,
-        .module-card h3 {
-          margin: 10px 0 8px;
-          font-size: 1.08rem;
-        }
-
-        .workflow-card p,
-        .module-card p,
-        .price-card p {
-          margin: 0;
-          color: #35505b;
-          line-height: 1.55;
-        }
-
-        .trade-section {
-          background: #fff8ee;
-          max-width: none;
-        }
-
-        .trade-section .section-heading,
-        .trade-grid {
-          max-width: 1120px;
-          margin-left: auto;
-          margin-right: auto;
-        }
-
-        .trade-grid {
-          display: grid;
-          grid-template-columns: repeat(6, minmax(0, 1fr));
-          gap: 10px;
-        }
-
-        .trade-grid span {
-          border: 1px solid var(--line);
-          border-radius: 8px;
-          background: #fffdf8;
-          padding: 14px 10px;
-          text-align: center;
-          font-weight: 850;
-          color: #234452;
-        }
-
-        .module-grid {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 14px;
-        }
-
-        .touchpoints-section {
-          background: #fff8ee;
-          max-width: none;
-        }
-
-        .touchpoints-section .section-heading,
-        .touchpoint-grid {
-          max-width: 1120px;
-          margin-left: auto;
-          margin-right: auto;
-        }
-
-        .touchpoint-grid {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 10px;
-        }
-
-        .touchpoint-grid span,
-        .growth-list span {
-          border: 1px solid var(--line);
+        .timeline article {
+          border-left: 5px solid var(--accent);
           border-radius: 8px;
           background: var(--panel);
-          padding: 14px;
-          color: var(--navy);
-          font-weight: 850;
-          line-height: 1.35;
-          box-shadow: 0 8px 22px rgba(27, 25, 20, 0.08);
+          box-shadow: var(--shadow);
+          padding: 16px;
         }
 
-        .pro-ops-section {
-          border-bottom: 1px solid var(--line);
-        }
-
-        .pro-ops-grid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 14px;
-        }
-
-        .pro-ops-card {
-          border-top: 5px solid var(--accent);
-        }
-
-        .pricing-section {
-          display: grid;
-          grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-          gap: 24px;
-          align-items: center;
-        }
-
-        .pricing-grid {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 14px;
-        }
-
-        .price-card {
-          display: grid;
-          gap: 10px;
-          background: #fffdf8;
-        }
-
-        .price-card.growth {
-          border-color: #98b7bf;
-          background: linear-gradient(160deg, #fffdf8, #eef7f8);
-        }
-
-        .price-card span {
-          color: #4e6a74;
+        .timeline span {
+          color: var(--accent-dark);
           font-weight: 900;
-          text-transform: uppercase;
-          letter-spacing: 0.08em;
-          font-size: 0.76rem;
         }
 
-        .price-card strong {
-          color: #19333c;
-          font-size: 2rem;
-          line-height: 1;
-        }
-
-        .growth-section {
-          display: grid;
-          grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-          gap: 24px;
-          align-items: center;
-          border-top: 1px solid var(--line);
-        }
-
-        .growth-copy h2 {
-          margin: 0;
+        .timeline h3 {
+          margin: 8px 0;
           color: var(--navy);
-          font-size: 2.35rem;
-          line-height: 1.08;
         }
 
-        .growth-copy p {
-          color: #35505b;
-          line-height: 1.65;
-        }
-
-        .growth-list {
+        .testimonials {
           display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 10px;
-        }
-
-        .onboarding-grid {
           grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 14px;
+          padding: 0 20px 64px;
         }
 
-        .onboarding-card span {
+        .testimonials article {
+          padding: 20px;
+        }
+
+        .testimonials strong {
           color: var(--accent-dark);
         }
 
-        .proof-section {
-          border-top: 1px solid var(--line);
-          border-bottom: 1px solid var(--line);
+        .testimonials span {
+          display: block;
+          margin-top: 14px;
+          color: var(--navy);
+          font-weight: 900;
+        }
+
+        .testimonials small {
+          color: #607a84;
+        }
+
+        .automation-section,
+        .features-section,
+        .pricing-section {
+          background: #fff8ee;
+          max-width: none;
+        }
+
+        .automation-section .section-heading,
+        .features-section .section-heading,
+        .pricing-section .section-heading,
+        .automation-grid,
+        .feature-grid,
+        .price-card {
+          max-width: 1120px;
+          margin-left: auto;
+          margin-right: auto;
+        }
+
+        .automation-grid {
           display: grid;
-          grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
-          gap: 24px;
-          align-items: center;
+          grid-template-columns: repeat(9, minmax(0, 1fr));
+          gap: 8px;
         }
 
-        blockquote {
+        .automation-grid article {
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          background: var(--panel);
+          padding: 12px;
+        }
+
+        .automation-grid span {
+          color: var(--accent-dark);
+          font-weight: 900;
+        }
+
+        .automation-grid h3 {
+          margin: 8px 0 6px;
+          color: var(--navy);
+          font-size: 0.98rem;
+        }
+
+        .automation-grid p {
           margin: 0;
-          font-size: 1.55rem;
-          line-height: 1.35;
-          color: #19333c;
-          font-weight: 850;
+          color: #4e6a74;
+          font-size: 0.9rem;
+          line-height: 1.4;
         }
 
-        .proof-metrics {
+        .three-grid,
+        .feature-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 14px;
+        }
+
+        .three-grid article,
+        .feature-grid article {
+          padding: 20px;
+        }
+
+        .pain-section {
+          display: grid;
+          grid-template-columns: 0.85fr 1.15fr;
+          gap: 24px;
+          align-items: start;
+        }
+
+        .pain-list {
           display: grid;
           gap: 12px;
         }
 
-        .proof-metrics span {
+        .pain-list article {
+          display: grid;
+          grid-template-columns: 42px minmax(0, 1fr);
+          gap: 12px;
+          padding: 18px;
+        }
+
+        .pain-list span {
+          width: 34px;
+          height: 34px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 999px;
+          background: var(--accent);
+          color: var(--navy-deep);
+          font-weight: 900;
+        }
+
+        .feature-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .comparison-table {
           border: 1px solid var(--line);
           border-radius: 8px;
+          overflow: hidden;
           background: var(--panel);
-          padding: 16px;
+          box-shadow: var(--shadow);
+        }
+
+        .table-head,
+        .table-row {
           display: grid;
-          gap: 4px;
-          color: #4e6a74;
-          font-weight: 700;
+          grid-template-columns: 0.85fr 1.1fr 1.1fr;
+          gap: 0;
         }
 
-        .proof-metrics strong {
-          color: var(--accent);
-          font-size: 1.6rem;
+        .table-head {
+          background: var(--navy);
+          color: #fffdf8;
+          font-weight: 900;
         }
 
-        .final-cta {
+        .table-head span,
+        .table-row b,
+        .table-row span,
+        .table-row strong {
+          padding: 14px;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .table-row strong {
+          color: var(--navy);
+          background: #fff8ee;
+        }
+
+        .pricing-note {
+          color: var(--navy);
+          font-weight: 900;
+          font-size: 1.1rem;
+        }
+
+        .price-card {
+          padding: 26px;
           text-align: center;
         }
 
-        .final-cta .hero-actions {
+        .price-card strong {
+          display: block;
+          margin: 12px 0;
+          color: var(--navy);
+          font-size: 3.5rem;
+          line-height: 1;
+        }
+
+        .price-card small {
+          font-size: 1rem;
+        }
+
+        .price-card ul {
+          max-width: 560px;
+          margin: 22px auto 0;
+          padding: 0;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+          list-style: none;
+          text-align: left;
+        }
+
+        .price-card li {
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          background: #fffdf8;
+          padding: 12px;
+          color: var(--navy);
+          font-weight: 800;
+        }
+
+        .price-card .actions,
+        .final-cta .actions {
           justify-content: center;
         }
 
-        .final-cta .secondary-action {
-          color: #19333c;
-          border-color: var(--line);
-          background: #fffdf8;
+        .final-cta h2 {
+          max-width: 800px;
+          margin-left: auto;
+          margin-right: auto;
+        }
+
+        .final-cta p {
+          max-width: 780px;
+          margin-left: auto;
+          margin-right: auto;
+        }
+
+        .origin-section {
+          border-top: 1px solid var(--line);
+        }
+
+        .origin-section p {
+          max-width: 860px;
+        }
+
+        .origin-section footer {
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: space-between;
+          gap: 16px;
+          margin-top: 26px;
+          color: var(--navy);
+          font-weight: 800;
+        }
+
+        .origin-section nav {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 14px;
+        }
+
+        .origin-section a {
+          color: var(--navy);
         }
 
         @media (max-width: 980px) {
           .hero-inner,
           .demo-grid,
-          .pricing-section,
-          .growth-section,
-          .proof-section {
+          .story-grid,
+          .pain-section {
             grid-template-columns: 1fr;
           }
 
-          .ops-visual {
+          .hero-card,
+          .story-card {
             max-width: 560px;
           }
 
-          .workflow,
-          .module-grid,
-          .problem-grid,
-          .touchpoint-grid,
-          .pro-ops-grid,
-          .onboarding-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+          .automation-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
           }
 
-          .trade-grid {
-            grid-template-columns: repeat(3, minmax(0, 1fr));
+          .three-grid,
+          .testimonials,
+          .sandbox-board {
+            grid-template-columns: 1fr;
           }
         }
 
-        @media (max-width: 680px) {
+        @media (max-width: 640px) {
           .hero {
-            padding: 42px 14px 28px;
+            padding: 46px 14px 32px;
           }
 
-          h1 {
-            font-size: 2.65rem;
-          }
-
-          .hero-lede {
-            font-size: 1rem;
-          }
-
-          .demo-section,
-          .workflow-section,
-          .problem-section,
-          .positioning-section,
-          .trade-section,
-          .modules-section,
-          .touchpoints-section,
-          .pro-ops-section,
+          .product-demo,
+          .live-demo,
+          .story-section,
+          .automation-section,
+          .stages-section,
+          .platform-section,
+          .pain-section,
+          .features-section,
+          .comparison-section,
           .pricing-section,
-          .growth-section,
-          .onboarding-section,
-          .proof-section,
-          .faq-section,
-          .final-cta {
-            padding: 42px 14px;
+          .final-cta,
+          .origin-section {
+            padding: 44px 14px;
           }
 
-          .section-heading h2,
-          .pricing-copy h2,
-          .growth-copy h2,
-          .final-cta h2 {
-            font-size: 1.9rem;
+          .stat-strip {
+            grid-template-columns: 1fr;
+            margin-top: 0;
+            padding: 14px;
           }
 
-          .hero-actions,
-          .trust-row {
+          .actions {
             flex-direction: column;
           }
 
           .primary-action,
-          .secondary-action {
+          .secondary-action,
+          .call-link {
             width: 100%;
           }
 
-          .workflow,
-          .module-grid,
-          .pricing-grid,
-          .trade-grid,
-          .outcome-strip,
-          .problem-grid,
-          .comparison-grid,
-          .touchpoint-grid,
-          .pro-ops-grid,
-          .growth-list,
-          .onboarding-grid,
-          .faq-grid {
+          .mini-stats,
+          .automation-grid,
+          .feature-grid,
+          .price-card ul {
             grid-template-columns: 1fr;
           }
 
-          .outcome-strip {
-            margin-top: 0;
-            padding: 14px;
+          .job-row {
+            display: grid;
+          }
+
+          .table-head {
+            display: none;
+          }
+
+          .table-row {
+            grid-template-columns: 1fr;
+            border-bottom: 1px solid var(--line);
           }
 
           .summary-preview dl {
