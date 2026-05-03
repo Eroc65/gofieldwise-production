@@ -154,6 +154,8 @@ def test_demo_call_intake_by_key_creates_lead_and_returns_transcript():
     twiml = client.get(f"/api/demo-call/twiml/{body['lead_id']}")
     assert twiml.status_code == 200
     assert "GoFieldwise AI receptionist demo" in twiml.text
+    assert "<Dial" in twiml.text
+    assert "+16029320967" in twiml.text
 
 
 def test_demo_call_intake_starts_twilio_call_when_configured(monkeypatch):
@@ -179,7 +181,7 @@ def test_demo_call_intake_starts_twilio_call_when_configured(monkeypatch):
     intake_key = _get_org_intake_key()
     resp = client.post(
         f"/api/leads/intake/demo-call/by-key/{intake_key}",
-        json={"name": "Demo Caller", "phone": "+16025550123", "email": "demo@example.com"},
+        json={"name": "Demo Caller", "phone": "6025550123", "email": "demo@example.com"},
     )
 
     assert resp.status_code == 201

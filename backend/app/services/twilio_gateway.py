@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime, timezone
 from typing import Optional
 from typing import cast
@@ -36,6 +37,38 @@ def _resolve_twilio_profile(db: Session, organization_id: int) -> dict[str, str 
         "messaging_service_sid": os.getenv("TWILIO_MESSAGING_SERVICE_SID"),
         "from_phone": os.getenv("TWILIO_PHONE_NUMBER"),
     }
+
+
+def normalize_us_phone(value: str | None) -> str:
+    text = (value or "").strip()
+    if not text:
+        return ""
+    if text.startswith("+"):
+        return "+" + re.sub(r"\D", "", text)
+
+    digits = re.sub(r"\D", "", text)
+    if len(digits) == 10:
+        return f"+1{digits}"
+    if len(digits) == 11 and digits.startswith("1"):
+        return f"+{digits}"
+    return text
+
+
+def resolve_demo_connect_number(db: Session, organization_id: int) -> str:
+    profile = (
+        db.query(CommunicationTenantProfile)
+        .filter(CommunicationTenantProfile.organization_id == organization_id)
+        .first()
+    )
+    if profile and int(cast(int, profile.active)) == 1:
+        tenant_number = normalize_us_phone(cast(str | None, profile.retell_phone_number))
+        if tenant_number:
+            return tenant_number
+
+    configured = normalize_us_phone(os.getenv("TWILIO_DEMO_CONNECT_NUMBER"))
+    if configured:
+        return configured
+    return "+16029320967"
 
 
 def send_sms_message(
@@ -104,7 +137,7 @@ def start_demo_voice_call(
     account_sid = (profile.get("account_sid") or "").strip()
     auth_token = (profile.get("auth_token") or "").strip()
     from_phone = (profile.get("from_phone") or "").strip()
-    destination = (to_phone or "").strip()
+    destination = normalize_us_phone(to_phone)
 
     if not destination:
         return False, None, "Phone number is required to start a demo call"

@@ -38,7 +38,7 @@ from ..schemas.lead import (
     PublicAttributionIn,
     SupportChatIntake,
 )
-from ..services.twilio_gateway import start_demo_voice_call
+from ..services.twilio_gateway import normalize_us_phone, resolve_demo_connect_number, start_demo_voice_call
 
 router = APIRouter()
 
@@ -116,7 +116,7 @@ def _create_public_tracking_lead(
     raw_message = "\n".join([fallback_message, *raw_lines]).strip()
     lead_payload = {
         "name": getattr(payload, "name", None),
-        "phone": getattr(payload, "phone", None),
+        "phone": normalize_us_phone(getattr(payload, "phone", None)),
         "email": getattr(payload, "email", None),
         "source": source,
         "raw_message": raw_message,
@@ -149,16 +149,17 @@ def _demo_transcript(call_sid: str) -> list[dict[str, str]]:
     ]
 
 
-def _demo_twiml(name: str | None) -> str:
+def _demo_twiml(name: str | None, connect_number: str) -> str:
     safe_name = html.escape((name or "there").strip() or "there")
+    safe_connect_number = html.escape(connect_number)
     return (
         '<?xml version="1.0" encoding="UTF-8"?>'
         "<Response>"
         f"<Say voice=\"alice\">Hi {safe_name}. This is Adrian, the GoFieldwise AI receptionist demo.</Say>"
         "<Pause length=\"1\"/>"
-        "<Say voice=\"alice\">I captured your request and alerted the team. "
-        "GoFieldwise helps home service businesses answer calls, organize leads, and follow up fast.</Say>"
+        "<Say voice=\"alice\">I am connecting you now.</Say>"
         "<Pause length=\"1\"/>"
+        f"<Dial callerId=\"+16029320967\"><Number>{safe_connect_number}</Number></Dial>"
         "<Say voice=\"alice\">Thanks for trying the demo. Someone can follow up from the lead inbox.</Say>"
         "</Response>"
     )
@@ -364,7 +365,9 @@ def demo_call_transcript(call_sid: str):
 def demo_call_twiml(lead_id: int, db: Session = Depends(get_db)):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     name = cast(str | None, lead.name) if lead else None
-    return Response(content=_demo_twiml(name), media_type="application/xml")
+    organization_id = int(cast(int, lead.organization_id)) if lead else 0
+    connect_number = resolve_demo_connect_number(db, organization_id) if organization_id else "+16029320967"
+    return Response(content=_demo_twiml(name, connect_number), media_type="application/xml")
 
 
 @router.post("/demo-call/send-summary/{call_sid}", tags=["intake"])
