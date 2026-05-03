@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8001";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "https://backend-npkg.onrender.com";
 
 export function getApiBase() {
   return API_BASE;
@@ -613,4 +613,15 @@ export async function updateCommProfile({ token, payload }) {
 
 export async function getPublicStatus() {
   return apiFetch("/api/status", { method: "GET" });
+}
+
+export async function startDemoCall({ name, email, phone }) {
+  return apiFetch("/api/demo/call", {
+    method: "POST",
+    body: JSON.stringify({ name, email, phone }),
+  });
+}
+
+export function getDemoTranscriptStreamUrl(callId) {
+  return `${API_BASE}/api/demo/transcript-stream/${encodeURIComponent(callId)}`;
 }
