@@ -10,33 +10,34 @@ jobs:
   deploy-production:
     runs-on: ubuntu-latest
     steps:
-      - name: Validate production deploy hook secrets
+      - name: Check production deploy hook secrets
+        id: hooks
         run: |
           FRONTEND_HOOK="${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK_URL }}"
           BACKEND_HOOK="${{ secrets.RENDER_BACKEND_DEPLOY_HOOK_URL }}"
 
-          if [ -z "$FRONTEND_HOOK" ]; then
-            echo "Missing secret: RENDER_FRONTEND_DEPLOY_HOOK_URL"
-            exit 1
+          if [ -z "$FRONTEND_HOOK" ] || [ -z "$BACKEND_HOOK" ]; then
+            echo "Render deploy hooks are not configured. Skipping manual hook deploy; Render GitHub auto-deploy can still run."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
-          if [[ ! "$FRONTEND_HOOK" =~ ^https://api\.render\.com/deploy/srv-[A-Za-z0-9]+\?key=[A-Za-z0-9]+$ ]]; then
+          if [[ ! "$FRONTEND_HOOK" =~ ^https://api\.render\.com/deploy/srv-[A-Za-z0-9_-]+\?key=[A-Za-z0-9_-]+$ ]]; then
             echo "RENDER_FRONTEND_DEPLOY_HOOK_URL must be a valid Render deploy hook URL"
             exit 1
           fi
 
-          if [ -z "$BACKEND_HOOK" ]; then
-            echo "Missing secret: RENDER_BACKEND_DEPLOY_HOOK_URL"
-            exit 1
-          fi
-
-          if [[ ! "$BACKEND_HOOK" =~ ^https://api\.render\.com/deploy/srv-[A-Za-z0-9]+\?key=[A-Za-z0-9]+$ ]]; then
+          if [[ ! "$BACKEND_HOOK" =~ ^https://api\.render\.com/deploy/srv-[A-Za-z0-9_-]+\?key=[A-Za-z0-9_-]+$ ]]; then
             echo "RENDER_BACKEND_DEPLOY_HOOK_URL must be a valid Render deploy hook URL"
             exit 1
           fi
 
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
       - name: Trigger frontend production deploy
+        if: steps.hooks.outputs.configured == 'true'
         run: curl -fsS -X POST "${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK_URL }}"
 
       - name: Trigger backend production deploy
+        if: steps.hooks.outputs.configured == 'true'
         run: curl -fsS -X POST "${{ secrets.RENDER_BACKEND_DEPLOY_HOOK_URL }}"
