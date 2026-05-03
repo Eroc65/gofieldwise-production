@@ -97,6 +97,21 @@ def test_twilio_stop_opt_out_suppresses_sms_dispatch() -> None:
         assert any(r["status"] == "dismissed" for r in sms_rows)
 
 
+def test_twilio_form_encoded_stop_opt_out_suppresses_sms_dispatch() -> None:
+    headers = _auth_headers()
+    with TestClient(app) as client:
+        me = client.get("/api/auth/me", headers=headers)
+        assert me.status_code == 200
+        org_id = me.json()["organization_id"]
+
+        inbound = client.post(
+            f"/api/integrations/twilio/inbound/{org_id}",
+            data={"From": "+16025550199", "Body": "STOP", "MessageSid": "SMSTOP_FORM"},
+        )
+        assert inbound.status_code == 200
+        assert inbound.json()["action"] == "opted_out"
+
+
 def test_comm_profile_can_be_saved_and_loaded() -> None:
     headers = _auth_headers()
     with TestClient(app) as client:
@@ -121,3 +136,40 @@ def test_comm_profile_can_be_saved_and_loaded() -> None:
         assert body["active"] is True
         assert body["twilio_account_sid"] == "AC123"
         assert body["retell_agent_id"] == "agent_abc"
+
+
+def test_twilio_form_encoded_status_marks_delivery() -> None:
+    db: Session = SessionLocal()
+    try:
+        org = db.query(Organization).filter(Organization.name == _AUTH_ORG).first()
+        assert org is not None
+        reminder = Reminder(
+            message="Delivery status candidate",
+            channel="sms",
+            status="sent",
+            due_at=_utcnow() - timedelta(minutes=5),
+            sent_at=_utcnow(),
+            external_message_id="SMDELIVERED1",
+            organization_id=org.id,
+        )
+        db.add(reminder)
+        db.commit()
+        reminder_id = reminder.id
+    finally:
+        db.close()
+
+    with TestClient(app) as client:
+        status = client.post(
+            "/api/integrations/twilio/status",
+            data={"MessageSid": "SMDELIVERED1", "MessageStatus": "delivered"},
+        )
+        assert status.status_code == 200
+        assert status.json()["matched"] is True
+
+    db = SessionLocal()
+    try:
+        stored = db.query(Reminder).filter(Reminder.id == reminder_id).first()
+        assert stored is not None
+        assert stored.delivered_at is not None
+    finally:
+        db.close()

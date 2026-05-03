@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
 from typing import cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from ..api.auth import get_current_user
@@ -37,6 +38,44 @@ def _ensure_admin(user: User) -> None:
             status_code=403,
             detail=f"Admin login requires email {_REQUIRED_ADMIN_EMAIL}",
         )
+
+
+def _string_value(value: object | None) -> str | None:
+    if value is None:
+        return None
+    return str(value)
+
+
+async def _read_twilio_payload(request: Request) -> dict[str, str | None]:
+    content_type = request.headers.get("content-type", "").lower()
+    if "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
+        form = await request.form()
+        return {key: _string_value(value) for key, value in form.items()}
+
+    try:
+        raw = await request.json()
+    except Exception:
+        raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
+    return {str(key): _string_value(value) for key, value in raw.items()}
+
+
+async def _parse_twilio_inbound(request: Request) -> TwilioInboundMessageIn:
+    data = await _read_twilio_payload(request)
+    return TwilioInboundMessageIn(
+        from_phone=data.get("From") or data.get("from_phone") or "",
+        body=data.get("Body") or data.get("body") or "",
+        message_sid=data.get("MessageSid") or data.get("SmsSid") or data.get("message_sid"),
+    )
+
+
+async def _parse_twilio_status(request: Request) -> TwilioStatusEventIn:
+    data = await _read_twilio_payload(request)
+    return TwilioStatusEventIn(
+        message_sid=data.get("MessageSid") or data.get("message_sid") or "",
+        message_status=data.get("MessageStatus") or data.get("SmsStatus") or data.get("message_status") or "",
+    )
 
 
 @router.get("/status")
@@ -285,11 +324,15 @@ def update_comm_profile(
 
 
 @router.post("/integrations/twilio/inbound/{org_id}")
-def twilio_inbound_message(
+async def twilio_inbound_message(
     org_id: int,
-    payload: TwilioInboundMessageIn,
+    request: Request,
     db: Session = Depends(get_db),
 ):
+    try:
+        payload = await _parse_twilio_inbound(request)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors()) from exc
     normalized_phone = payload.from_phone.strip()
     text = payload.body.strip().upper()
     if text in {"STOP", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"}:
@@ -310,10 +353,14 @@ def twilio_inbound_message(
 
 
 @router.post("/integrations/twilio/status")
-def twilio_message_status(
-    payload: TwilioStatusEventIn,
+async def twilio_message_status(
+    request: Request,
     db: Session = Depends(get_db),
 ):
+    try:
+        payload = await _parse_twilio_status(request)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors()) from exc
     reminder = (
         db.query(Reminder)
         .filter(Reminder.external_message_id == payload.message_sid)
