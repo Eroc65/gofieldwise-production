@@ -61,7 +61,7 @@ export default function SiteNav() {
           font-weight: 600;
         }
         .links :global(a:hover) {
-          color: #93c5fd;
+          color: #ffd9ae;
         }
         @media (max-width: 840px) {
           .site-nav-inner {
