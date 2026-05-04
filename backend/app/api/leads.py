@@ -366,7 +366,7 @@ def intake_demo_call(
         },
     )
     return {
-        "ok": True,
+        "ok": bool(call_started),
         "lead_id": lead_id,
         "call_started": call_started,
         "call_sid": call_sid,

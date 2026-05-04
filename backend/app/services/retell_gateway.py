@@ -76,6 +76,15 @@ def create_demo_phone_call(
         )
         if resp.status_code >= 400:
             return False, None, f"Retell error {resp.status_code}: {resp.text[:300]}"
-        return True, resp.json(), None
+        data = resp.json()
+        call_id = (data or {}).get("call_id")
+        if not call_id:
+            detail = (
+                (data or {}).get("message")
+                or (data or {}).get("error")
+                or "Retell did not return a call_id."
+            )
+            return False, data, str(detail)
+        return True, data, None
     except Exception as exc:  # pragma: no cover
         return False, None, str(exc)
