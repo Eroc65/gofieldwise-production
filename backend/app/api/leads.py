@@ -1,6 +1,7 @@
 import html
 import json
 import re
+import os
 from typing import List, cast
 from datetime import datetime
 
@@ -76,6 +77,52 @@ def _resolve_org_for_intake(db: Session, *, org_id: int | None = None, intake_ke
     if not organization:
         raise HTTPException(status_code=404, detail="Organization not found")
     return organization
+
+
+def _resolve_demo_org(
+    db: Session,
+    *,
+    query_org_id: str | None = None,
+    query_intake_key: str | None = None,
+) -> Organization:
+    # 1) Explicit query routing wins.
+    if query_intake_key:
+        return _resolve_org_for_intake(db, intake_key=query_intake_key.strip())
+
+    if query_org_id:
+        try:
+            parsed_org_id = int(query_org_id)
+        except ValueError:
+            parsed_org_id = None
+        if parsed_org_id is not None:
+            return _resolve_org_for_intake(db, org_id=parsed_org_id)
+
+    # 2) Environment defaults are next best for production stability.
+    env_intake_key = os.getenv("DEFAULT_DEMO_INTAKE_KEY", "").strip()
+    if env_intake_key:
+        return _resolve_org_for_intake(db, intake_key=env_intake_key)
+
+    env_org_id = os.getenv("DEFAULT_DEMO_ORG_ID", "").strip()
+    if env_org_id:
+        try:
+            parsed_env_org_id = int(env_org_id)
+        except ValueError:
+            parsed_env_org_id = None
+        if parsed_env_org_id is not None:
+            return _resolve_org_for_intake(db, org_id=parsed_env_org_id)
+
+    # 3) Last fallback: first org in the database (single-tenant friendly).
+    fallback_org = db.query(Organization).order_by(Organization.id.asc()).first()
+    if fallback_org:
+        return fallback_org
+
+    # 4) Bootstrap fallback for fresh deployments: create a demo org automatically.
+    org_name = os.getenv("DEFAULT_DEMO_ORG_NAME", "GoFieldwise Demo").strip() or "GoFieldwise Demo"
+    bootstrap_org = Organization(name=org_name)
+    db.add(bootstrap_org)
+    db.commit()
+    db.refresh(bootstrap_org)
+    return bootstrap_org
 
 
 def _create_intake_lead(db: Session, payload: LeadIntake, org_id: int):
@@ -349,9 +396,13 @@ def intake_demo_call_by_key(
 
 @router.post("/demo/call", status_code=status.HTTP_201_CREATED, tags=["demo"])
 def start_demo_call(payload: DemoCallRequest, request: Request, db: Session = Depends(get_db)):
-    org_id = int(request.query_params.get("org_id", "1"))
+    org = _resolve_demo_org(
+        db,
+        query_org_id=request.query_params.get("org_id"),
+        query_intake_key=request.query_params.get("intake_key"),
+    )
     compat_payload = DemoCallIntake(name=payload.name, email=payload.email, phone=payload.phone)
-    return intake_demo_call(org_id, compat_payload, request, db)
+    return intake_demo_call(int(cast(int, org.id)), compat_payload, request, db)
 
 
 @router.post(
