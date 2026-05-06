@@ -263,7 +263,11 @@ def _shopify_search_customer(client: httpx.Client, *, base_url: str, email: str 
     resp = client.get(f"{base_url}/customers/search.json", params={"query": query})
     if resp.status_code >= 400:
         return None
-    customers = resp.json().get("customers", [])
+    try:
+        payload = resp.json()
+    except ValueError:
+        return None
+    customers = payload.get("customers", []) if isinstance(payload, dict) else []
     return customers[0] if customers else None
 
 
@@ -311,7 +315,11 @@ def sync_to_shopify(normalized: dict[str, Any], *, airtable_record_id: str | Non
             else:
                 resp = client.post(f"{base_url}/customers.json", json={"customer": customer_payload})
             if resp.status_code < 400:
-                customer = resp.json().get("customer") or {}
+                try:
+                    payload = resp.json()
+                except ValueError:
+                    return False, None, "Shopify returned a non-JSON success response"
+                customer = payload.get("customer") or {} if isinstance(payload, dict) else {}
                 customer_id = customer.get("id")
                 return True, str(customer_id) if customer_id else None, None
             last_error = f"Shopify error {resp.status_code}"
@@ -332,7 +340,7 @@ def healthcheck() -> dict[str, Any]:
         try:
             with httpx.Client(headers=_airtable_headers(), timeout=_HTTP_TIMEOUT) as client:
                 resp = client.get(f"https://api.airtable.com/v0/{_airtable_base_id()}/{_airtable_table_name()}", params={"maxRecords": 1})
-                airtable_reachable = resp.status_code < 400
+                airtable_reachable = 200 <= resp.status_code < 300
                 if not airtable_reachable:
                     notes.append(f"Airtable returned {resp.status_code}")
         except Exception as exc:
@@ -343,7 +351,7 @@ def healthcheck() -> dict[str, Any]:
             with httpx.Client(headers=_shopify_headers(), timeout=_HTTP_TIMEOUT) as client:
                 for base_url in _shopify_base_urls():
                     resp = client.get(f"{base_url}/shop.json")
-                    if resp.status_code < 400:
+                    if 200 <= resp.status_code < 300:
                         shopify_reachable = True
                         break
                     notes.append(f"Shopify returned {resp.status_code} for shop endpoint")
