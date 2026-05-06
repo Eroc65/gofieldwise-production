@@ -181,7 +181,10 @@ def _fetch_airtable_field_names(client: httpx.Client) -> list[str]:
             return []
         data = resp.json()
         for table in data.get("tables", []):
-            if str(table.get("name", "")).strip().lower() == table_name.strip().lower():
+            table_id = str(table.get("id", "")).strip().lower()
+            table_label = str(table.get("name", "")).strip().lower()
+            target = table_name.strip().lower()
+            if table_id == target or table_label == target:
                 return [str(field.get("name", "")).strip() for field in table.get("fields", []) if field.get("name")]
     except Exception:
         return []
@@ -240,7 +243,6 @@ def push_to_airtable(normalized: dict[str, Any]) -> tuple[bool, str | None, str 
                 "Email": normalized.get("email"),
                 "Lead Source": normalized.get("source") or "landbot",
                 "Status": "New",
-                "Product Interest": normalized.get("product"),
             }
             fields = {key: value for key, value in fields.items() if value not in (None, "")}
 
