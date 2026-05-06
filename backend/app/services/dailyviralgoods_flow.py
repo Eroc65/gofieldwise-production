@@ -45,6 +45,16 @@ def _shopify_access_token() -> str:
     return _env("SHOPIFY_ADMIN_ACCESS_TOKEN", "SHOPIFY_API_TOKEN", "Shopify admin access token")
 
 
+def _zapier_webhook_url() -> str:
+    candidate = _env("ZAPIER_WEBHOOK_URL", "ZAPIER_DAILYVIRALGOODS_WEBHOOK_URL")
+    if candidate:
+        return candidate
+    fallback = _env("Zapier_API_KEY")
+    if fallback.lower().startswith("http://") or fallback.lower().startswith("https://"):
+        return fallback
+    return ""
+
+
 def _shopify_headers() -> dict[str, str]:
     token = _shopify_access_token()
     if not token:
@@ -332,12 +342,49 @@ def sync_to_shopify(normalized: dict[str, Any], *, airtable_record_id: str | Non
         return False, None, last_error
 
 
+def push_to_zapier(
+    normalized: dict[str, Any],
+    *,
+    airtable_record_id: str | None = None,
+    shopify_customer_id: str | None = None,
+) -> tuple[bool, str | None]:
+    webhook_url = _zapier_webhook_url()
+    if not webhook_url:
+        return False, "Zapier webhook URL is not configured"
+
+    payload = {
+        "source": normalized.get("source") or "landbot",
+        "full_name": normalized.get("full_name"),
+        "first_name": normalized.get("first_name"),
+        "last_name": normalized.get("last_name"),
+        "email": normalized.get("email"),
+        "phone": normalized.get("phone"),
+        "product": normalized.get("product"),
+        "message": normalized.get("message"),
+        "session_id": normalized.get("session_id"),
+        "airtable_record_id": airtable_record_id,
+        "shopify_customer_id": shopify_customer_id,
+        "raw_payload": normalized.get("raw_payload"),
+    }
+    payload = {key: value for key, value in payload.items() if value not in (None, "")}
+
+    try:
+        resp = httpx.post(webhook_url, json=payload, timeout=_HTTP_TIMEOUT)
+        if 200 <= resp.status_code < 300:
+            return True, None
+        return False, f"Zapier error {resp.status_code}"
+    except Exception as exc:
+        return False, type(exc).__name__
+
+
 def healthcheck() -> dict[str, Any]:
     landbot_configured = bool(_landbot_token())
     airtable_configured = bool(_airtable_token() and _airtable_base_id() and _airtable_table_name())
     shopify_configured = bool(_shopify_candidate_domains() and _shopify_access_token())
+    zapier_configured = bool(_zapier_webhook_url())
     airtable_reachable = False
     shopify_reachable = False
+    zapier_reachable = False
     notes: list[str] = []
 
     if airtable_configured:
@@ -362,14 +409,19 @@ def healthcheck() -> dict[str, Any]:
         except Exception as exc:
             notes.append(f"Shopify connectivity issue: {type(exc).__name__}")
 
-    ok = landbot_configured and airtable_configured and shopify_configured and airtable_reachable and shopify_reachable
+    if zapier_configured:
+        zapier_reachable = True
+
+    ok = landbot_configured and airtable_configured and airtable_reachable
     return {
         "ok": ok,
         "landbot_configured": landbot_configured,
         "airtable_configured": airtable_configured,
         "shopify_configured": shopify_configured,
+        "zapier_configured": zapier_configured,
         "airtable_reachable": airtable_reachable,
         "shopify_reachable": shopify_reachable,
+        "zapier_reachable": zapier_reachable,
         "airtable_table": _airtable_table_name() or None,
         "shopify_store_domain": _shopify_candidate_domains()[0] if _shopify_candidate_domains() else None,
         "notes": notes,

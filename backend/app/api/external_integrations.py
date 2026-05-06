@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from ..schemas.external_integrations import DailyViralGoodsHealthOut, LandbotDailyViralGoodsOut
 from ..services.dailyviralgoods_flow import healthcheck, normalize_landbot_payload, push_to_airtable, sync_to_shopify
+from ..services.dailyviralgoods_flow import push_to_zapier
 
 
 router = APIRouter()
@@ -51,20 +52,27 @@ async def landbot_dailyviralgoods_webhook(request: Request):
             ok=True,
             airtable_synced=False,
             shopify_synced=False,
+            zapier_triggered=False,
             summary="Dry run completed. Payload normalized successfully.",
             error=None,
         )
 
     airtable_ok, airtable_record_id, airtable_error = push_to_airtable(normalized)
     shopify_ok, shopify_customer_id, shopify_error = sync_to_shopify(normalized, airtable_record_id=airtable_record_id)
+    zapier_ok, zapier_error = push_to_zapier(
+        normalized,
+        airtable_record_id=airtable_record_id,
+        shopify_customer_id=shopify_customer_id,
+    )
 
-    if not airtable_ok and not shopify_ok:
+    if not airtable_ok and not shopify_ok and not zapier_ok:
         return LandbotDailyViralGoodsOut(
             ok=False,
             airtable_synced=False,
             shopify_synced=False,
+            zapier_triggered=False,
             summary="Landbot payload received, but Airtable and Shopify sync both failed.",
-            error="; ".join(part for part in [airtable_error, shopify_error] if part) or "Unknown sync failure",
+            error="; ".join(part for part in [airtable_error, shopify_error, zapier_error] if part) or "Unknown sync failure",
         )
 
     summary_parts = []
@@ -72,17 +80,22 @@ async def landbot_dailyviralgoods_webhook(request: Request):
         summary_parts.append("Airtable synced")
     if shopify_ok:
         summary_parts.append("Shopify synced")
+    if zapier_ok:
+        summary_parts.append("Zapier triggered")
     if not shopify_ok and shopify_error:
         summary_parts.append("Shopify skipped or failed")
     if not airtable_ok and airtable_error:
         summary_parts.append("Airtable failed")
+    if not zapier_ok and zapier_error:
+        summary_parts.append("Zapier skipped or failed")
 
     return LandbotDailyViralGoodsOut(
-        ok=airtable_ok or shopify_ok,
+        ok=airtable_ok or shopify_ok or zapier_ok,
         airtable_synced=airtable_ok,
         shopify_synced=shopify_ok,
+        zapier_triggered=zapier_ok,
         airtable_record_id=airtable_record_id,
         shopify_customer_id=shopify_customer_id,
         summary=". ".join(summary_parts) + ".",
-        error="; ".join(part for part in [airtable_error, shopify_error] if part) or None,
+        error="; ".join(part for part in [airtable_error, shopify_error, zapier_error] if part) or None,
     )
