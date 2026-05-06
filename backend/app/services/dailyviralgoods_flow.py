@@ -201,11 +201,14 @@ def _airtable_field_map(normalized: dict[str, Any], available_fields: list[str])
         "phone": [normalized.get("phone")],
         "mobile": [normalized.get("phone")],
         "product": [normalized.get("product")],
+        "product interest": [normalized.get("product")],
         "offer": [normalized.get("product")],
         "message": [normalized.get("message")],
         "notes": [normalized.get("message")],
         "source": [normalized.get("source")],
+        "lead source": [normalized.get("source")],
         "channel": [normalized.get("source")],
+        "status": ["New"],
         "session id": [normalized.get("session_id")],
         "landbot session id": [normalized.get("session_id")],
         "marketing opt in": [normalized.get("marketing_opt_in")],
@@ -235,10 +238,9 @@ def push_to_airtable(normalized: dict[str, Any]) -> tuple[bool, str | None, str 
             fields = {
                 "Name": normalized.get("full_name") or "Landbot Lead",
                 "Email": normalized.get("email"),
-                "Phone": normalized.get("phone"),
-                "Product": normalized.get("product"),
-                "Message": normalized.get("message"),
-                "Source": normalized.get("source"),
+                "Lead Source": normalized.get("source") or "landbot",
+                "Status": "New",
+                "Product Interest": normalized.get("product"),
             }
             fields = {key: value for key, value in fields.items() if value not in (None, "")}
 
