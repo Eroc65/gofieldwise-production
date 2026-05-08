@@ -38,8 +38,7 @@ def get_dailyviralgoods_health():
     return healthcheck()
 
 
-@router.post("/integrations/landbot/dailyviralgoods/webhook", response_model=LandbotDailyViralGoodsOut)
-async def landbot_dailyviralgoods_webhook(request: Request):
+async def _handle_dailyviralgoods_lead_capture(request: Request) -> LandbotDailyViralGoodsOut:
     _require_landbot_secret(request)
     body = await request.json()
     if not isinstance(body, dict):
@@ -99,3 +98,13 @@ async def landbot_dailyviralgoods_webhook(request: Request):
         summary=". ".join(summary_parts) + ".",
         error="; ".join(part for part in [airtable_error, shopify_error, zapier_error] if part) or None,
     )
+
+
+@router.post("/integrations/dailyviralgoods/lead-capture", response_model=LandbotDailyViralGoodsOut)
+async def dailyviralgoods_lead_capture(request: Request):
+    return await _handle_dailyviralgoods_lead_capture(request)
+
+
+@router.post("/integrations/landbot/dailyviralgoods/webhook", response_model=LandbotDailyViralGoodsOut)
+async def landbot_dailyviralgoods_webhook(request: Request):
+    return await _handle_dailyviralgoods_lead_capture(request)

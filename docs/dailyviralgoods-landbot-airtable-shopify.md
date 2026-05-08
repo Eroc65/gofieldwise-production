@@ -11,8 +11,16 @@
 
 - Health check:
   - `/api/integrations/dailyviralgoods/health`
+- Provider-neutral lead capture:
+  - `/api/integrations/dailyviralgoods/lead-capture`
 - Landbot webhook:
   - `/api/integrations/landbot/dailyviralgoods/webhook`
+
+## Recommended production flow
+
+- `Tidio -> Zapier -> /api/integrations/dailyviralgoods/lead-capture -> Airtable -> Shopify`
+
+Use the provider-neutral endpoint for any future Tidio, Zapier, or other chat automation handoff.
 
 ## Optional webhook protection
 

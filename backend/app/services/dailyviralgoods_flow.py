@@ -10,6 +10,7 @@ import httpx
 
 _HTTP_TIMEOUT = 20.0
 _SHOPIFY_API_VERSION = "2025-10"
+_shopify_runtime_token: str | None = None
 
 
 def _env(*names: str) -> str:
@@ -45,6 +46,14 @@ def _shopify_access_token() -> str:
     return _env("SHOPIFY_ADMIN_ACCESS_TOKEN", "SHOPIFY_API_TOKEN", "Shopify admin access token")
 
 
+def _shopify_client_id() -> str:
+    return _env("SHOPIFY_CLIENT_ID", "SHOPIFY_API_KEY", "client_id")
+
+
+def _shopify_client_secret() -> str:
+    return _env("SHOPIFY_CLIENT_SECRET", "client_secret")
+
+
 def _zapier_webhook_url() -> str:
     candidate = _env("ZAPIER_WEBHOOK_URL", "ZAPIER_DAILYVIRALGOODS_WEBHOOK_URL")
     if candidate:
@@ -56,7 +65,7 @@ def _zapier_webhook_url() -> str:
 
 
 def _shopify_headers() -> dict[str, str]:
-    token = _shopify_access_token()
+    token = _shopify_runtime_token or _shopify_access_token()
     if not token:
         return {}
     return {"X-Shopify-Access-Token": token, "Content-Type": "application/json"}
@@ -79,6 +88,57 @@ def _shopify_candidate_domains() -> list[str]:
 
 def _shopify_base_urls() -> list[str]:
     return [f"https://{domain}/admin/api/{_SHOPIFY_API_VERSION}" for domain in _shopify_candidate_domains()]
+
+
+def _fetch_shopify_runtime_token() -> tuple[str | None, str | None]:
+    client_id = _shopify_client_id()
+    client_secret = _shopify_client_secret()
+    domain = _shopify_store_domain()
+    if not client_id or not client_secret or not domain:
+        return None, "Shopify client credentials are incomplete"
+
+    try:
+        resp = httpx.post(
+            f"https://{domain}/admin/oauth/access_token",
+            data={
+                "grant_type": "client_credentials",
+                "client_id": client_id,
+                "client_secret": client_secret,
+            },
+            timeout=_HTTP_TIMEOUT,
+        )
+    except Exception as exc:
+        return None, f"Shopify token exchange failed: {type(exc).__name__}"
+
+    if resp.status_code >= 400:
+        return None, f"Shopify token exchange error {resp.status_code}"
+
+    try:
+        payload = resp.json()
+    except ValueError:
+        return None, "Shopify token exchange returned non-JSON response"
+
+    token = str(payload.get("access_token", "")).strip()
+    if not token:
+        return None, "Shopify token exchange returned no access token"
+    return token, None
+
+
+def _resolve_shopify_headers() -> tuple[dict[str, str], str | None]:
+    global _shopify_runtime_token
+
+    if _shopify_client_id() and _shopify_client_secret():
+        runtime_token, error = _fetch_shopify_runtime_token()
+        if runtime_token:
+            _shopify_runtime_token = runtime_token
+            return {"X-Shopify-Access-Token": runtime_token, "Content-Type": "application/json"}, None
+        return {}, error
+
+    static_token = _shopify_access_token()
+    if static_token:
+        return {"X-Shopify-Access-Token": static_token, "Content-Type": "application/json"}, None
+
+    return {}, "Shopify configuration is incomplete"
 
 
 def _normalize_phone(value: str | None) -> str | None:
@@ -286,12 +346,12 @@ def _shopify_search_customer(client: httpx.Client, *, base_url: str, email: str 
 
 
 def sync_to_shopify(normalized: dict[str, Any], *, airtable_record_id: str | None = None) -> tuple[bool, str | None, str | None]:
-    token = _shopify_access_token()
     email = normalized.get("email")
     phone = normalized.get("phone")
     base_urls = _shopify_base_urls()
-    if not base_urls or not token:
-        return False, None, "Shopify configuration is incomplete"
+    headers, auth_error = _resolve_shopify_headers()
+    if not base_urls or not headers:
+        return False, None, auth_error or "Shopify configuration is incomplete"
     if not email and not phone:
         return False, None, "Shopify sync requires email or phone"
 
@@ -316,7 +376,6 @@ def sync_to_shopify(normalized: dict[str, Any], *, airtable_record_id: str | Non
     }
     customer_payload = {key: value for key, value in customer_payload.items() if value not in (None, "")}
 
-    headers = _shopify_headers()
     with httpx.Client(headers=headers, timeout=_HTTP_TIMEOUT) as client:
         last_error = "Shopify sync failed"
         for base_url in base_urls:
@@ -380,7 +439,10 @@ def push_to_zapier(
 def healthcheck() -> dict[str, Any]:
     landbot_configured = bool(_landbot_token())
     airtable_configured = bool(_airtable_token() and _airtable_base_id() and _airtable_table_name())
-    shopify_configured = bool(_shopify_candidate_domains() and _shopify_access_token())
+    shopify_configured = bool(
+        _shopify_candidate_domains()
+        and (_shopify_access_token() or (_shopify_client_id() and _shopify_client_secret()))
+    )
     zapier_configured = bool(_zapier_webhook_url())
     airtable_reachable = False
     shopify_reachable = False
@@ -399,13 +461,17 @@ def healthcheck() -> dict[str, Any]:
 
     if shopify_configured:
         try:
-            with httpx.Client(headers=_shopify_headers(), timeout=_HTTP_TIMEOUT) as client:
-                for base_url in _shopify_base_urls():
-                    resp = client.get(f"{base_url}/shop.json")
-                    if 200 <= resp.status_code < 300:
-                        shopify_reachable = True
-                        break
-                    notes.append(f"Shopify returned {resp.status_code} for shop endpoint")
+            headers, auth_error = _resolve_shopify_headers()
+            if not headers:
+                notes.append(auth_error or "Shopify configuration is incomplete")
+            else:
+                with httpx.Client(headers=headers, timeout=_HTTP_TIMEOUT) as client:
+                    for base_url in _shopify_base_urls():
+                        resp = client.get(f"{base_url}/shop.json")
+                        if 200 <= resp.status_code < 300:
+                            shopify_reachable = True
+                            break
+                        notes.append(f"Shopify returned {resp.status_code} for shop endpoint")
         except Exception as exc:
             notes.append(f"Shopify connectivity issue: {type(exc).__name__}")
 
