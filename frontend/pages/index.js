@@ -7,6 +7,7 @@ import { getDemoTranscriptStreamUrl, startDemoCall } from "../lib/api";
 const stats = [
   { value: "$$$", label: "Missed calls quietly cost contractors thousands in lost revenue." },
   { value: "$200", label: "Per month. Not a $2,000 enterprise platform." },
+  { value: "<60 sec", label: "Designed to respond to inbound calls and lead requests before the customer moves on." },
   { value: "24/7", label: "Never calls in sick. Never quits on a busy Monday." },
 ];
 
@@ -46,18 +47,21 @@ const testimonials = [
       "GoFieldwise replaced the part of my office manager role that kept eating nights and weekends: calls, scheduling, invoices, and review asks.",
     name: "Dave K.",
     role: "Plumbing owner, Phoenix",
+    metric: "After-hours intake",
   },
   {
     quote:
       "I thought customers would know they were talking to AI. They did not. They just cared that someone answered and booked the job fast.",
     name: "Marcus T.",
     role: "HVAC operator, Atlanta",
+    metric: "Live call demo",
   },
   {
     quote:
       "I can grow past six vans without adding a dispatcher for every new headache. The system keeps the day moving.",
     name: "Jessica R.",
     role: "Electrical contractor, Dallas",
+    metric: "Dispatch workflow",
   },
 ];
 
@@ -144,13 +148,13 @@ const productFeatures = [
 ];
 
 const comparisonRows = [
-  ["Customer intake", "Manually logged by staff", "Adrian captures it automatically"],
-  ["Job dispatch", "Drag-and-drop, you decide", "AI-assisted assignment and routing"],
-  ["Customer follow-up", "Templates someone has to send", "Sent automatically at the right moment"],
-  ["Invoicing", "Requires manual action", "Triggered when the job closes"],
-  ["Admin overhead", "Still needs someone to run it", "Built to operate the front office"],
-  ["Pricing", "$500 to $2,000+ per month", "$200/month core plan"],
-  ["Team growth", "Per-user or per-tech fees are common", "No per-tech pricing in the core offer"],
+  ["Customer intake", "Answered only when someone is free", "Forms and workflows still need an operator", "Adrian captures it automatically"],
+  ["Job dispatch", "Owner or dispatcher coordinates manually", "Drag-and-drop, you decide", "AI-assisted assignment and routing"],
+  ["Customer follow-up", "Depends on staff memory", "Templates someone has to send", "Sent automatically at the right moment"],
+  ["Invoicing", "Handled after the job or after hours", "Requires manual action", "Triggered when the job closes"],
+  ["Admin overhead", "Payroll, training, and coverage gaps", "Still needs someone to run it", "Built to operate the front office"],
+  ["Pricing", "Often $3,000+ per month for full-time help", "$500 to $2,000+ per month", "$200/month core plan"],
+  ["Team growth", "More calls usually means more staff", "Per-user or per-tech fees are common", "No per-tech pricing in the core offer"],
 ];
 
 const pricingBullets = [
@@ -161,6 +165,51 @@ const pricingBullets = [
   "Real-time job board and owner dashboard",
   "Unlimited technicians in the core plan",
   "Unlimited jobs in the core plan",
+];
+
+const pricingMath = [
+  ["Average missed job", "$400"],
+  ["One recovered job", "Can cover 2 months"],
+  ["Core plan", "$200/month"],
+];
+
+const integrations = [
+  "Housecall Pro",
+  "ServiceTitan",
+  "Jobber",
+  "Google Calendar",
+  "Google Business Profile",
+  "Zapier-ready workflows",
+];
+
+const tradePages = [
+  ["Plumbers", "/plumbing", "Emergency calls, leaks, water heaters, and after-hours intake."],
+  ["HVAC", "/hvac", "Tune-ups, no-cool calls, replacements, and seasonal scheduling."],
+  ["Electricians", "/electrical", "Panel issues, safety requests, estimates, and dispatch notes."],
+  ["Landscapers", "/landscaping", "Recurring maintenance, quotes, follow-ups, and route-ready work."],
+];
+
+const faqItems = [
+  [
+    "What is the live demo?",
+    "Adrian calls your phone, handles a sample service call, shows the transcript on this page, and creates dispatch notes so you can hear the experience before signing up.",
+  ],
+  [
+    "How does the AI sound on calls?",
+    "Adrian is designed to sound like a calm front-office assistant: clear, practical, and focused on capturing the job details a dispatcher needs.",
+  ],
+  [
+    "Do customers know it is AI?",
+    "You decide how transparent the greeting should be. The important part is that customers get answered quickly and their service details are captured accurately.",
+  ],
+  [
+    "What happens during setup?",
+    "We collect your services, service area, business hours, preferred booking rules, phone workflow, and follow-up preferences, then test the intake flow before it goes live.",
+  ],
+  [
+    "Does this replace Housecall Pro, Jobber, or ServiceTitan?",
+    "Not always. GoFieldwise can support the front-office layer and connect with your existing tools where possible instead of forcing a full system replacement.",
+  ],
 ];
 
 function normalizeLines(transcript) {
@@ -270,15 +319,15 @@ export default function Home() {
                 owners can focus on the work that pays.
               </p>
               <div className="actions">
-                <a className="primary-action" href="#live-demo">Have Adrian call me</a>
+                <a className="primary-action" href="#live-demo">Hear Adrian answer a real call</a>
                 <a className="secondary-action" href="#sandbox">Explore the product</a>
               </div>
-              <small>Demo is instant. Core plan starts at $200/month.</small>
+              <small>Live demo = Adrian calls your phone, answers like a service dispatcher, and shows the transcript.</small>
             </div>
 
             <aside className="hero-card" aria-label="GoFieldwise dashboard preview">
               <div className="card-top">
-                <span>gofieldwise · Dashboard</span>
+                <span>gofieldwise / Dashboard</span>
                 <b>Live</b>
               </div>
               <div className="mini-stats">
@@ -289,10 +338,15 @@ export default function Home() {
               <div className="job-list">
                 {dashboardJobs.map((job) => (
                   <div className={`job-row ${job.tone}`} key={`${job.customer}-${job.status}`}>
-                    <span>{job.customer} — {job.job}</span>
+                    <span>{job.customer} - {job.job}</span>
                     <b>{job.status}</b>
                   </div>
                 ))}
+              </div>
+              <div className="call-preview">
+                <span>AI call preview</span>
+                <p><b>Adrian:</b> "What service do you need, what address, and how urgent is it?"</p>
+                <p><b>Owner alert:</b> New leak call captured with address, urgency, and preferred arrival window.</p>
               </div>
               <p>This is the product shape: calls become jobs, jobs become dispatch, dispatch becomes invoices.</p>
             </aside>
@@ -311,7 +365,7 @@ export default function Home() {
         <section id="sandbox" className="product-demo">
           <div className="section-heading">
             <p className="eyebrow">Try it right now</p>
-            <h2>The full product. No signup. No card.</h2>
+            <h2>See how the product handles a real service call.</h2>
             <p>
               Walk through a real Monday morning: Adrian answers the call, books the job, dispatches the tech, and
               sends the invoice. This is what day one should feel like.
@@ -362,7 +416,7 @@ export default function Home() {
                 <span>Adrian calls this number from (602) 932-0967.</span>
                 <input value={form.phone} onChange={(event) => updateField("phone", event.target.value)} inputMode="tel" required />
               </label>
-              <button type="submit" disabled={busy}>{busy ? "Starting call..." : "Have Adrian call me"}</button>
+              <button type="submit" disabled={busy}>{busy ? "Starting call..." : "Hear the live AI call"}</button>
               <a className="call-link" href="tel:+16029320967">Call instead: (602) 932-0967</a>
               {notice ? <p className="notice">{notice}</p> : null}
               {error ? <p className="form-error">{error}</p> : null}
@@ -423,7 +477,7 @@ export default function Home() {
           </div>
           <div className="story-grid">
             <div className="story-card">
-              <span>Sarah's story · Plumbing</span>
+              <span>Sarah's story / Plumbing</span>
               <h3>Before GoFieldwise, Monday started with missed calls and handwritten notes.</h3>
               <p>Now the system answers, books, routes, bills, and follows up before Sarah opens the laptop.</p>
             </div>
@@ -442,12 +496,28 @@ export default function Home() {
         <section className="testimonials">
           {testimonials.map((item) => (
             <article key={item.name}>
-              <strong>★★★★★</strong>
+              <strong>{item.metric}</strong>
               <p>"{item.quote}"</p>
               <span>{item.name}</span>
               <small>{item.role}</small>
             </article>
           ))}
+        </section>
+
+        <section className="integrations-section">
+          <div className="section-heading center">
+            <p className="eyebrow">Works with your stack</p>
+            <h2>Keep the tools you already use.</h2>
+            <p>
+              GoFieldwise is built to support the front-office workflow around your existing calendar, CRM, field
+              service software, and local visibility tools.
+            </p>
+          </div>
+          <div className="integration-grid">
+            {integrations.map((item) => (
+              <article key={item}>{item}</article>
+            ))}
+          </div>
         </section>
 
         <section className="automation-section">
@@ -551,12 +621,14 @@ export default function Home() {
           <div className="comparison-table">
             <div className="table-head">
               <span>Capability</span>
+              <span>Hiring office help</span>
               <span>Traditional tools</span>
               <span>GoFieldwise</span>
             </div>
-            {comparisonRows.map(([capability, traditional, fieldwise]) => (
+            {comparisonRows.map(([capability, staff, traditional, fieldwise]) => (
               <div className="table-row" key={capability}>
                 <b>{capability}</b>
+                <span>{staff}</span>
                 <span>{traditional}</span>
                 <strong>{fieldwise}</strong>
               </div>
@@ -575,6 +647,15 @@ export default function Home() {
             <span>Core Operations</span>
             <strong>$200 <small>/month</small></strong>
             <p>Less than a week of office-manager payroll.</p>
+            <div className="pricing-math">
+              {pricingMath.map(([label, value]) => (
+                <article key={label}>
+                  <b>{value}</b>
+                  <span>{label}</span>
+                </article>
+              ))}
+            </div>
+            <p className="roi-note">If one missed job is worth about $400, the core plan can pay for itself fast when it helps recover even one call.</p>
             <ul>
               {pricingBullets.map((item) => (
                 <li key={item}>{item}</li>
@@ -587,6 +668,40 @@ export default function Home() {
           </div>
         </section>
 
+        <section className="trade-pages-section">
+          <div className="section-heading">
+            <p className="eyebrow">Built by trade</p>
+            <h2>Industry-specific pages for better fit.</h2>
+            <p>
+              Home service buyers respond faster when the page speaks their trade. Start with the closest fit and see
+              how GoFieldwise handles calls, intake, and follow-up in that workflow.
+            </p>
+          </div>
+          <div className="trade-grid">
+            {tradePages.map(([name, href, body]) => (
+              <Link href={href} key={name}>
+                <strong>{name}</strong>
+                <span>{body}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        <section className="faq-section">
+          <div className="section-heading center">
+            <p className="eyebrow">Questions owners ask first</p>
+            <h2>Know what happens before you try it.</h2>
+          </div>
+          <div className="faq-list">
+            {faqItems.map(([question, answer]) => (
+              <article key={question}>
+                <h3>{question}</h3>
+                <p>{answer}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
         <section className="final-cta">
           <h2>Stop wearing six hats. Let Adrian handle the office.</h2>
           <p>
@@ -594,7 +709,7 @@ export default function Home() {
             play dispatcher from the truck.
           </p>
           <div className="actions">
-            <a className="primary-action" href="#live-demo">Have Adrian call me</a>
+            <a className="primary-action" href="#live-demo">Hear Adrian answer a real call</a>
             <a className="secondary-action light" href="mailto:support@gofieldwise.com">Contact support@gofieldwise.com</a>
           </div>
         </section>
@@ -617,6 +732,11 @@ export default function Home() {
             </nav>
           </footer>
         </section>
+
+        <div className="mobile-sticky-cta">
+          <a href="#live-demo">Try live AI call</a>
+          <a href="tel:+16029320967">Call demo number</a>
+        </div>
       </main>
 
       <style jsx>{`
@@ -638,6 +758,7 @@ export default function Home() {
         .live-demo,
         .story-section,
         .testimonials,
+        .integrations-section,
         .automation-section,
         .stages-section,
         .platform-section,
@@ -645,6 +766,8 @@ export default function Home() {
         .features-section,
         .comparison-section,
         .pricing-section,
+        .trade-pages-section,
+        .faq-section,
         .final-cta,
         .origin-section {
           width: 100%;
@@ -835,6 +958,30 @@ export default function Home() {
           gap: 8px;
         }
 
+        .call-preview {
+          display: grid;
+          gap: 8px;
+          margin-top: 12px;
+          border: 1px solid #edc17c;
+          border-radius: 8px;
+          background: #fff4de;
+          padding: 12px;
+        }
+
+        .call-preview span {
+          color: var(--accent-dark);
+          font-size: 0.78rem;
+          font-weight: 900;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+
+        .call-preview p {
+          margin: 0;
+          color: var(--navy);
+          line-height: 1.45;
+        }
+
         .job-row {
           display: flex;
           justify-content: space-between;
@@ -857,7 +1004,7 @@ export default function Home() {
 
         .stat-strip {
           display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
+          grid-template-columns: repeat(4, minmax(0, 1fr));
           gap: 12px;
           padding: 20px;
           margin-top: -26px;
@@ -887,6 +1034,7 @@ export default function Home() {
         .product-demo,
         .live-demo,
         .story-section,
+        .integrations-section,
         .automation-section,
         .stages-section,
         .platform-section,
@@ -894,6 +1042,8 @@ export default function Home() {
         .features-section,
         .comparison-section,
         .pricing-section,
+        .trade-pages-section,
+        .faq-section,
         .final-cta,
         .origin-section {
           padding: 64px 20px;
@@ -1177,6 +1327,27 @@ export default function Home() {
           color: #607a84;
         }
 
+        .integration-grid {
+          display: grid;
+          grid-template-columns: repeat(6, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .integration-grid article {
+          min-height: 70px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          background: var(--panel);
+          box-shadow: var(--shadow);
+          color: var(--navy);
+          font-weight: 900;
+          text-align: center;
+          padding: 12px;
+        }
+
         .automation-section,
         .features-section,
         .pricing-section {
@@ -1284,7 +1455,7 @@ export default function Home() {
         .table-head,
         .table-row {
           display: grid;
-          grid-template-columns: 0.85fr 1.1fr 1.1fr;
+          grid-template-columns: 0.78fr 1fr 1fr 1fr;
           gap: 0;
         }
 
@@ -1330,6 +1501,39 @@ export default function Home() {
           font-size: 1rem;
         }
 
+        .pricing-math {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 10px;
+          max-width: 680px;
+          margin: 18px auto 0;
+        }
+
+        .pricing-math article {
+          border: 1px solid #edc17c;
+          border-radius: 8px;
+          background: #fff4de;
+          padding: 14px;
+        }
+
+        .pricing-math b {
+          display: block;
+          color: var(--navy);
+          font-size: 1.35rem;
+        }
+
+        .pricing-math span,
+        .roi-note {
+          color: #4e6a74;
+          font-weight: 800;
+        }
+
+        .roi-note {
+          max-width: 640px;
+          margin: 14px auto 0;
+          line-height: 1.5;
+        }
+
         .price-card ul {
           max-width: 560px;
           margin: 22px auto 0;
@@ -1353,6 +1557,46 @@ export default function Home() {
         .price-card .actions,
         .final-cta .actions {
           justify-content: center;
+        }
+
+        .trade-grid,
+        .faq-list {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 12px;
+        }
+
+        .trade-grid a,
+        .faq-list article {
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          background: var(--panel);
+          box-shadow: var(--shadow);
+          padding: 18px;
+          text-decoration: none;
+        }
+
+        .trade-grid strong,
+        .faq-list h3 {
+          display: block;
+          margin: 0 0 8px;
+          color: var(--navy);
+          font-size: 1.08rem;
+        }
+
+        .trade-grid span,
+        .faq-list p {
+          margin: 0;
+          color: #35505b;
+          line-height: 1.55;
+        }
+
+        .faq-list {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .mobile-sticky-cta {
+          display: none;
         }
 
         .final-cta h2 {
@@ -1414,7 +1658,10 @@ export default function Home() {
 
           .three-grid,
           .testimonials,
-          .sandbox-board {
+          .sandbox-board,
+          .integration-grid,
+          .trade-grid,
+          .faq-list {
             grid-template-columns: 1fr;
           }
         }
@@ -1427,6 +1674,7 @@ export default function Home() {
           .product-demo,
           .live-demo,
           .story-section,
+          .integrations-section,
           .automation-section,
           .stages-section,
           .platform-section,
@@ -1434,6 +1682,8 @@ export default function Home() {
           .features-section,
           .comparison-section,
           .pricing-section,
+          .trade-pages-section,
+          .faq-section,
           .final-cta,
           .origin-section {
             padding: 44px 14px;
@@ -1458,7 +1708,8 @@ export default function Home() {
           .mini-stats,
           .automation-grid,
           .feature-grid,
-          .price-card ul {
+          .price-card ul,
+          .pricing-math {
             grid-template-columns: 1fr;
           }
 
@@ -1477,6 +1728,45 @@ export default function Home() {
 
           .summary-preview dl {
             grid-template-columns: 1fr;
+          }
+
+          .business-page {
+            padding-bottom: 76px;
+          }
+
+          .mobile-sticky-cta {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 50;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            padding: 10px;
+            background: rgba(255, 253, 248, 0.96);
+            border-top: 1px solid var(--line);
+            box-shadow: 0 -14px 30px rgba(7, 31, 42, 0.14);
+          }
+
+          .mobile-sticky-cta a {
+            min-height: 48px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            background: var(--navy);
+            color: #fffdf8;
+            text-decoration: none;
+            font-weight: 900;
+            text-align: center;
+            padding: 0 10px;
+          }
+
+          .mobile-sticky-cta a + a {
+            background: #fff4de;
+            color: var(--navy);
+            border: 1px solid #edc17c;
           }
         }
       `}</style>
