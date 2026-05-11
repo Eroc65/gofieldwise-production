@@ -6,11 +6,16 @@ export default function SiteNav() {
       <div className="site-nav-inner">
         <Link href="/" className="brand">GoFieldwise</Link>
         <nav className="links" aria-label="Primary">
-          <Link href="/plumbing">Plumbing</Link>
-          <Link href="/hvac">HVAC</Link>
-          <Link href="/electrical">Electrical</Link>
-          <Link href="/landscaping">Landscaping</Link>
-          <Link href="/cleaning-services">Cleaning</Link>
+          <details className="trade-menu">
+            <summary>By Trade</summary>
+            <div>
+              <Link href="/plumbing">Plumbing</Link>
+              <Link href="/hvac">HVAC</Link>
+              <Link href="/electrical">Electrical</Link>
+              <Link href="/landscaping">Landscaping</Link>
+              <Link href="/cleaning-services">Cleaning</Link>
+            </div>
+          </details>
           <Link href="/marketing-ai">Marketing AI</Link>
           <Link href="/platform">Platform</Link>
         </nav>
@@ -63,6 +68,48 @@ export default function SiteNav() {
         .links :global(a:hover) {
           color: #ffd9ae;
         }
+        .trade-menu {
+          position: relative;
+          color: #cbd5e1;
+          font-size: 0.92rem;
+          font-weight: 700;
+        }
+        .trade-menu summary {
+          cursor: pointer;
+          list-style: none;
+        }
+        .trade-menu summary::-webkit-details-marker {
+          display: none;
+        }
+        .trade-menu summary::after {
+          content: "▾";
+          margin-left: 0.35rem;
+          font-size: 0.75rem;
+        }
+        .trade-menu[open] summary {
+          color: #ffd9ae;
+        }
+        .trade-menu div {
+          position: absolute;
+          top: calc(100% + 12px);
+          right: 0;
+          min-width: 190px;
+          display: grid;
+          gap: 0.35rem;
+          padding: 0.7rem;
+          border: 1px solid rgba(148, 163, 184, 0.24);
+          border-radius: 8px;
+          background: #111827;
+          box-shadow: 0 18px 38px rgba(0, 0, 0, 0.25);
+        }
+        .trade-menu div :global(a) {
+          display: block;
+          padding: 0.45rem 0.55rem;
+          border-radius: 6px;
+        }
+        .trade-menu div :global(a:hover) {
+          background: rgba(255, 217, 174, 0.1);
+        }
         @media (max-width: 840px) {
           .site-nav-inner {
             flex-direction: column;
@@ -71,6 +118,10 @@ export default function SiteNav() {
           .links {
             width: 100%;
             justify-content: flex-start;
+          }
+          .trade-menu div {
+            left: 0;
+            right: auto;
           }
         }
       `}</style>

@@ -43,38 +43,31 @@ const storySteps = [
 
 const testimonials = [
   {
-    quote:
-      "GoFieldwise replaced the part of my office manager role that kept eating nights and weekends: calls, scheduling, invoices, and review asks.",
-    name: "Dave K.",
-    role: "Plumbing owner, Phoenix",
-    metric: "After-hours intake",
+    quote: "Approved customer quote goes here after the beta customer signs off on name, company, city, and wording.",
+    name: "Verified quote",
+    role: "Customer permission required before publishing",
+    metric: "Social proof slot",
   },
   {
-    quote:
-      "I thought customers would know they were talking to AI. They did not. They just cared that someone answered and booked the job fast.",
-    name: "Marcus T.",
-    role: "HVAC operator, Atlanta",
-    metric: "Live call demo",
+    quote: "Show a real before-and-after result here, such as calls captured, jobs booked, or follow-ups sent.",
+    name: "Result snapshot",
+    role: "Use measured data from the first approved client",
+    metric: "Outcome proof",
   },
   {
-    quote:
-      "I can grow past six vans without adding a dispatcher for every new headache. The system keeps the day moving.",
-    name: "Jessica R.",
-    role: "Electrical contractor, Dallas",
-    metric: "Dispatch workflow",
+    quote: "Add an approved screenshot or short demo clip showing the transcript, dispatch summary, and follow-up flow.",
+    name: "Product proof",
+    role: "Use only approved or first-party demo assets",
+    metric: "Visual evidence",
   },
 ];
 
 const automationSteps = [
-  ["01", "Customer calls", "Any time, any channel"],
-  ["02", "AI intake", "Captures the job details"],
-  ["03", "Quote sent", "Estimate goes out cleanly"],
-  ["04", "Schedule", "Booked to the right slot"],
-  ["05", "Dispatch", "Best tech assigned"],
-  ["06", "Job done", "Work completed on-site"],
-  ["07", "Invoice", "Sent when the job closes"],
-  ["08", "Payment", "Customer pays online"],
-  ["09", "Follow-up", "Review request and rebook nudge"],
+  ["01", "Intake", "Adrian answers and captures service type, location, urgency, and notes."],
+  ["02", "Book", "The job gets a clear next step instead of sitting in voicemail."],
+  ["03", "Dispatch", "The owner or team sees the details needed to route the work."],
+  ["04", "Invoice", "Billing can happen when the job closes, not days later."],
+  ["05", "Follow-up", "Review requests and rebook nudges keep the relationship warm."],
 ];
 
 const stages = [
@@ -174,12 +167,12 @@ const pricingMath = [
 ];
 
 const integrations = [
-  "Housecall Pro",
-  "ServiceTitan",
-  "Jobber",
-  "Google Calendar",
-  "Google Business Profile",
-  "Zapier-ready workflows",
+  ["Housecall Pro", "Workflow or Zapier connection depending on account setup."],
+  ["ServiceTitan", "Use case reviewed during setup before promising sync depth."],
+  ["Jobber", "Lead and job handoff can be planned around your current workflow."],
+  ["Google Calendar", "Scheduling support for simple calendar-based operations."],
+  ["Google Business Profile", "Local visibility and review workflow support."],
+  ["Zapier-ready workflows", "Useful for alerts, CRM handoffs, and lightweight automations."],
 ];
 
 const tradePages = [
@@ -241,6 +234,18 @@ export default function Home() {
   const [transcript, setTranscript] = useState([]);
   const [summary, setSummary] = useState(null);
   const streamRef = useRef(null);
+  const faqJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqItems.map(([question, answer]) => ({
+      "@type": "Question",
+      name: question,
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: answer,
+      },
+    })),
+  };
 
   useEffect(() => {
     return () => {
@@ -306,6 +311,10 @@ export default function Home() {
           name="description"
           content="GoFieldwise answers calls, books jobs, dispatches techs, sends invoices, and follows up for plumbing, HVAC, electrical, roofing, landscaping, and cleaning businesses."
         />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+        />
       </Head>
 
       <main className="business-page">
@@ -314,10 +323,7 @@ export default function Home() {
             <div className="hero-copy">
               <p className="eyebrow">Solo operator to crew of 20</p>
               <h1>Built for the first van. Ready for the full crew.</h1>
-              <p>
-                GoFieldwise handles customer intake, scheduling, dispatch, invoicing, and follow-up automatically, so
-                owners can focus on the work that pays.
-              </p>
+              <p>Adrian answers the call. You do the job.</p>
               <div className="actions">
                 <a className="primary-action" href="#live-demo">Hear Adrian answer a real call</a>
                 <a className="secondary-action" href="#sandbox">Explore the product</a>
@@ -514,8 +520,11 @@ export default function Home() {
             </p>
           </div>
           <div className="integration-grid">
-            {integrations.map((item) => (
-              <article key={item}>{item}</article>
+            {integrations.map(([name, detail]) => (
+              <article key={name}>
+                <strong>{name}</strong>
+                <span>{detail}</span>
+              </article>
             ))}
           </div>
         </section>
@@ -523,8 +532,8 @@ export default function Home() {
         <section className="automation-section">
           <div className="section-heading center">
             <p className="eyebrow">How it works</p>
-            <h2>From first call to five-star review.</h2>
-            <p>Nine steps. Minimal manual work. GoFieldwise handles the busywork so the owner does not have to.</p>
+            <h2>From first call to follow-up.</h2>
+            <p>Five steps. Minimal manual work. GoFieldwise keeps the front office moving while the crew works.</p>
           </div>
           <div className="automation-grid">
             {automationSteps.map(([number, title, body]) => (
@@ -1335,9 +1344,9 @@ export default function Home() {
 
         .integration-grid article {
           min-height: 70px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
+          display: grid;
+          align-content: start;
+          gap: 6px;
           border: 1px solid var(--line);
           border-radius: 8px;
           background: var(--panel);
@@ -1346,6 +1355,17 @@ export default function Home() {
           font-weight: 900;
           text-align: center;
           padding: 12px;
+        }
+
+        .integration-grid strong {
+          color: var(--navy);
+        }
+
+        .integration-grid span {
+          color: #4e6a74;
+          font-size: 0.86rem;
+          line-height: 1.35;
+          font-weight: 750;
         }
 
         .automation-section,
@@ -1368,7 +1388,7 @@ export default function Home() {
 
         .automation-grid {
           display: grid;
-          grid-template-columns: repeat(9, minmax(0, 1fr));
+          grid-template-columns: repeat(5, minmax(0, 1fr));
           gap: 8px;
         }
 
