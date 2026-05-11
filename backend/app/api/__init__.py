@@ -1,6 +1,23 @@
 from fastapi import APIRouter
 
-from . import admin_monitoring, auth, customers, estimates, external_integrations, invoices, jobs, leads, marketing, platform, protected, reminders, reports, technicians
+from . import (
+    admin_monitoring,
+    auth,
+    crm_hub,
+    customers,
+    estimates,
+    external_integrations,
+    integrations,
+    invoices,
+    jobs,
+    leads,
+    marketing,
+    platform,
+    protected,
+    reminders,
+    reports,
+    technicians,
+)
 
 
 router = APIRouter()
@@ -18,3 +35,5 @@ router.include_router(marketing.router, prefix="/api", tags=["marketing"])
 router.include_router(platform.router, prefix="/api", tags=["platform"])
 router.include_router(admin_monitoring.router, prefix="/api", tags=["admin-monitoring"])
 router.include_router(external_integrations.router, prefix="/api", tags=["external-integrations"])
+router.include_router(integrations.router, tags=["integrations"])
+router.include_router(crm_hub.router, tags=["crm-hub"])
