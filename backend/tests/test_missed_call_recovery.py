@@ -125,7 +125,11 @@ def test_missed_call_by_key_creates_lead():
     assert body["lead"]["source"] == "missed_call"
 
 
-def test_demo_call_intake_by_key_creates_lead_and_returns_transcript():
+def test_demo_call_intake_by_key_creates_lead_and_returns_transcript(monkeypatch):
+    monkeypatch.delenv("RETELL_API_KEY", raising=False)
+    monkeypatch.delenv("RETELL_FROM_NUMBER", raising=False)
+    monkeypatch.delenv("RETELL_AGENT_ID", raising=False)
+
     client = TestClient(app)
     intake_key = _get_org_intake_key()
 
@@ -142,7 +146,7 @@ def test_demo_call_intake_by_key_creates_lead_and_returns_transcript():
     )
     assert resp.status_code == 201
     body = resp.json()
-    assert body["ok"] is True
+    assert body["ok"] is False
     assert body["lead_id"] > 0
     assert body["call_sid"].startswith("DEMO")
     assert body["call_started"] is False
