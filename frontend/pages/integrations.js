@@ -152,12 +152,104 @@ const statusStyles = {
   planned: "planned",
 };
 
+function CardCTA({ provider, state, onOpen, onSubmit }) {
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [emailError, setEmailError] = useState("");
+
+  function handleSubmit() {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setEmailError("Enter a valid email address");
+      return;
+    }
+    setEmailError("");
+    onSubmit(email, name);
+  }
+
+  if (provider.status === "live") {
+    return (
+      <Link className="card-cta primary" href={provider.href}>
+        {provider.cta}
+      </Link>
+    );
+  }
+
+  if (state === "done") {
+    return (
+      <div className="waitlist-success">
+        <strong>You are on the list</strong>
+        <span>We will reach out when {provider.name} is ready for your account.</span>
+      </div>
+    );
+  }
+
+  if (state === "open" || state === "loading" || state === "error") {
+    return (
+      <div className="waitlist-form">
+        <input
+          type="text"
+          placeholder="Your name (optional)"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+        />
+        <input
+          type="email"
+          placeholder="Work email"
+          value={email}
+          onChange={(event) => {
+            setEmail(event.target.value);
+            setEmailError("");
+          }}
+          aria-invalid={Boolean(emailError)}
+        />
+        {emailError ? <span className="waitlist-error">{emailError}</span> : null}
+        {state === "error" ? <span className="waitlist-error">Something went wrong. Please try again.</span> : null}
+        <button type="button" disabled={state === "loading"} onClick={handleSubmit}>
+          {state === "loading" ? "Submitting..." : "Join waitlist"}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className={provider.status === "beta" ? "card-cta beta-button" : "card-cta"}
+      onClick={onOpen}
+    >
+      {provider.cta}
+    </button>
+  );
+}
+
 export default function IntegrationsPage() {
   const [activeFilter, setActiveFilter] = useState("all");
+  const [waitlist, setWaitlist] = useState({});
   const filteredProviders = useMemo(
     () => (activeFilter === "all" ? providers : providers.filter((provider) => provider.status === activeFilter)),
     [activeFilter],
   );
+
+  function openWaitlist(providerId) {
+    setWaitlist((current) => ({ ...current, [providerId]: "open" }));
+  }
+
+  async function submitWaitlist(providerId, email, name) {
+    const integration = providerId === "housecall" ? "housecall_pro" : providerId;
+    setWaitlist((current) => ({ ...current, [providerId]: "loading" }));
+    try {
+      const response = await fetch("/api/waitlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, name, integration }),
+      });
+      const data = await response.json();
+      setWaitlist((current) => ({ ...current, [providerId]: response.ok && data.ok ? "done" : "error" }));
+    } catch {
+      setWaitlist((current) => ({ ...current, [providerId]: "error" }));
+    }
+  }
 
   return (
     <>
@@ -242,15 +334,12 @@ export default function IntegrationsPage() {
                     ))}
                   </ul>
                 </div>
-                {provider.href.startsWith("mailto:") ? (
-                  <a className={provider.status === "live" ? "card-cta primary" : "card-cta"} href={provider.href}>
-                    {provider.cta}
-                  </a>
-                ) : (
-                  <Link className={provider.status === "live" ? "card-cta primary" : "card-cta"} href={provider.href}>
-                    {provider.cta}
-                  </Link>
-                )}
+                <CardCTA
+                  provider={provider}
+                  state={waitlist[provider.id] || "idle"}
+                  onOpen={() => openWaitlist(provider.id)}
+                  onSubmit={(email, name) => submitWaitlist(provider.id, email, name)}
+                />
               </article>
             ))}
           </div>
@@ -570,6 +659,7 @@ export default function IntegrationsPage() {
         }
 
         .card-cta,
+        .card-cta.beta-button,
         .cta-actions a {
           min-height: 48px;
           display: inline-flex;
@@ -581,6 +671,7 @@ export default function IntegrationsPage() {
           font-weight: 900;
           text-decoration: none;
           padding: 0 18px;
+          cursor: pointer;
         }
 
         .card-cta.primary,
@@ -588,6 +679,70 @@ export default function IntegrationsPage() {
           border-color: #0d0d0d;
           background: #0d0d0d;
           color: #fff;
+        }
+
+        .card-cta.beta-button {
+          border-color: #ef9f27;
+          background: transparent;
+          color: #854f0b;
+        }
+
+        .waitlist-form {
+          display: grid;
+          gap: 8px;
+        }
+
+        .waitlist-form input {
+          min-height: 42px;
+          border: 1px solid #d4d2ca;
+          border-radius: 8px;
+          padding: 0 12px;
+          font-size: 0.92rem;
+        }
+
+        .waitlist-form input[aria-invalid="true"] {
+          border-color: #c9342e;
+        }
+
+        .waitlist-form button {
+          min-height: 44px;
+          border: 0;
+          border-radius: 8px;
+          background: #0d0d0d;
+          color: #fff;
+          cursor: pointer;
+          font-weight: 900;
+        }
+
+        .waitlist-form button:disabled {
+          cursor: not-allowed;
+          opacity: 0.62;
+        }
+
+        .waitlist-error {
+          color: #c9342e;
+          font-size: 0.82rem;
+          font-weight: 800;
+        }
+
+        .waitlist-success {
+          display: grid;
+          gap: 4px;
+          border: 1px solid rgba(16, 110, 86, 0.22);
+          border-radius: 8px;
+          background: rgba(16, 110, 86, 0.08);
+          padding: 14px;
+          text-align: center;
+        }
+
+        .waitlist-success strong {
+          color: #0f6e56;
+        }
+
+        .waitlist-success span {
+          color: #5c6f68;
+          font-size: 0.86rem;
+          line-height: 1.4;
         }
 
         .section-heading {
