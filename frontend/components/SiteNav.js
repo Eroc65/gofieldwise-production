@@ -16,6 +16,7 @@ export default function SiteNav() {
               <Link href="/cleaning-services">Cleaning</Link>
             </div>
           </details>
+          <Link href="/integrations">Integrations</Link>
           <Link href="/marketing-ai">Marketing AI</Link>
           <Link href="/platform">Platform</Link>
         </nav>
