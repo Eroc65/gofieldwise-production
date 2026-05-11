@@ -167,12 +167,12 @@ const pricingMath = [
 ];
 
 const integrations = [
-  ["Housecall Pro", "Workflow or Zapier connection depending on account setup."],
-  ["ServiceTitan", "Use case reviewed during setup before promising sync depth."],
-  ["Jobber", "Lead and job handoff can be planned around your current workflow."],
-  ["Google Calendar", "Scheduling support for simple calendar-based operations."],
-  ["Google Business Profile", "Local visibility and review workflow support."],
-  ["Zapier-ready workflows", "Useful for alerts, CRM handoffs, and lightweight automations."],
+  ["Housecall Pro handoff", "Adrian captures structured intake notes that can be routed into your workflow after setup."],
+  ["ServiceTitan handoff", "Sync depth is scoped before launch. No native two-way sync is promised without review."],
+  ["Jobber handoff", "Lead details can be prepared for manual entry, Zapier, or approved workflow automation."],
+  ["Google Calendar", "Scheduling handoff can be configured for simple calendar-based operations."],
+  ["Google Business Profile", "AI can draft posts and review responses, but publishing stays human-approved."],
+  ["Zapier/webhooks", "Best first path for alerts, CRM handoffs, and lightweight automations."],
 ];
 
 const tradePages = [
@@ -512,11 +512,11 @@ export default function Home() {
 
         <section className="integrations-section">
           <div className="section-heading center">
-            <p className="eyebrow">Works with your stack</p>
+            <p className="eyebrow">Integration-ready workflows</p>
             <h2>Keep the tools you already use.</h2>
             <p>
-              GoFieldwise is built to support the front-office workflow around your existing calendar, CRM, field
-              service software, and local visibility tools.
+              Adrian captures the call, structures the job details, and prepares the handoff. Native sync, Zapier, or
+              manual handoff is scoped during setup so GoFieldwise never overpromises a connection you do not have.
             </p>
           </div>
           <div className="integration-grid">
