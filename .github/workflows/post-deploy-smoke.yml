@@ -40,24 +40,26 @@ jobs:
             SMOKE_EMAIL="$STAGING_SMOKE_EMAIL"
             SMOKE_PASSWORD="$STAGING_SMOKE_PASSWORD"
             TARGET_ENV="staging"
+            TARGET_PREFIX="STAGING"
           else
             SMOKE_API_BASE_URL="$PRODUCTION_API_BASE_URL"
             SMOKE_EMAIL="$PRODUCTION_SMOKE_EMAIL"
             SMOKE_PASSWORD="$PRODUCTION_SMOKE_PASSWORD"
             TARGET_ENV="production"
+            TARGET_PREFIX="PRODUCTION"
           fi
 
           if [ -z "$SMOKE_API_BASE_URL" ] || [ -z "$SMOKE_EMAIL" ] || [ -z "$SMOKE_PASSWORD" ]; then
-            echo "::warning::Post-deploy smoke skipped for $TARGET_ENV because required smoke credentials are missing. Configure ${TARGET_ENV^^}_API_BASE_URL, ${TARGET_ENV^^}_SMOKE_EMAIL, and ${TARGET_ENV^^}_SMOKE_PASSWORD as repository secrets or variables."
-            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Post-deploy smoke skipped for $TARGET_ENV because required smoke credentials are missing. Configure ${TARGET_PREFIX}_API_BASE_URL, ${TARGET_PREFIX}_SMOKE_EMAIL, and ${TARGET_PREFIX}_SMOKE_PASSWORD as repository secrets or variables."
+            echo "smoke_action=skip" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           echo "SMOKE_API_BASE_URL=$SMOKE_API_BASE_URL" >> "$GITHUB_ENV"
           echo "SMOKE_EMAIL=$SMOKE_EMAIL" >> "$GITHUB_ENV"
           echo "SMOKE_PASSWORD=$SMOKE_PASSWORD" >> "$GITHUB_ENV"
-          echo "configured=true" >> "$GITHUB_OUTPUT"
+          echo "smoke_action=run" >> "$GITHUB_OUTPUT"
 
       - name: Run release smoke checks
-        if: steps.smoke_env.outputs.configured == 'true'
+        if: steps.smoke_env.outputs.smoke_action == 'run'
         run: python scripts/smoke_deploy_release.py
