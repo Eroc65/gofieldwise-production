@@ -115,4 +115,13 @@ export default async function handler(req, res) {
     console.error(`[stripe/webhook] handler error for ${event.type}:`, error.message);
   }
 
-  a
+  await logSubscriptionEvent({
+    stripeEventId: event.id,
+    eventType: event.type,
+    orgId,
+    payload: event.data.object,
+    error: eventErr,
+  });
+
+  return res.status(200).json({ received: true, type: event.type });
+}

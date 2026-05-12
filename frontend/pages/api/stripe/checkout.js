@@ -145,4 +145,20 @@ export default async function handler(req, res) {
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       line_items: [{ price: process.env.STRIPE_PRICE_ID, quantity: 1 }],
-      success_ur
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      ...(resolvedCustomerId ? { customer: resolvedCustomerId } : {}),
+      ...(!resolvedCustomerId && customerEmail ? { customer_email: customerEmail } : {}),
+      allow_promotion_codes: true,
+      metadata,
+    });
+
+    return res.status(200).json({ ok: true, url: session.url, id: session.id });
+  } catch (error) {
+    return res.status(500).json({
+      ok: false,
+      error: "Stripe checkout action failed",
+      detail: String(error?.message || error),
+    });
+  }
+}

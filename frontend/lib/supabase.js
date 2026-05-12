@@ -31,15 +31,12 @@ async function resolveOrgId({ orgId, stripeCustomerId }) {
 
 /**
  * Upsert a minimal Supabase organizations row keyed on stripe_customer_id.
- * Safe to call multiple times — uses ignoreDuplicates so it never overwrites
+ * Safe to call multiple times -- uses ignoreDuplicates so it never overwrites
  * an existing row's name or other fields.
  *
  * Call this in checkout.js immediately after stripe.customers.create() so the
  * row exists before the webhook fires. The webhook's updateOrgSubscription also
  * has a safety-net call for customers created before this was deployed.
- *
- * @param {string} stripeCustomerId
- * @param {{ ownerEmail?: string|null, fastapiOrgId?: string|null }} [opts]
  */
 export async function bootstrapSupabaseOrg(stripeCustomerId, { ownerEmail, fastapiOrgId } = {}) {
   if (!stripeCustomerId) return;
@@ -83,4 +80,63 @@ export async function updateOrgSubscription(orgOrId, patch) {
     orgId = org?.id || null;
   }
 
-  if (!
+  if (!orgId) throw new Error("updateOrgSubscription failed: could not resolve organization");
+
+  const orgUpdate = {
+    stripe_customer_id: patch.stripeCustomerId ?? null,
+    stripe_subscription_id: patch.stripeSubscriptionId ?? null,
+    subscription_status: patch.status ?? "inactive",
+    is_active: Boolean(patch.planActive),
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error: orgError } = await supabase
+    .from("organizations")
+    .update(orgUpdate)
+    .eq("id", orgId);
+  if (orgError) throw new Error(`organizations update failed: ${orgError.message}`);
+
+  if (patch.stripeSubscriptionId) {
+    const subRow = {
+      organization_id: orgId,
+      provider: "stripe",
+      provider_subscription_id: patch.stripeSubscriptionId,
+      provider_customer_id: patch.stripeCustomerId ?? null,
+      status: patch.status ?? "inactive",
+      current_period_end: patch.currentPeriodEnd ?? null,
+      metadata: {
+        trial_ends_at: patch.trialEndsAt ?? null,
+      },
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error: subError } = await supabase
+      .from("subscriptions")
+      .upsert(subRow, { onConflict: "provider,provider_subscription_id" });
+    if (subError) throw new Error(`subscriptions upsert failed: ${subError.message}`);
+  }
+}
+
+export async function logSubscriptionEvent(eventRow) {
+  const supabase = getAdminClient();
+  const row = {
+    stripe_event_id: eventRow?.stripeEventId ?? null,
+    event_type: eventRow?.eventType ?? null,
+    org_id: eventRow?.orgId ?? null,
+    payload: eventRow?.payload ?? {},
+    error: eventRow?.error ?? null,
+    created_at: new Date().toISOString(),
+  };
+
+  // Upsert on stripe_event_id so Stripe retries are idempotent.
+  // The unique index is WHERE stripe_event_id IS NOT NULL, so null values
+  // (e.g. manual debug rows) still insert as new rows.
+  const { error } = await supabase
+    .from("subscription_events")
+    .upsert(row, { onConflict: "stripe_event_id", ignoreDuplicates: true });
+  if (error) {
+    // Do not fail webhook processing if the event table is unavailable.
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}
