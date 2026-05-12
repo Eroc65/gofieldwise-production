@@ -1,6 +1,6 @@
-# GitHub Secrets Setup (Required)
+# GitHub Secrets and Variables Setup (Required)
 
-Configure these repository secrets in Settings > Secrets and variables > Actions.
+Configure these repository secrets (or repository variables for non-sensitive values like base URLs) in Settings > Secrets and variables > Actions.
 
 ## GitHub CLI (Workspace Ready)
 - GitHub CLI is installed in this workspace (`gh 2.89.0`).
