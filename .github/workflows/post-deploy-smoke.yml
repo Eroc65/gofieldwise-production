@@ -50,7 +50,7 @@ jobs:
           fi
 
           if [ -z "$SMOKE_API_BASE_URL" ] || [ -z "$SMOKE_EMAIL" ] || [ -z "$SMOKE_PASSWORD" ]; then
-            echo "::warning::Post-deploy smoke skipped for $TARGET_ENV because required smoke credentials are missing. Configure ${TARGET_PREFIX}_API_BASE_URL, ${TARGET_PREFIX}_SMOKE_EMAIL, and ${TARGET_PREFIX}_SMOKE_PASSWORD as repository secrets or variables."
+            echo "::warning::Post-deploy smoke skipped for $TARGET_ENV because required smoke configuration is missing. Configure ${TARGET_PREFIX}_API_BASE_URL, ${TARGET_PREFIX}_SMOKE_EMAIL, and ${TARGET_PREFIX}_SMOKE_PASSWORD as repository secrets or variables."
             echo "smoke_action=skip" >> "$GITHUB_OUTPUT"
             exit 0
           fi
