@@ -624,6 +624,70 @@ export async function getAdminMonitoringSummary({ token }) {
   });
 }
 
+export async function getJobberTokenExpiryStatus({ token, warningSeconds = 3600, criticalSeconds = 900 }) {
+  const query = new URLSearchParams({
+    warning_seconds: String(warningSeconds),
+    critical_seconds: String(criticalSeconds),
+  });
+  return apiFetch(`/api/crm-hub/admin/jobber/token-expiry?${query.toString()}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export async function refreshExpiringJobberTokens({ token, thresholdSeconds = 900 }) {
+  const query = new URLSearchParams({
+    threshold_seconds: String(thresholdSeconds),
+  });
+  return apiFetch(`/api/crm-hub/jobber/refresh-expiring?${query.toString()}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export async function dispatchConnector({
+  orgId,
+  payload,
+  requestId,
+  retellSignature,
+}) {
+  if (!orgId || !String(orgId).trim()) {
+    throw new Error("dispatchConnector requires orgId");
+  }
+
+  const headers = {
+    "Content-Type": "application/json",
+    "x-org-id": String(orgId).trim(),
+  };
+  if (requestId) headers["x-request-id"] = String(requestId);
+  if (retellSignature) headers["x-retell-signature"] = String(retellSignature);
+
+  const response = await fetch("/api/connector/dispatch", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      ...(payload || {}),
+      org_id: String(orgId).trim(),
+    }),
+  });
+
+  let data = null;
+  try {
+    data = await response.json();
+  } catch {
+    data = null;
+  }
+
+  if (!response.ok) {
+    throw new Error(data?.error || data?.reason || `HTTP ${response.status}`);
+  }
+  return data;
+}
+
 export async function startDemoCall({ name, email, phone }) {
   return apiFetch("/api/demo/call", {
     method: "POST",

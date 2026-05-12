@@ -29,3 +29,5 @@ Thumbs.db
 
 # Misc
 *.sqlite3
+.vercel
+.env*.local
