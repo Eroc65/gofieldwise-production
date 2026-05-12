@@ -49,20 +49,19 @@ jobs:
             TARGET_PREFIX="PRODUCTION"
           fi
 
-          echo "::add-mask::$SMOKE_EMAIL"
-          echo "::add-mask::$SMOKE_PASSWORD"
-
           if [ -z "$SMOKE_API_BASE_URL" ] || [ -z "$SMOKE_EMAIL" ] || [ -z "$SMOKE_PASSWORD" ]; then
             echo "::warning::Post-deploy smoke skipped for $TARGET_ENV because required smoke configuration is missing. Configure ${TARGET_PREFIX}_API_BASE_URL as a repository secret or variable, and configure ${TARGET_PREFIX}_SMOKE_EMAIL plus ${TARGET_PREFIX}_SMOKE_PASSWORD as repository secrets."
             echo "smoke_action=skip" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          echo "SMOKE_API_BASE_URL=$SMOKE_API_BASE_URL" >> "$GITHUB_ENV"
-          echo "SMOKE_EMAIL=$SMOKE_EMAIL" >> "$GITHUB_ENV"
-          echo "SMOKE_PASSWORD=$SMOKE_PASSWORD" >> "$GITHUB_ENV"
+          echo "smoke_api_base_url=$SMOKE_API_BASE_URL" >> "$GITHUB_OUTPUT"
           echo "smoke_action=run" >> "$GITHUB_OUTPUT"
 
       - name: Run release smoke checks
         if: steps.smoke_env.outputs.smoke_action == 'run'
+        env:
+          SMOKE_API_BASE_URL: ${{ steps.smoke_env.outputs.smoke_api_base_url }}
+          SMOKE_EMAIL: ${{ github.event.workflow_run.name == 'Deploy Staging' && secrets.STAGING_SMOKE_EMAIL || secrets.PRODUCTION_SMOKE_EMAIL }}
+          SMOKE_PASSWORD: ${{ github.event.workflow_run.name == 'Deploy Staging' && secrets.STAGING_SMOKE_PASSWORD || secrets.PRODUCTION_SMOKE_PASSWORD }}
         run: python scripts/smoke_deploy_release.py
