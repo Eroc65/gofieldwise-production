@@ -55,6 +55,7 @@ jobs:
             exit 0
           fi
 
+          echo "::add-mask::$SMOKE_API_BASE_URL"
           echo "smoke_api_base_url=$SMOKE_API_BASE_URL" >> "$GITHUB_OUTPUT"
           echo "smoke_action=run" >> "$GITHUB_OUTPUT"
 
