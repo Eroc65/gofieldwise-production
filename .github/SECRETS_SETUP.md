@@ -1,6 +1,6 @@
-# GitHub Secrets Setup (Required)
+# GitHub Secrets and Variables Setup (Required)
 
-Configure these repository secrets in Settings > Secrets and variables > Actions.
+Configure these repository secrets (or repository variables for non-sensitive values like base URLs) in Settings > Secrets and variables > Actions.
 
 ## GitHub CLI (Workspace Ready)
 - GitHub CLI is installed in this workspace (`gh 2.89.0`).
@@ -69,6 +69,10 @@ Validation behavior:
 - API base URLs should be full HTTPS origins (for example: https://backend-staging.example.com).
 - Smoke user should be an owner/admin account in the target organization.
 - Deploy hook secrets must be Render deploy hook `https://` URLs. Do not use database URLs (for example `postgresql://...`) in deploy hook secrets.
+- Storage guidance:
+  - `*_API_BASE_URL`: repository secret or repository variable (non-sensitive URL).
+  - `*_SMOKE_EMAIL`: repository secret.
+  - `*_SMOKE_PASSWORD`: repository secret.
 
 ## Activation Controls
 - Optional strict messaging mode:
