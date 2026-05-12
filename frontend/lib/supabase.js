@@ -29,12 +29,57 @@ async function resolveOrgId({ orgId, stripeCustomerId }) {
   return org?.id || null;
 }
 
+/**
+ * Upsert a minimal Supabase organizations row keyed on stripe_customer_id.
+ * Safe to call multiple times -- uses ignoreDuplicates so it never overwrites
+ * an existing row's name or other fields.
+ *
+ * Call this in checkout.js immediately after stripe.customers.create() so the
+ * row exists before the webhook fires. The webhook's updateOrgSubscription also
+ * has a safety-net call for customers created before this was deployed.
+ */
+export async function bootstrapSupabaseOrg(stripeCustomerId, { ownerEmail, fastapiOrgId } = {}) {
+  if (!stripeCustomerId) return;
+  const supabase = getAdminClient();
+  const name =
+    ownerEmail
+      ? `Org (${ownerEmail})`
+      : fastapiOrgId
+      ? `org_${fastapiOrgId}`
+      : `org_stripe_${stripeCustomerId}`;
+  const row = {
+    name,
+    stripe_customer_id: stripeCustomerId,
+    owner_email: ownerEmail || null,
+    billing_email: ownerEmail || null,
+  };
+  const { error } = await supabase
+    .from("organizations")
+    .upsert(row, { onConflict: "stripe_customer_id", ignoreDuplicates: true });
+  if (error) {
+    // Non-fatal: log and continue. The safety-net in updateOrgSubscription will
+    // attempt another bootstrap when the webhook arrives.
+    console.error("[supabase] bootstrapSupabaseOrg error:", error.message);
+  }
+}
+
 export async function updateOrgSubscription(orgOrId, patch) {
   const supabase = getAdminClient();
-  const orgId = await resolveOrgId({
+  let orgId = await resolveOrgId({
     orgId: typeof orgOrId === "string" ? orgOrId : orgOrId?.id,
     stripeCustomerId: patch?.stripeCustomerId,
   });
+
+  // Safety net: if the Supabase row was never bootstrapped (e.g., the customer
+  // was created before bootstrapSupabaseOrg was added to checkout.js, or the
+  // bootstrap call failed silently), create it now using the stripe_customer_id
+  // as the unique anchor. Then re-resolve the UUID.
+  if (!orgId && patch?.stripeCustomerId) {
+    await bootstrapSupabaseOrg(patch.stripeCustomerId, {});
+    const org = await getOrgByStripeCustomer(patch.stripeCustomerId);
+    orgId = org?.id || null;
+  }
+
   if (!orgId) throw new Error("updateOrgSubscription failed: could not resolve organization");
 
   const orgUpdate = {
@@ -83,11 +128,15 @@ export async function logSubscriptionEvent(eventRow) {
     created_at: new Date().toISOString(),
   };
 
-  const { error } = await supabase.from("subscription_events").insert(row);
+  // Upsert on stripe_event_id so Stripe retries are idempotent.
+  // The unique index is WHERE stripe_event_id IS NOT NULL, so null values
+  // (e.g. manual debug rows) still insert as new rows.
+  const { error } = await supabase
+    .from("subscription_events")
+    .upsert(row, { onConflict: "stripe_event_id", ignoreDuplicates: true });
   if (error) {
-    // Do not fail webhook processing if debug event table is missing or unavailable.
+    // Do not fail webhook processing if the event table is unavailable.
     return { ok: false, error: error.message };
   }
   return { ok: true };
 }
-
