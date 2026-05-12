@@ -10,7 +10,7 @@ export const config = {
 };
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2024-06-20",
+  apiVersion: "2025-04-30.basil",
 });
 
 async function getRawBody(req) {
@@ -54,12 +54,14 @@ export default async function handler(req, res) {
         const org = await getOrgByStripeCustomer(session.customer);
         orgId = org?.id || null;
 
-        await updateOrgSubscription(orgId || session.metadata?.org_id, {
+        await updateOrgSubscription(orgId || session.metadata?.organization_id, {
           stripeCustomerId: session.customer,
           stripeSubscriptionId: subscription.id,
           status: subscription.status,
           planActive: subscription.status === "active" || subscription.status === "trialing",
-          currentPeriodEnd: new Date(subscription.current_period_end * 1000).toISOString(),
+          currentPeriodEnd: subscription.current_period_end
+            ? new Date(subscription.current_period_end * 1000).toISOString()
+            : null,
           trialEndsAt: subscription.trial_end
             ? new Date(subscription.trial_end * 1000).toISOString()
             : null,
@@ -73,18 +75,20 @@ export default async function handler(req, res) {
         const org = await getOrgByStripeCustomer(subscription.customer);
         orgId = org?.id || null;
 
-        if (orgId) {
-          await updateOrgSubscription(orgId, {
-            stripeCustomerId: subscription.customer,
-            stripeSubscriptionId: subscription.id,
-            status: subscription.status,
-            planActive: subscription.status === "active" || subscription.status === "trialing",
-            currentPeriodEnd: new Date(subscription.current_period_end * 1000).toISOString(),
-            trialEndsAt: subscription.trial_end
-              ? new Date(subscription.trial_end * 1000).toISOString()
-              : null,
-          });
-        }
+        // Pass stripeCustomerId so updateOrgSubscription can resolve (and
+        // bootstrap if needed) even when orgId is null.
+        await updateOrgSubscription(orgId, {
+          stripeCustomerId: subscription.customer,
+          stripeSubscriptionId: subscription.id,
+          status: subscription.status,
+          planActive: subscription.status === "active" || subscription.status === "trialing",
+          currentPeriodEnd: subscription.current_period_end
+            ? new Date(subscription.current_period_end * 1000).toISOString()
+            : null,
+          trialEndsAt: subscription.trial_end
+            ? new Date(subscription.trial_end * 1000).toISOString()
+            : null,
+        });
         break;
       }
 
@@ -111,13 +115,4 @@ export default async function handler(req, res) {
     console.error(`[stripe/webhook] handler error for ${event.type}:`, error.message);
   }
 
-  await logSubscriptionEvent({
-    stripeEventId: event.id,
-    eventType: event.type,
-    orgId,
-    payload: event.data.object,
-    error: eventErr,
-  });
-
-  return res.status(200).json({ received: true, type: event.type });
-}
+  a
