@@ -329,6 +329,7 @@ class JobberAdapter(APIBasedCRMAdapter):
         Jobber supports full two-way sync.
         """
         try:
+            idempotency_key = intake.extra_fields.get("idempotency_key")
             # Create customer mutation
             customer_mutation = """
             mutation CreateCustomer($input: CreateCustomerInput!) {
@@ -344,10 +345,11 @@ class JobberAdapter(APIBasedCRMAdapter):
                     "firstName": intake.caller_name or "Unknown",
                     "phone": intake.caller_phone,
                     "email": intake.caller_email,
+                    "clientMutationId": idempotency_key,
                 }
             }
-            
-            success, response = await self._graphql_request(customer_mutation, customer_vars)
+
+            success, response = await self._graphql_request(customer_mutation, customer_vars, idempotency_key=idempotency_key)
             
             if not success or response.get("errors"):
                 logger.warning(f"Jobber customer creation failed")
@@ -370,10 +372,11 @@ class JobberAdapter(APIBasedCRMAdapter):
                     "customerId": customer_id,
                     "title": intake.service_type or "Service Call",
                     "description": intake.service_description,
+                    "clientMutationId": idempotency_key,
                 }
             }
-            
-            success, response = await self._graphql_request(job_mutation, job_vars)
+
+            success, response = await self._graphql_request(job_mutation, job_vars, idempotency_key=idempotency_key)
             
             if success and not response.get("errors"):
                 job = response.get("data", {}).get("jobCreate", {}).get("job", {})
@@ -391,11 +394,13 @@ class JobberAdapter(APIBasedCRMAdapter):
             logger.error(f"Jobber handoff error: {str(e)}")
             return await self._send_via_fallback(intake)
     
-    async def _graphql_request(self, query: str, variables: Dict[str, Any]) -> Tuple[bool, Dict]:
+    async def _graphql_request(self, query: str, variables: Dict[str, Any], idempotency_key: Optional[str] = None) -> Tuple[bool, Dict]:
         """Execute GraphQL request."""
         session = await self.get_http_session()
         headers = self.get_auth_headers()
         headers["Content-Type"] = "application/json"
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
         
         try:
             response = await session.post(

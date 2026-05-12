@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+import os
+
 from fastapi import FastAPI
 from sqlalchemy import inspect
 
-from .core.db import Base, engine
+from .core.db import Base, SessionLocal, engine
+from .services.crm_hub import get_hub
 
 
 def _assert_schema_compatibility() -> None:
@@ -151,10 +155,35 @@ async def startup_services(app: FastAPI) -> None:
     """
     Base.metadata.create_all(bind=engine)
     _assert_schema_compatibility()
+    if os.getenv("ENABLE_JOBBER_REFRESH_JOB", "").strip().lower() in {"1", "true", "yes", "on"}:
+        interval_seconds = int(os.getenv("JOBBER_REFRESH_JOB_INTERVAL_SECONDS", "300"))
+        threshold_seconds = int(os.getenv("JOBBER_REFRESH_THRESHOLD_SECONDS", "900"))
+
+        async def _jobber_refresh_loop():
+            while True:
+                db = SessionLocal()
+                try:
+                    hub = get_hub(db)
+                    await hub.refresh_expiring_jobber_tokens(threshold_seconds=threshold_seconds)
+                except Exception:
+                    # keep loop alive; errors should be visible via app logs
+                    pass
+                finally:
+                    db.close()
+                await asyncio.sleep(max(60, interval_seconds))
+
+        app.state.jobber_refresh_task = asyncio.create_task(_jobber_refresh_loop())
 
 
 async def shutdown_services(app: FastAPI) -> None:
     """
     Stop anything started in startup_services().
     """
+    task = getattr(app.state, "jobber_refresh_task", None)
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
     return None

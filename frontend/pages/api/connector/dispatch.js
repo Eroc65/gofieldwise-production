@@ -4,8 +4,9 @@ import {
   normalizeRetellWebhook,
   getValidProviders,
 } from "../../../lib/connectors";
+import { requireSubscription } from "../../../lib/middleware/requireSubscription";
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ ok: false, error: "Method not allowed" });
@@ -48,3 +49,5 @@ export default async function handler(req, res) {
     });
   }
 }
+
+export default requireSubscription(handler);

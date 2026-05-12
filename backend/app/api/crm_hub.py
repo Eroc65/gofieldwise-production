@@ -3,16 +3,25 @@ CRM Integration Hub API endpoints.
 Orchestrates onboarding, intake capture, and handoff routing.
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi import APIRouter, HTTPException, Depends, Request, Query
 from sqlalchemy.orm import Session
 from typing import List
+from datetime import datetime, timezone
+import base64
+import hashlib
+import hmac
+import json
+import os
+from urllib.parse import urlencode
+
+import httpx
 
 from ..core.db import get_db
 from .auth import get_current_user
 from ..models.core import Organization, User
 from ..models.crm_hub import (
     CRMConfiguration, IntakeCapture, CRMHandoff,
-    CRMProvider, IntegrationMode, IntakeType
+    CRMProvider, HandoffStatus, IntegrationMode, IntakeType
 )
 from ..schemas.crm_hub import (
     CRMConfigCreateRequest, CRMConfigResponse, IntakeCaptureRequest, 
@@ -21,11 +30,38 @@ from ..schemas.crm_hub import (
     AvailableCRMResponse, AvailableCRMsResponse
 )
 from ..services.crm_hub import get_hub, IntakeProcessor
+from ..services.token_crypto import encrypt_secret
 import logging
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/crm-hub", tags=["crm_hub"])
+
+
+def _jobber_state_secret() -> str:
+    return os.getenv("JOBBER_OAUTH_STATE_SECRET", os.getenv("SECRET_KEY", "dev-secret-change-me"))
+
+
+def _sign_state(payload: dict) -> str:
+    data = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    sig = hmac.new(_jobber_state_secret().encode("utf-8"), data, hashlib.sha256).hexdigest()
+    return base64.urlsafe_b64encode(data).decode("utf-8") + "." + sig
+
+
+def _unsign_state(state: str) -> dict:
+    try:
+        b64_data, sig = state.split(".", 1)
+        data = base64.urlsafe_b64decode(b64_data.encode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid OAuth state format")
+    expected_sig = hmac.new(_jobber_state_secret().encode("utf-8"), data, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(sig, expected_sig):
+        raise HTTPException(status_code=400, detail="OAuth state signature mismatch")
+    payload = json.loads(data.decode("utf-8"))
+    created_at = int(payload.get("iat", 0))
+    if int(datetime.utcnow().timestamp()) - created_at > 900:
+        raise HTTPException(status_code=400, detail="OAuth state expired")
+    return payload
 
 
 # ============================================================================
@@ -115,6 +151,216 @@ def list_available_providers():
         ),
     ]
     return AvailableCRMsResponse(providers=providers)
+
+
+@router.get("/jobber/oauth/start")
+def start_jobber_oauth(
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Build Jobber OAuth authorize URL.
+    Frontend should redirect user to `authorize_url`.
+    """
+    client_id = os.getenv("JOBBER_CLIENT_ID", "").strip()
+    redirect_uri = os.getenv("JOBBER_REDIRECT_URI", "").strip()
+    auth_url = os.getenv("JOBBER_AUTH_URL", "https://api.getjobber.com/api/oauth/authorize").strip()
+    scopes = os.getenv("JOBBER_OAUTH_SCOPES", "read_clients write_clients read_jobs write_jobs").strip()
+    if not client_id or not redirect_uri:
+        raise HTTPException(status_code=500, detail="JOBBER_CLIENT_ID and JOBBER_REDIRECT_URI must be set")
+
+    state_payload = {
+        "org_id": current_user.organization_id,
+        "user_id": current_user.id,
+        "iat": int(datetime.utcnow().timestamp()),
+    }
+    state = _sign_state(state_payload)
+    query = urlencode(
+        {
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "response_type": "code",
+            "scope": scopes,
+            "state": state,
+        }
+    )
+    return {"authorize_url": f"{auth_url}?{query}", "state": state}
+
+
+@router.get("/jobber/oauth/callback")
+async def jobber_oauth_callback(
+    code: str = Query(..., min_length=1),
+    state: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+):
+    """
+    Exchange Jobber OAuth code for tokens and create/update org Jobber config.
+    """
+    payload = _unsign_state(state)
+    org_id = int(payload["org_id"])
+    client_id = os.getenv("JOBBER_CLIENT_ID", "").strip()
+    client_secret = os.getenv("JOBBER_CLIENT_SECRET", "").strip()
+    redirect_uri = os.getenv("JOBBER_REDIRECT_URI", "").strip()
+    token_url = os.getenv("JOBBER_TOKEN_URL", "https://api.getjobber.com/api/oauth/token").strip()
+    if not client_id or not client_secret or not redirect_uri:
+        raise HTTPException(status_code=500, detail="Missing Jobber OAuth environment variables")
+
+    token_request = {
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": redirect_uri,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.post(token_url, json=token_request)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Jobber token request failed: {exc}")
+    if response.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"Jobber token exchange failed ({response.status_code})")
+
+    token_data = response.json()
+    access_token = token_data.get("access_token")
+    refresh_token = token_data.get("refresh_token")
+    expires_in = int(token_data.get("expires_in") or 3600)
+    if not access_token:
+        raise HTTPException(status_code=502, detail="Jobber token exchange returned no access_token")
+    expires_at = datetime.utcfromtimestamp(datetime.utcnow().timestamp() + expires_in).isoformat() + "Z"
+
+    existing = db.query(CRMConfiguration).filter(
+        CRMConfiguration.organization_id == org_id,
+        CRMConfiguration.crm_provider == CRMProvider.JOBBER,
+    ).first()
+
+    if existing:
+        config_data = dict(existing.config_data or {})
+        config_data.update(
+            {
+                "access_token": encrypt_secret(access_token),
+                "refresh_token": encrypt_secret(refresh_token),
+                "expires_at": expires_at,
+            }
+        )
+        existing.config_data = config_data
+        existing.integration_mode = IntegrationMode.OAUTH
+        existing.handoff_status = HandoffStatus.READY
+    else:
+        existing = CRMConfiguration(
+            organization_id=org_id,
+            crm_provider=CRMProvider.JOBBER,
+            integration_mode=IntegrationMode.OAUTH,
+            name="Jobber OAuth",
+            config_data={
+                "access_token": encrypt_secret(access_token),
+                "refresh_token": encrypt_secret(refresh_token),
+                "expires_at": expires_at,
+            },
+            field_mapping={
+                "caller_name": "firstName",
+                "caller_phone": "phoneNumber",
+                "service_type": "title",
+            },
+            is_active=False,
+            handoff_status=HandoffStatus.READY,
+            requires_approval=True,
+        )
+        db.add(existing)
+
+    db.commit()
+    db.refresh(existing)
+    return {
+        "ok": True,
+        "config_id": existing.id,
+        "organization_id": org_id,
+        "crm_provider": existing.crm_provider.value,
+        "handoff_status": existing.handoff_status.value,
+        "expires_at": expires_at,
+    }
+
+
+@router.post("/jobber/refresh-expiring")
+async def refresh_expiring_jobber_tokens(
+    threshold_seconds: int = Query(900, ge=60, le=86400),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Proactively refresh expiring Jobber tokens.
+    Owner/admin only.
+    """
+    if current_user.role not in ["owner", "admin"]:
+        raise HTTPException(status_code=403, detail="Permission denied")
+    hub = get_hub(db)
+    result = await hub.refresh_expiring_jobber_tokens(threshold_seconds=threshold_seconds)
+    return {"ok": True, **result}
+
+
+@router.get("/admin/jobber/token-expiry")
+def jobber_token_expiry_status(
+    warning_seconds: int = Query(3600, ge=60, le=604800),
+    critical_seconds: int = Query(900, ge=60, le=604800),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Tiny admin view of Jobber token expiry risk by configuration.
+    Owner/admin only.
+    """
+    if current_user.role not in ["owner", "admin"]:
+        raise HTTPException(status_code=403, detail="Permission denied")
+
+    if critical_seconds > warning_seconds:
+        raise HTTPException(status_code=422, detail="critical_seconds must be <= warning_seconds")
+
+    now = datetime.now(timezone.utc).timestamp()
+    rows = (
+        db.query(CRMConfiguration)
+        .filter(CRMConfiguration.crm_provider == CRMProvider.JOBBER)
+        .order_by(CRMConfiguration.id.asc())
+        .all()
+    )
+
+    items = []
+    for row in rows:
+        cfg = dict(row.config_data or {})
+        expires_at = cfg.get("expires_at")
+        expires_epoch = None
+        seconds_remaining = None
+        risk = "unknown"
+        if expires_at:
+            try:
+                expires_epoch = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00")).timestamp()
+                seconds_remaining = int(expires_epoch - now)
+                if seconds_remaining <= critical_seconds:
+                    risk = "critical"
+                elif seconds_remaining <= warning_seconds:
+                    risk = "warning"
+                else:
+                    risk = "ok"
+            except ValueError:
+                risk = "unknown"
+
+        items.append(
+            {
+                "config_id": row.id,
+                "organization_id": row.organization_id,
+                "name": row.name,
+                "is_active": row.is_active,
+                "handoff_status": row.handoff_status.value if hasattr(row.handoff_status, "value") else str(row.handoff_status),
+                "expires_at": expires_at,
+                "seconds_remaining": seconds_remaining,
+                "risk": risk,
+            }
+        )
+
+    return {
+        "ok": True,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "warning_seconds": warning_seconds,
+        "critical_seconds": critical_seconds,
+        "total": len(items),
+        "items": items,
+    }
 
 
 # ============================================================================

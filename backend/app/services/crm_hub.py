@@ -5,7 +5,11 @@ Orchestrates intake capture, connector selection, and handoff routing.
 
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
+import hashlib
 import logging
+import os
+
+import httpx
 from sqlalchemy.orm import Session
 
 from .crm_adapter import StandardizedIntake, HandoffMethod
@@ -14,6 +18,7 @@ from .crm_connectors import (
     GoogleCalendarAdapter, GoogleBusinessProfileAdapter, ZapierAdapter,
     ManualHandoffCRMAdapter
 )
+from .token_crypto import decrypt_secret, encrypt_secret
 from ..models.crm_hub import (
     CRMConfiguration, IntakeCapture, CRMHandoff, OnboardingProgress,
     IntegrationHubStatus, CRMProvider, IntegrationMode, HandoffStatus,
@@ -136,6 +141,17 @@ class CRMIntegrationHub:
                          field_mapping: Dict[str, str]) -> Optional[CRMConfiguration]:
         """Create new CRM configuration."""
         try:
+            if crm_provider == CRMProvider.JOBBER:
+                ok, message = self._validate_jobber_field_mapping(field_mapping)
+                if not ok:
+                    logger.warning(f"Jobber config rejected: {message}")
+                    return None
+                config_data = dict(config_data or {})
+                if config_data.get("access_token"):
+                    config_data["access_token"] = encrypt_secret(config_data.get("access_token"))
+                if config_data.get("refresh_token"):
+                    config_data["refresh_token"] = encrypt_secret(config_data.get("refresh_token"))
+
             config = CRMConfiguration(
                 organization_id=org_id,
                 crm_provider=crm_provider,
@@ -161,6 +177,126 @@ class CRMIntegrationHub:
             logger.error(f"Failed to create CRM config: {str(e)}")
             self.db.rollback()
             return None
+
+    def _validate_jobber_field_mapping(self, field_mapping: Dict[str, str]) -> Tuple[bool, str]:
+        """
+        Validate the Jobber mapping contract.
+        The keys are canonical intake fields and values are non-empty Jobber targets.
+        """
+        required_keys = ["caller_name", "caller_phone", "service_type"]
+        missing = [key for key in required_keys if not str(field_mapping.get(key, "")).strip()]
+        if missing:
+            return False, f"Missing required Jobber field mappings: {', '.join(missing)}"
+        return True, "ok"
+
+    async def ensure_jobber_access_token(self, config: CRMConfiguration) -> Tuple[bool, str]:
+        """
+        Ensure Jobber config has a usable access token.
+        Refreshes token when expired (or near expiry) using refresh token.
+        """
+        if config.crm_provider != CRMProvider.JOBBER:
+            return True, "not_jobber"
+
+        config_data = dict(config.config_data or {})
+        access_token = decrypt_secret(config_data.get("access_token"))
+        refresh_token = decrypt_secret(config_data.get("refresh_token"))
+        expires_at_raw = config_data.get("expires_at")
+
+        if not access_token and not refresh_token:
+            return False, "Jobber OAuth tokens are not configured"
+
+        is_expired = False
+        if expires_at_raw:
+            try:
+                expires_at = datetime.fromisoformat(str(expires_at_raw).replace("Z", "+00:00"))
+                # 2-minute safety buffer
+                is_expired = (expires_at.timestamp() - datetime.utcnow().timestamp()) <= 120
+            except ValueError:
+                is_expired = True
+        else:
+            is_expired = not bool(access_token)
+
+        if not is_expired and access_token:
+            return True, "token_valid"
+
+        if not refresh_token:
+            return False, "Jobber access token expired and no refresh token is available"
+
+        client_id = os.getenv("JOBBER_CLIENT_ID", "").strip()
+        client_secret = os.getenv("JOBBER_CLIENT_SECRET", "").strip()
+        token_url = os.getenv("JOBBER_TOKEN_URL", "https://api.getjobber.com/api/oauth/token").strip()
+        if not client_id or not client_secret:
+            return False, "JOBBER_CLIENT_ID/JOBBER_CLIENT_SECRET must be set to refresh token"
+
+        payload = {
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "client_id": client_id,
+            "client_secret": client_secret,
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                response = await client.post(token_url, json=payload)
+            if response.status_code >= 400:
+                return False, f"Jobber token refresh failed ({response.status_code})"
+            token_data = response.json()
+        except Exception as exc:
+            return False, f"Jobber token refresh request failed: {exc}"
+
+        new_access = token_data.get("access_token")
+        new_refresh = token_data.get("refresh_token") or refresh_token
+        expires_in = int(token_data.get("expires_in") or 3600)
+        if not new_access:
+            return False, "Jobber token refresh returned no access_token"
+
+        new_expires_at = datetime.utcfromtimestamp(datetime.utcnow().timestamp() + expires_in).isoformat() + "Z"
+        config_data["access_token"] = encrypt_secret(new_access)
+        config_data["refresh_token"] = encrypt_secret(new_refresh)
+        config_data["expires_at"] = new_expires_at
+        config.config_data = config_data
+        self.db.commit()
+        self.db.refresh(config)
+        return True, "token_refreshed"
+
+    def _build_jobber_idempotency_key(self, intake_id: int, org_id: int, config_id: int) -> str:
+        raw = f"jobber:{org_id}:{config_id}:{intake_id}"
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    def _decrypted_jobber_config_data(self, config_data: Dict[str, Any]) -> Dict[str, Any]:
+        data = dict(config_data or {})
+        if "access_token" in data:
+            data["access_token"] = decrypt_secret(data.get("access_token"))
+        if "refresh_token" in data:
+            data["refresh_token"] = decrypt_secret(data.get("refresh_token"))
+        return data
+
+    async def refresh_expiring_jobber_tokens(self, threshold_seconds: int = 900) -> Dict[str, int]:
+        checked = 0
+        refreshed = 0
+        failed = 0
+        now_ts = datetime.utcnow().timestamp()
+        configs = self.db.query(CRMConfiguration).filter(
+            CRMConfiguration.crm_provider == CRMProvider.JOBBER,
+        ).all()
+        for config in configs:
+            checked += 1
+            config_data = dict(config.config_data or {})
+            expires_at_raw = config_data.get("expires_at")
+            if not expires_at_raw:
+                continue
+            try:
+                expires_at = datetime.fromisoformat(str(expires_at_raw).replace("Z", "+00:00")).timestamp()
+            except ValueError:
+                expires_at = now_ts
+            if (expires_at - now_ts) > threshold_seconds:
+                continue
+            ok, _msg = await self.ensure_jobber_access_token(config)
+            if ok:
+                refreshed += 1
+            else:
+                failed += 1
+        return {"checked": checked, "refreshed": refreshed, "failed": failed}
     
     def get_crm_config(self, config_id: int, org_id: int) -> Optional[CRMConfiguration]:
         """Get CRM config by ID (org-scoped)."""
@@ -265,6 +401,31 @@ class CRMIntegrationHub:
             if not crm_config or not crm_config.is_active:
                 logger.warning(f"No active CRM config for intake {intake_id}")
                 return None
+
+            if crm_config.crm_provider == CRMProvider.JOBBER:
+                ok, msg = self._validate_jobber_field_mapping(crm_config.field_mapping or {})
+                if not ok:
+                    logger.error(f"Jobber config mapping invalid: {msg}")
+                    return None
+                ok, msg = await self.ensure_jobber_access_token(crm_config)
+                if not ok:
+                    logger.error(f"Jobber token unavailable: {msg}")
+                    return None
+                existing_success = self.db.query(CRMHandoff).filter(
+                    CRMHandoff.organization_id == org_id,
+                    CRMHandoff.intake_id == intake_id,
+                    CRMHandoff.crm_config_id == crm_config.id,
+                    CRMHandoff.is_successful == True,
+                ).order_by(CRMHandoff.sent_at.desc()).first()
+                if existing_success:
+                    logger.info(
+                        "Jobber handoff idempotent hit: org=%s intake=%s config=%s handoff=%s",
+                        org_id,
+                        intake_id,
+                        crm_config.id,
+                        existing_success.id,
+                    )
+                    return existing_success
             
             # Convert to standardized intake
             intake = StandardizedIntake(
@@ -278,11 +439,19 @@ class CRMIntegrationHub:
                 preferred_time=intake_db.preferred_time,
                 extra_fields=intake_db.extracted_fields or {},
             )
+            if crm_config.crm_provider == CRMProvider.JOBBER:
+                intake.extra_fields["idempotency_key"] = self._build_jobber_idempotency_key(
+                    intake_id=intake_id,
+                    org_id=org_id,
+                    config_id=crm_config.id,
+                )
             
             # Get adapter
             adapter = self.registry.get_adapter(
                 crm_config.crm_provider,
-                crm_config.config_data,
+                self._decrypted_jobber_config_data(crm_config.config_data)
+                if crm_config.crm_provider == CRMProvider.JOBBER
+                else crm_config.config_data,
                 crm_config.field_mapping
             )
             
@@ -350,6 +519,14 @@ class CRMIntegrationHub:
             config = self.get_crm_config(config_id, org_id)
             if not config:
                 return False, "CRM config not found"
+
+            if config.crm_provider == CRMProvider.JOBBER:
+                ok, msg = self._validate_jobber_field_mapping(config.field_mapping or {})
+                if not ok:
+                    return False, msg
+                ok, msg = await self.ensure_jobber_access_token(config)
+                if not ok:
+                    return False, msg
             
             # Create test intake
             test_intake = StandardizedIntake(
@@ -364,7 +541,9 @@ class CRMIntegrationHub:
             # Get adapter
             adapter = self.registry.get_adapter(
                 config.crm_provider,
-                config.config_data,
+                self._decrypted_jobber_config_data(config.config_data)
+                if config.crm_provider == CRMProvider.JOBBER
+                else config.config_data,
                 config.field_mapping
             )
             
