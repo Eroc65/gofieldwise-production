@@ -70,9 +70,9 @@ Validation behavior:
 - Smoke user should be an owner/admin account in the target organization.
 - Deploy hook secrets must be Render deploy hook `https://` URLs. Do not use database URLs (for example `postgresql://...`) in deploy hook secrets.
 - Storage guidance:
-	- `*_API_BASE_URL`: repository secret or repository variable (non-sensitive URL).
-	- `*_SMOKE_EMAIL`: repository secret.
-	- `*_SMOKE_PASSWORD`: repository secret.
+  - `*_API_BASE_URL`: repository secret or repository variable (non-sensitive URL).
+  - `*_SMOKE_EMAIL`: repository secret.
+  - `*_SMOKE_PASSWORD`: repository secret.
 
 ## Activation Controls
 - Optional strict messaging mode:
