@@ -29,11 +29,11 @@ jobs:
         id: smoke_env
         env:
           STAGING_API_BASE_URL: ${{ secrets.STAGING_API_BASE_URL || vars.STAGING_API_BASE_URL }}
-          STAGING_SMOKE_EMAIL: ${{ secrets.STAGING_SMOKE_EMAIL || vars.STAGING_SMOKE_EMAIL }}
-          STAGING_SMOKE_PASSWORD: ${{ secrets.STAGING_SMOKE_PASSWORD || vars.STAGING_SMOKE_PASSWORD }}
+          STAGING_SMOKE_EMAIL: ${{ secrets.STAGING_SMOKE_EMAIL }}
+          STAGING_SMOKE_PASSWORD: ${{ secrets.STAGING_SMOKE_PASSWORD }}
           PRODUCTION_API_BASE_URL: ${{ secrets.PRODUCTION_API_BASE_URL || vars.PRODUCTION_API_BASE_URL }}
-          PRODUCTION_SMOKE_EMAIL: ${{ secrets.PRODUCTION_SMOKE_EMAIL || vars.PRODUCTION_SMOKE_EMAIL }}
-          PRODUCTION_SMOKE_PASSWORD: ${{ secrets.PRODUCTION_SMOKE_PASSWORD || vars.PRODUCTION_SMOKE_PASSWORD }}
+          PRODUCTION_SMOKE_EMAIL: ${{ secrets.PRODUCTION_SMOKE_EMAIL }}
+          PRODUCTION_SMOKE_PASSWORD: ${{ secrets.PRODUCTION_SMOKE_PASSWORD }}
         run: |
           if [ "${{ github.event.workflow_run.name }}" = "Deploy Staging" ]; then
             SMOKE_API_BASE_URL="$STAGING_API_BASE_URL"
@@ -55,6 +55,8 @@ jobs:
             exit 0
           fi
 
+          echo "::add-mask::$SMOKE_EMAIL"
+          echo "::add-mask::$SMOKE_PASSWORD"
           echo "SMOKE_API_BASE_URL=$SMOKE_API_BASE_URL" >> "$GITHUB_ENV"
           echo "SMOKE_EMAIL=$SMOKE_EMAIL" >> "$GITHUB_ENV"
           echo "SMOKE_PASSWORD=$SMOKE_PASSWORD" >> "$GITHUB_ENV"
