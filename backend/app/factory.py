@@ -60,7 +60,7 @@ def create_app(*, testing: bool = False) -> FastAPI:
         allow_origins=_cors_origins(),
         allow_credentials=False,
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type"],
+        allow_headers=["Authorization", "Content-Type", "X-Billing-Sync-Secret"],
     )
     register_routers(app)
 
@@ -69,3 +69,4 @@ def create_app(*, testing: bool = False) -> FastAPI:
         return {"message": "FrontDesk Pro API is running"}
 
     return app
+
