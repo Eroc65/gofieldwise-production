@@ -7,7 +7,6 @@ from fastapi import FastAPI
 from sqlalchemy import inspect
 
 from .core.db import Base, SessionLocal, engine
-from .services.crm_hub import get_hub
 
 
 def _assert_schema_compatibility() -> None:
@@ -163,6 +162,7 @@ async def startup_services(app: FastAPI) -> None:
             while True:
                 db = SessionLocal()
                 try:
+                    from .services.crm_hub import get_hub  # lazy import — module may not exist on all branches
                     hub = get_hub(db)
                     await hub.refresh_expiring_jobber_tokens(threshold_seconds=threshold_seconds)
                 except Exception:
