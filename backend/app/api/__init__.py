@@ -4,11 +4,9 @@ from . import (
     admin_monitoring,
     auth,
     billing,
-    crm_hub,
     customers,
     estimates,
     external_integrations,
-    integrations,
     invoices,
     jobs,
     leads,
@@ -44,5 +42,3 @@ router.include_router(marketing.router, prefix="/api", tags=["marketing"], depen
 router.include_router(platform.router, prefix="/api", tags=["platform"], dependencies=_active)
 router.include_router(admin_monitoring.router, prefix="/api", tags=["admin-monitoring"], dependencies=_active)
 router.include_router(external_integrations.router, prefix="/api", tags=["external-integrations"], dependencies=_active)
-router.include_router(integrations.router, tags=["integrations"], dependencies=_active)
-router.include_router(crm_hub.router, tags=["crm-hub"], dependencies=_active)
