@@ -1,7 +1,7 @@
 import Head from "next/head";
 import { useEffect, useMemo, useState } from "react";
 
-import { getAdminMonitoringSummary, login } from "../lib/api";
+import { getAdminMonitoringSummary, getJobberTokenExpiryStatus, login, refreshExpiringJobberTokens } from "../lib/api";
 
 const ADMIN_EMAIL = "support@gofieldwise.com";
 const ADMIN_TOKEN_KEY = "gofieldwise.admin.token";
@@ -127,6 +127,31 @@ export default function AdminDashboard() {
   const [authenticating, setAuthenticating] = useState(false);
   const [error, setError] = useState("");
   const [authError, setAuthError] = useState("");
+  const [jobberStatus, setJobberStatus] = useState({ total: 0, items: [] });
+  const [jobberError, setJobberError] = useState("");
+  const [jobberLoading, setJobberLoading] = useState(false);
+  const [jobberRefreshRunning, setJobberRefreshRunning] = useState(false);
+  const [jobberRefreshMessage, setJobberRefreshMessage] = useState("");
+  const [warningSeconds, setWarningSeconds] = useState(3600);
+  const [criticalSeconds, setCriticalSeconds] = useState(900);
+
+  async function loadJobberRisk() {
+    if (!token) return;
+    setJobberLoading(true);
+    try {
+      const payload = await getJobberTokenExpiryStatus({
+        token,
+        warningSeconds,
+        criticalSeconds,
+      });
+      setJobberStatus(payload);
+      setJobberError("");
+    } catch (err) {
+      setJobberError(err instanceof Error ? err.message : "Could not load Jobber token risk.");
+    } finally {
+      setJobberLoading(false);
+    }
+  }
 
   useEffect(() => {
     const savedToken = window.localStorage.getItem(ADMIN_TOKEN_KEY) || "";
@@ -167,6 +192,57 @@ export default function AdminDashboard() {
       clearInterval(timer);
     };
   }, [token]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function load() {
+      if (!token) return;
+      try {
+        const payload = await getJobberTokenExpiryStatus({
+          token,
+          warningSeconds,
+          criticalSeconds,
+        });
+        if (active) {
+          setJobberStatus(payload);
+          setJobberError("");
+        }
+      } catch (err) {
+        if (active) {
+          setJobberError(err instanceof Error ? err.message : "Could not load Jobber token risk.");
+        }
+      }
+    }
+
+    setJobberLoading(true);
+    load().finally(() => {
+      if (active) setJobberLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [token, warningSeconds, criticalSeconds]);
+
+  async function onRefreshJobberNow() {
+    if (!token) return;
+    setJobberRefreshRunning(true);
+    setJobberRefreshMessage("");
+    try {
+      const result = await refreshExpiringJobberTokens({
+        token,
+        thresholdSeconds: criticalSeconds,
+      });
+      setJobberRefreshMessage(
+        `Refreshed ${result.refreshed || 0} of ${result.checked || 0} checked (failed: ${result.failed || 0}).`
+      );
+      await loadJobberRisk();
+    } catch (err) {
+      setJobberRefreshMessage(err instanceof Error ? err.message : "Refresh failed.");
+    } finally {
+      setJobberRefreshRunning(false);
+    }
+  }
 
   async function onLogin(event) {
     event.preventDefault();
@@ -284,6 +360,65 @@ export default function AdminDashboard() {
             <strong>{formatMoney(business.open_invoice_total)}</strong>
             <p>{business.pending_followups} pending follow-up(s)</p>
           </article>
+        </section>
+
+        <section className="panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Jobber token risk</p>
+              <h2>Token Expiry Watch</h2>
+            </div>
+            <div className="jobber-controls">
+              <label>
+                Warning(s)
+                <input
+                  type="number"
+                  min={60}
+                  value={warningSeconds}
+                  onChange={(event) => setWarningSeconds(Number(event.target.value) || 3600)}
+                />
+              </label>
+              <label>
+                Critical(s)
+                <input
+                  type="number"
+                  min={60}
+                  value={criticalSeconds}
+                  onChange={(event) => setCriticalSeconds(Number(event.target.value) || 900)}
+                />
+              </label>
+              <button
+                type="button"
+                className="jobber-refresh"
+                onClick={onRefreshJobberNow}
+                disabled={jobberRefreshRunning || !token}
+              >
+                {jobberRefreshRunning ? "Refreshing..." : "Refresh now"}
+              </button>
+            </div>
+          </div>
+          {jobberError ? <p className="auth-error">{jobberError}</p> : null}
+          {jobberRefreshMessage ? <p className="jobber-refresh-msg">{jobberRefreshMessage}</p> : null}
+          <div className="jobber-meta">
+            <span>{jobberLoading ? "Refreshing..." : `Configs tracked: ${jobberStatus.total || 0}`}</span>
+          </div>
+          <div className="jobber-table">
+            {(jobberStatus.items || []).map((item) => (
+              <article key={`${item.organization_id}-${item.config_id}`} className={`risk-${item.risk || "unknown"}`}>
+                <b>{item.name || `Config ${item.config_id}`}</b>
+                <span>Org {item.organization_id}</span>
+                <span>Risk: {item.risk || "unknown"}</span>
+                <span>Expires: {item.expires_at || "n/a"}</span>
+                <span>Remaining: {item.seconds_remaining != null ? `${item.seconds_remaining}s` : "n/a"}</span>
+              </article>
+            ))}
+            {!jobberLoading && !(jobberStatus.items || []).length ? (
+              <article className="risk-unknown">
+                <b>No Jobber configs found</b>
+                <span>Create a Jobber OAuth config to monitor token expiry risk.</span>
+              </article>
+            ) : null}
+          </div>
         </section>
 
         <section className="panel landing-health">
@@ -868,6 +1003,100 @@ export default function AdminDashboard() {
           gap: 8px;
         }
 
+        .jobber-controls {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .jobber-controls label {
+          display: grid;
+          gap: 4px;
+          font-size: 0.78rem;
+          font-weight: 800;
+          color: var(--navy);
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+
+        .jobber-controls input {
+          min-height: 36px;
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          padding: 0 10px;
+          width: 140px;
+          font-size: 0.95rem;
+        }
+
+        .jobber-refresh {
+          min-height: 36px;
+          border: 0;
+          border-radius: 8px;
+          background: linear-gradient(120deg, var(--navy-deep), var(--navy-light));
+          color: #fffdf8;
+          font-weight: 850;
+          cursor: pointer;
+          padding: 0 12px;
+          align-self: end;
+        }
+
+        .jobber-refresh:disabled {
+          opacity: 0.7;
+          cursor: wait;
+        }
+
+        .jobber-refresh-msg {
+          margin: 0 0 8px;
+          color: #35505b;
+          font-weight: 800;
+        }
+
+        .jobber-meta {
+          margin-bottom: 12px;
+          color: #4e6a74;
+          font-weight: 800;
+        }
+
+        .jobber-table {
+          display: grid;
+          gap: 10px;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .jobber-table article {
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          background: #fffdf8;
+          padding: 12px;
+          display: grid;
+          gap: 6px;
+        }
+
+        .jobber-table article b {
+          color: var(--navy);
+        }
+
+        .jobber-table article span {
+          color: #35505b;
+          font-size: 0.9rem;
+        }
+
+        .risk-ok {
+          border-top: 5px solid #247a4d;
+        }
+
+        .risk-warning {
+          border-top: 5px solid var(--accent);
+        }
+
+        .risk-critical {
+          border-top: 5px solid var(--error);
+        }
+
+        .risk-unknown {
+          border-top: 5px solid #94a3b8;
+        }
+
         .score-list,
         .alert-table,
         .schema-list {
@@ -921,6 +1150,10 @@ export default function AdminDashboard() {
           .feature-board,
           .status-table {
             grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
+          .jobber-table {
+            grid-template-columns: 1fr;
           }
         }
 
