@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from secrets import token_urlsafe
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from ..core.db import Base
@@ -21,6 +21,7 @@ class Organization(Base):
     intake_key = Column(String, unique=True, index=True, nullable=False, default=_new_intake_key)
     ai_guide_enabled = Column(Integer, nullable=False, default=0)
     ai_guide_stage = Column(String, nullable=False, default="off")
+    is_active = Column(Boolean, nullable=False, server_default="true", default=True)
     users = relationship("User", back_populates="organization")
     customers = relationship("Customer", back_populates="organization")
     jobs = relationship("Job", back_populates="organization")

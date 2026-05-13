@@ -147,6 +147,7 @@ def _load_role_audit_rows(
         )
     return out
 
+
 def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
@@ -159,35 +160,108 @@ def get_current_user(
         raise HTTPException(status_code=401, detail="User not found")
     return user
 
+
+def require_active_org(current_user: User = Depends(get_current_user)) -> User:
+    """
+    Dependency for business endpoints that require an active subscription.
+    Raises HTTP 402 when org.is_active is False so the frontend can redirect
+    to /billing.
+
+    Auth endpoints (/api/auth/*) and /api/billing/sync do NOT use this
+    dependency -- checkout identity resolution and webhook sync are never blocked.
+    """
+    org = current_user.organization
+    if org is None or not org.is_active:
+        raise HTTPException(
+            status_code=402,
+            detail="Subscription required. Visit /billing to activate your plan.",
+        )
+    return current_user
+
+
 @router.post("/signup", response_model=UserOut)
 def signup(user: UserCreate, db: Session = Depends(get_db)):
+    """
+    Sign up a new user. Two mutually-exclusive flows:
+
+      1. New organization
+         Provide `organization_name` (and NOT `intake_key`). A new
+         Organization is created with a freshly-generated `intake_key`,
+         and the new user becomes its `owner`.
+
+      2. Join an existing organization
+         Provide `intake_key` (and NOT `organization_name`). The user is
+         created with role `technician` in the org that owns the key.
+         Existing admins promote new members via
+         PATCH /api/auth/users/{user_id}/role.
+
+    Joining an existing organization by NAME is not allowed -- that was
+    a takeover vector. Any `role` value supplied in the request body is
+    ignored; the role is always derived from the flow above.
+    """
     existing_user = db.query(User).filter(User.email == user.email).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    if not user.organization_name:
-        raise HTTPException(status_code=400, detail="Organization name is required")
+    if user.organization_name and user.intake_key:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Provide either organization_name (to create a new organization) "
+                "or intake_key (to join an existing one), not both."
+            ),
+        )
 
-    organization = (
-        db.query(Organization)
-        .filter(Organization.name == user.organization_name)
-        .first()
-    )
-    if organization is None:
-        organization = Organization(name=user.organization_name, intake_key=_new_intake_key())
+    if user.intake_key:
+        intake_key = user.intake_key.strip()
+        if not intake_key:
+            raise HTTPException(status_code=422, detail="intake_key cannot be blank.")
+        organization = (
+            db.query(Organization)
+            .filter(Organization.intake_key == intake_key)
+            .first()
+        )
+        if organization is None:
+            raise HTTPException(status_code=404, detail="Invalid intake key.")
+        role = "technician"
+    elif user.organization_name:
+        org_name = user.organization_name.strip()
+        if not org_name:
+            raise HTTPException(status_code=422, detail="organization_name cannot be blank.")
+        existing_org = (
+            db.query(Organization)
+            .filter(Organization.name == org_name)
+            .first()
+        )
+        if existing_org is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Organization name already in use. To join an existing "
+                    "organization, request an intake_key from one of its admins."
+                ),
+            )
+        organization = Organization(name=org_name, intake_key=_new_intake_key())
         db.add(organization)
         db.flush()
+        role = "owner"
+    else:
+        raise HTTPException(
+            status_code=422,
+            detail="organization_name (for new org) or intake_key (to join) is required.",
+        )
 
     db_user = User(
         email=user.email,
         hashed_password=hash_password(user.password),
-        role=normalize_user_role(user.role),
+        role=role,
         organization_id=organization.id,
     )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
     return db_user
+
 
 @router.post("/login")
 def login(
@@ -199,6 +273,7 @@ def login(
         raise HTTPException(status_code=401, detail="Incorrect email or password")
     access_token = create_access_token({"sub": user.email})
     return {"access_token": access_token, "token_type": "bearer"}
+
 
 @router.get("/me", response_model=UserOut)
 def me(current_user: User = Depends(get_current_user)):
@@ -345,6 +420,7 @@ def role_audit_export_csv(
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=role_audit_events.csv"},
     )
+
 
 @router.get("/org", response_model=OrganizationOut)
 def current_org(
