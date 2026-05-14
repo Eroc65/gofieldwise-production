@@ -85,26 +85,43 @@ export default async function handler(req, res) {
         if (session.mode !== "subscription") break;
 
         const subscription = await stripe.subscriptions.retrieve(session.subscription);
-        const org = await getOrgByStripeCustomer(session.customer);
+
+        // Supabase lookup is best-effort — don't let it abort the FastAPI sync
+        let org = null;
+        try {
+          org = await getOrgByStripeCustomer(session.customer);
+        } catch (supabaseErr) {
+          console.error(
+            `[stripe/webhook] getOrgByStripeCustomer failed (non-fatal):`,
+            supabaseErr?.message
+          );
+        }
         orgId = org?.id || null;
 
         const planActive =
           subscription.status === "active" || subscription.status === "trialing";
 
-        await updateOrgSubscription(orgId || session.metadata?.organization_id, {
-          stripeCustomerId: session.customer,
-          stripeSubscriptionId: subscription.id,
-          status: subscription.status,
-          planActive,
-          currentPeriodEnd: subscription.current_period_end
-            ? new Date(subscription.current_period_end * 1000).toISOString()
-            : null,
-          trialEndsAt: subscription.trial_end
-            ? new Date(subscription.trial_end * 1000).toISOString()
-            : null,
-        });
+        try {
+          await updateOrgSubscription(orgId || session.metadata?.organization_id, {
+            stripeCustomerId: session.customer,
+            stripeSubscriptionId: subscription.id,
+            status: subscription.status,
+            planActive,
+            currentPeriodEnd: subscription.current_period_end
+              ? new Date(subscription.current_period_end * 1000).toISOString()
+              : null,
+            trialEndsAt: subscription.trial_end
+              ? new Date(subscription.trial_end * 1000).toISOString()
+              : null,
+          });
+        } catch (supabaseUpdateErr) {
+          console.error(
+            `[stripe/webhook] updateOrgSubscription failed (non-fatal):`,
+            supabaseUpdateErr?.message
+          );
+        }
 
-        // Sync is_active to FastAPI Postgres
+        // Sync is_active to FastAPI Postgres — always runs regardless of Supabase state
         await syncFastapiOrgActive({
           orgId: session.metadata?.organization_id,
           isActive: planActive,
@@ -116,7 +133,15 @@ export default async function handler(req, res) {
       case "customer.subscription.updated":
       case "customer.subscription.deleted": {
         const subscription = event.data.object;
-        const org = await getOrgByStripeCustomer(subscription.customer);
+        let org = null;
+        try {
+          org = await getOrgByStripeCustomer(subscription.customer);
+        } catch (supabaseErr) {
+          console.error(
+            `[stripe/webhook] getOrgByStripeCustomer failed (non-fatal):`,
+            supabaseErr?.message
+          );
+        }
         orgId = org?.id || null;
 
         const planActive =
@@ -156,7 +181,15 @@ export default async function handler(req, res) {
       case "invoice.paid":
       case "invoice.payment_failed": {
         const invoice = event.data.object;
-        const org = await getOrgByStripeCustomer(invoice.customer);
+        let org = null;
+        try {
+          org = await getOrgByStripeCustomer(invoice.customer);
+        } catch (supabaseErr) {
+          console.error(
+            `[stripe/webhook] getOrgByStripeCustomer failed (non-fatal):`,
+            supabaseErr?.message
+          );
+        }
         orgId = org?.id || null;
 
         if (event.type === "invoice.payment_failed" && orgId) {
