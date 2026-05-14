@@ -1,5 +1,13 @@
 # FrontDesk Pro
 
+## Repository Status
+This repository is archived as an active development source.
+
+Canonical source of truth:
+- https://github.com/Eroc65/auto-gpt (branch: main)
+
+All new changes must be made in the canonical repository.
+
 AI-first front desk software for small trades businesses.
 
 ## Repo Structure
