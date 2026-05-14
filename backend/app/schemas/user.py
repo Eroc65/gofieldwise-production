@@ -7,6 +7,7 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
     organization_name: Optional[str] = None
+    intake_key: Optional[str] = None
     role: Optional[str] = None
 
 class UserLogin(BaseModel):
