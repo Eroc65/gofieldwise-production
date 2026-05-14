@@ -17,9 +17,12 @@
     "@supabase/supabase-js": "^2.105.4",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
-    "next": "latest",
+    "next": "^16.2.5",
     "react": "latest",
     "react-dom": "latest",
     "stripe": "^22.1.1"
+  },
+  "overrides": {
+    "postcss": ">=8.5.10"
   }
 }
