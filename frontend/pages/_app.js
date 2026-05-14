@@ -238,16 +238,18 @@ export default function App({ Component, pageProps }) {
 
   useEffect(() => {
     const removeBuildFooterLine = () => {
-      const footer = document.querySelector("footer, [role='contentinfo']");
-      if (!footer) {
+      const footers = document.querySelectorAll("footer, [role='contentinfo']");
+      if (!footers.length) {
         return;
       }
 
-      footer.querySelectorAll("p, div, span").forEach((node) => {
-        const text = (node.textContent || "").trim();
-        if (text.startsWith("Build:")) {
-          node.remove();
-        }
+      footers.forEach((footer) => {
+        footer.querySelectorAll("p, div, span").forEach((node) => {
+          const text = (node.textContent || "").trim();
+          if (text.startsWith("Build:")) {
+            node.remove();
+          }
+        });
       });
     };
 
