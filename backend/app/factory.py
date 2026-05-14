@@ -33,6 +33,7 @@ def _cors_origins() -> list[str]:
     return [
         "https://gofieldwise.com",
         "https://www.gofieldwise.com",
+        "https://gofieldwise-production.vercel.app",
         "http://localhost:3000",
         "http://localhost:3100",
         "http://localhost:3105",
