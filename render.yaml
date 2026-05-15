@@ -9,7 +9,7 @@ services:
       paths:
         - frontend/**
         - render.yaml
-    buildCommand: cd frontend && npm ci && npm run build
+    buildCommand: cd frontend && npm install && npm run build
     startCommand: cd frontend && npm run start -- -p $PORT
     envVars:
       - key: NODE_ENV
