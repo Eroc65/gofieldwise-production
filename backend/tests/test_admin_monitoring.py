@@ -1,7 +1,7 @@
 from app.core.db import Base, engine
 
 
-ADMIN_EMAIL = "support@gofieldwise.com"
+ADMIN_USERNAME = "owner-admin"
 PASSWORD = "testpass123"
 
 
@@ -10,25 +10,16 @@ def _reset_db():
     Base.metadata.create_all(bind=engine)
 
 
-def _login(client, email=ADMIN_EMAIL):
-    signup = client.post(
-        "/api/auth/signup",
-        json={
-            "email": email,
-            "password": PASSWORD,
-            "organization_name": f"{email}-org",
-            "role": "owner",
-        },
-    )
-    assert signup.status_code == 200, signup.text
-
-    login = client.post("/api/auth/login", data={"username": email, "password": PASSWORD})
+def _login(client, username=ADMIN_USERNAME, password=PASSWORD):
+    login = client.post("/api/admin/auth/login", json={"username": username, "password": password})
     assert login.status_code == 200, login.text
     return {"Authorization": f"Bearer {login.json()['access_token']}"}
 
 
 def test_admin_monitoring_summary_includes_system_health_and_flows(client, monkeypatch):
     _reset_db()
+    monkeypatch.setenv("ADMIN_USERNAME", ADMIN_USERNAME)
+    monkeypatch.setenv("ADMIN_PASSWORD", PASSWORD)
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test")
     monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_test")
     monkeypatch.setenv("BILLING_SYNC_SECRET", "billing-secret")
@@ -48,8 +39,10 @@ def test_admin_monitoring_summary_includes_system_health_and_flows(client, monke
     assert "lead_pipeline" in flow_ids
 
 
-def test_admin_system_healthcheck_returns_ai_helper_context(client):
+def test_admin_system_healthcheck_returns_ai_helper_context(client, monkeypatch):
     _reset_db()
+    monkeypatch.setenv("ADMIN_USERNAME", ADMIN_USERNAME)
+    monkeypatch.setenv("ADMIN_PASSWORD", PASSWORD)
 
     response = client.get("/api/admin/monitoring/system-health", headers=_login(client))
 
@@ -60,12 +53,13 @@ def test_admin_system_healthcheck_returns_ai_helper_context(client):
     assert payload["system_health"]["status"] in {"green", "yellow", "red"}
 
 
-def test_admin_monitoring_rejects_non_admin_user(client):
+def test_admin_monitoring_requires_admin_session(client, monkeypatch):
     _reset_db()
+    monkeypatch.setenv("ADMIN_USERNAME", ADMIN_USERNAME)
+    monkeypatch.setenv("ADMIN_PASSWORD", PASSWORD)
 
-    response = client.get(
-        "/api/admin/monitoring/system-health",
-        headers=_login(client, email="not-admin@example.com"),
-    )
+    response = client.get("/api/admin/monitoring/system-health")
+    assert response.status_code == 401
 
-    assert response.status_code == 403
+    bad_login = client.post("/api/admin/auth/login", json={"username": "not-admin", "password": PASSWORD})
+    assert bad_login.status_code == 401

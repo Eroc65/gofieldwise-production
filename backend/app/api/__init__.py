@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 
 from . import (
     admin_monitoring,
+    admin_auth,
     auth,
     billing,
     customers,
@@ -29,6 +30,7 @@ router = APIRouter()
 router.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 router.include_router(billing.router, tags=["billing"])
 router.include_router(operator.router, prefix="/api", tags=["operator"])
+router.include_router(admin_auth.router, prefix="/api", tags=["admin-auth"])
 
 # ── Business routes: require active subscription ─────────────────────────────
 router.include_router(leads.router, prefix="/api", tags=["leads"], dependencies=_active)
@@ -42,5 +44,5 @@ router.include_router(reports.router, prefix="/api", tags=["reports"], dependenc
 router.include_router(estimates.router, prefix="/api", tags=["estimates"], dependencies=_active)
 router.include_router(marketing.router, prefix="/api", tags=["marketing"], dependencies=_active)
 router.include_router(platform.router, prefix="/api", tags=["platform"], dependencies=_active)
-router.include_router(admin_monitoring.router, prefix="/api", tags=["admin-monitoring"], dependencies=_active)
+router.include_router(admin_monitoring.router, prefix="/api", tags=["admin-monitoring"])
 router.include_router(external_integrations.router, prefix="/api", tags=["external-integrations"], dependencies=_active)

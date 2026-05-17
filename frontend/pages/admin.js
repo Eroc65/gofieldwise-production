@@ -2,16 +2,18 @@ import Head from "next/head";
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  adminLogin,
   getAdminMonitoringSummary,
   getJobberTokenExpiryStatus,
-  login,
+  requestAdminPasswordReset,
+  resetAdminPassword,
   refreshExpiringJobberTokens,
   runAdminSystemHealthcheck,
 } from "../lib/api";
 
-const ADMIN_EMAIL = "support@gofieldwise.com";
 const ADMIN_TOKEN_KEY = "gofieldwise.admin.token";
-const ADMIN_EMAIL_KEY = "gofieldwise.admin.email";
+const ADMIN_USERNAME_KEY = "gofieldwise.admin.username";
+const ADMIN_RESET_EMAIL = "erock004@gmail.com";
 
 const fallbackSummary = {
   overall_status: "yellow",
@@ -143,12 +145,17 @@ function MiniBars({ values }) {
 export default function AdminDashboard() {
   const [summary, setSummary] = useState(fallbackSummary);
   const [token, setToken] = useState("");
-  const [email, setEmail] = useState(ADMIN_EMAIL);
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(true);
   const [authenticating, setAuthenticating] = useState(false);
   const [error, setError] = useState("");
   const [authError, setAuthError] = useState("");
+  const [resetToken, setResetToken] = useState("");
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetConfirm, setResetConfirm] = useState("");
+  const [resetMessage, setResetMessage] = useState("");
+  const [resetBusy, setResetBusy] = useState(false);
   const [jobberStatus, setJobberStatus] = useState({ total: 0, items: [] });
   const [jobberError, setJobberError] = useState("");
   const [jobberLoading, setJobberLoading] = useState(false);
@@ -179,8 +186,11 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     const savedToken = window.localStorage.getItem(ADMIN_TOKEN_KEY) || "";
-    const savedEmail = window.localStorage.getItem(ADMIN_EMAIL_KEY) || ADMIN_EMAIL;
-    if (savedEmail.toLowerCase() === ADMIN_EMAIL) setEmail(savedEmail);
+    const savedUsername = window.localStorage.getItem(ADMIN_USERNAME_KEY) || "";
+    const query = new URLSearchParams(window.location.search);
+    const queryResetToken = query.get("reset") || "";
+    if (queryResetToken) setResetToken(queryResetToken);
+    if (savedUsername) setUsername(savedUsername);
     if (savedToken) setToken(savedToken);
     setLoading(false);
   }, []);
@@ -293,20 +303,17 @@ export default function AdminDashboard() {
   async function onLogin(event) {
     event.preventDefault();
     setAuthError("");
-    const normalizedEmail = email.trim().toLowerCase();
-    if (normalizedEmail !== ADMIN_EMAIL) {
-      setAuthError(`Admin access is restricted to ${ADMIN_EMAIL}.`);
-      return;
-    }
+    const normalizedUsername = username.trim();
     setAuthenticating(true);
     try {
-      const result = await login({ email: normalizedEmail, password });
+      const result = await adminLogin({ username: normalizedUsername, password });
       if (!result.access_token) {
         throw new Error("Login succeeded but no access token was returned.");
       }
       window.localStorage.setItem(ADMIN_TOKEN_KEY, result.access_token);
-      window.localStorage.setItem(ADMIN_EMAIL_KEY, normalizedEmail);
+      window.localStorage.setItem(ADMIN_USERNAME_KEY, result.username || normalizedUsername);
       setToken(result.access_token);
+      setUsername(result.username || normalizedUsername);
       setPassword("");
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : "Admin login failed.");
@@ -319,6 +326,49 @@ export default function AdminDashboard() {
     setToken("");
     setSummary(fallbackSummary);
     window.localStorage.removeItem(ADMIN_TOKEN_KEY);
+  }
+
+  async function onRequestReset(event) {
+    event.preventDefault();
+    setResetBusy(true);
+    setAuthError("");
+    setResetMessage("");
+    try {
+      await requestAdminPasswordReset({ username: username.trim() });
+      setResetMessage(`If that admin username is valid, a reset link was sent to ${ADMIN_RESET_EMAIL}.`);
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : "Could not request password reset.");
+    } finally {
+      setResetBusy(false);
+    }
+  }
+
+  async function onResetPassword(event) {
+    event.preventDefault();
+    setResetBusy(true);
+    setAuthError("");
+    setResetMessage("");
+    if (resetPassword !== resetConfirm) {
+      setAuthError("Passwords do not match.");
+      setResetBusy(false);
+      return;
+    }
+    try {
+      const result = await resetAdminPassword({ token: resetToken, password: resetPassword });
+      window.localStorage.setItem(ADMIN_TOKEN_KEY, result.access_token);
+      window.localStorage.setItem(ADMIN_USERNAME_KEY, result.username || username);
+      setToken(result.access_token);
+      setUsername(result.username || username);
+      setResetToken("");
+      setResetPassword("");
+      setResetConfirm("");
+      setResetMessage("Password reset. Admin session opened.");
+      window.history.replaceState({}, document.title, "/admin");
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : "Could not reset password.");
+    } finally {
+      setResetBusy(false);
+    }
   }
 
   const business = summary.business_health || fallbackSummary.business_health;
@@ -346,27 +396,65 @@ export default function AdminDashboard() {
         {!token ? (
           <section className="login-card">
             <p className="eyebrow">Restricted admin</p>
-            <h1>GoFieldwise admin requires owner access.</h1>
-            <p>Sign in with {ADMIN_EMAIL} to view system health, tenant metrics, alerts, and monitoring data.</p>
-            <form onSubmit={onLogin}>
-              <label>
-                Admin email
-                <input value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />
-              </label>
-              <label>
-                Password
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  autoComplete="current-password"
-                />
-              </label>
-              <button type="submit" disabled={authenticating || !email || !password}>
-                {authenticating ? "Checking access..." : "Open Admin Portal"}
-              </button>
-            </form>
+            <h1>GoFieldwise admin portal.</h1>
+            <p>Sign in with the admin username and password configured in your backend environment.</p>
+            {resetToken ? (
+              <form onSubmit={onResetPassword}>
+                <label>
+                  New password
+                  <input
+                    type="password"
+                    value={resetPassword}
+                    onChange={(event) => setResetPassword(event.target.value)}
+                    autoComplete="new-password"
+                  />
+                </label>
+                <label>
+                  Confirm password
+                  <input
+                    type="password"
+                    value={resetConfirm}
+                    onChange={(event) => setResetConfirm(event.target.value)}
+                    autoComplete="new-password"
+                  />
+                </label>
+                <button type="submit" disabled={resetBusy || !resetPassword || !resetConfirm}>
+                  {resetBusy ? "Resetting..." : "Reset Password"}
+                </button>
+                <button type="button" className="link-button" onClick={() => setResetToken("")}>
+                  Back to login
+                </button>
+              </form>
+            ) : (
+              <>
+                <form onSubmit={onLogin}>
+                  <label>
+                    Admin username
+                    <input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" />
+                  </label>
+                  <label>
+                    Password
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      autoComplete="current-password"
+                    />
+                  </label>
+                  <button type="submit" disabled={authenticating || !username || !password}>
+                    {authenticating ? "Checking access..." : "Open Admin Portal"}
+                  </button>
+                </form>
+                <form className="reset-form" onSubmit={onRequestReset}>
+                  <p>Forgot the admin password? A reset link can be sent to {ADMIN_RESET_EMAIL}.</p>
+                  <button type="submit" disabled={resetBusy || !username}>
+                    {resetBusy ? "Sending..." : "Send Reset Link"}
+                  </button>
+                </form>
+              </>
+            )}
             {authError ? <p className="auth-error">{authError}</p> : null}
+            {resetMessage ? <p className="reset-message">{resetMessage}</p> : null}
           </section>
         ) : (
           <>
@@ -818,6 +906,32 @@ export default function AdminDashboard() {
           color: #fffdf8;
           font-weight: 850;
           cursor: pointer;
+        }
+
+        .login-card .link-button,
+        .reset-form button {
+          background: transparent;
+          color: var(--navy);
+          border: 1px solid var(--line);
+        }
+
+        .reset-form {
+          margin-top: 14px;
+          border-top: 1px solid var(--line);
+          padding-top: 14px;
+        }
+
+        .reset-form p,
+        .reset-message {
+          margin: 0;
+          color: #35505b;
+          line-height: 1.55;
+          font-weight: 750;
+        }
+
+        .reset-message {
+          margin-top: 14px;
+          color: #247a4d;
         }
 
         .overall button:disabled,

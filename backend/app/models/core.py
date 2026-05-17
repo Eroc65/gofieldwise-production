@@ -73,6 +73,26 @@ class OperatorInvite(Base):
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
     organization = relationship("Organization", back_populates="operator_invites")
 
+
+class AdminCredential(Base):
+    __tablename__ = "admin_credentials"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
+
+
+class AdminPasswordReset(Base):
+    __tablename__ = "admin_password_resets"
+    id = Column(Integer, primary_key=True, index=True)
+    token_hash = Column(String, unique=True, index=True, nullable=False)
+    username = Column(String, index=True, nullable=False)
+    status = Column(String, nullable=False, default="pending")
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+
 class Customer(Base):
     __tablename__ = "customers"
     id = Column(Integer, primary_key=True, index=True)

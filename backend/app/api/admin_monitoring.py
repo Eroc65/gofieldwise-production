@@ -4,17 +4,16 @@ import os
 import time
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
-from ..api.auth import get_current_user
+from ..api.admin_auth import require_admin_session
 from ..core.db import get_db
-from ..models.core import Invoice, Job, Lead, Organization, Reminder, User
+from ..models.core import Invoice, Job, Lead, Organization, Reminder
 
 
 router = APIRouter()
-ADMIN_EMAIL = "support@gofieldwise.com"
 
 TROUBLESHOOTING_FLOWS = [
     {
@@ -169,11 +168,6 @@ def _safe_scalar(query, default=0):
         return default
 
 
-def _ensure_admin(current_user: User) -> None:
-    if str(current_user.email).strip().lower() != ADMIN_EMAIL:
-        raise HTTPException(status_code=403, detail="Admin monitoring is restricted to support@gofieldwise.com.")
-
-
 def _build_monitoring_payload(db: Session) -> dict:
     started = time.perf_counter()
     db_ok = True
@@ -318,19 +312,17 @@ def _build_monitoring_payload(db: Session) -> dict:
 
 @router.get("/admin/monitoring/summary")
 def admin_monitoring_summary(
-    current_user: User = Depends(get_current_user),
+    _admin: dict = Depends(require_admin_session),
     db: Session = Depends(get_db),
 ) -> dict:
-    _ensure_admin(current_user)
     return _build_monitoring_payload(db)
 
 
 @router.get("/admin/monitoring/system-health")
 def admin_system_healthcheck(
-    current_user: User = Depends(get_current_user),
+    _admin: dict = Depends(require_admin_session),
     db: Session = Depends(get_db),
 ) -> dict:
-    _ensure_admin(current_user)
     payload = _build_monitoring_payload(db)
     return {
         "generated_at": payload["generated_at"],

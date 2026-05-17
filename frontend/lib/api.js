@@ -43,6 +43,27 @@ export async function login({ email, password }) {
   return payload;
 }
 
+export async function adminLogin({ username, password }) {
+  return apiFetch("/api/admin/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
+  });
+}
+
+export async function requestAdminPasswordReset({ username }) {
+  return apiFetch("/api/admin/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ username }),
+  });
+}
+
+export async function resetAdminPassword({ token, password }) {
+  return apiFetch("/api/admin/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ token, password }),
+  });
+}
+
 export async function verifyOperatorInvite({ key }) {
   return apiFetch("/api/operator/invite/verify", {
     method: "POST",
