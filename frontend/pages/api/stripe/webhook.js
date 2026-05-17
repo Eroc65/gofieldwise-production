@@ -61,15 +61,17 @@ async function syncFastapiOrgActive({ orgId, isActive, subscriptionStatus }) {
  * from billing sync so onboarding logic does not get tangled into subscription
  * state updates.
  */
-async function provisionOperatorInvite({ session, subscription, orgId }) {
-  const secret = process.env.OPERATOR_INVITE_SYNC_SECRET || process.env.BILLING_SYNC_SECRET;
-  if (!secret) return;
-
-  const ownerEmail =
-    session.customer_details?.email ||
-    session.customer_email ||
-    session.metadata?.user_email ||
-    null;
+async function provisionOperatorInvite({
+  organizationId,
+  email,
+  ownerName,
+  businessName,
+  phone,
+  stripeCustomerId,
+  stripeSubscriptionId,
+}) {
+  const secret = process.env.BILLING_SYNC_SECRET;
+  if (!secret || !organizationId) return null;
 
   try {
     const res = await fetch(`${BACKEND_API_BASE}/api/operator/invite/provision`, {
@@ -79,17 +81,15 @@ async function provisionOperatorInvite({ session, subscription, orgId }) {
         "X-Billing-Sync-Secret": secret,
       },
       body: JSON.stringify({
-        org_id: orgId ? Number(orgId) : null,
-        email: ownerEmail,
-        owner_name: session.customer_details?.name || session.metadata?.owner_name || null,
-        business_name:
-          session.metadata?.business_name ||
-          session.metadata?.organization_name ||
-          session.customer_details?.name ||
-          null,
-        phone: session.customer_details?.phone || session.metadata?.phone || null,
-        stripe_customer_id: session.customer || null,
-        stripe_subscription_id: subscription?.id || null,
+        organization_id: Number(organizationId),
+        email: email || null,
+        owner_name: ownerName || null,
+        business_name: businessName || null,
+        phone: phone || null,
+        source: "stripe_checkout",
+        stripe_customer_id: stripeCustomerId || null,
+        stripe_subscription_id: stripeSubscriptionId || null,
+        expires_hours: 72,
         setup_base_url: process.env.NEXT_PUBLIC_APP_URL || "https://gofieldwise.com",
       }),
     });
@@ -97,16 +97,14 @@ async function provisionOperatorInvite({ session, subscription, orgId }) {
     const payload = await res.json().catch(() => null);
     if (!res.ok) {
       console.error(`[stripe/webhook] operator invite provision returned ${res.status}:`, payload);
-      return;
+      return null;
     }
 
-    if (process.env.LOG_OPERATOR_SETUP_URL === "1") {
-      console.info(`[stripe/webhook] operator setup URL: ${payload?.setup_url}`);
-    } else {
-      console.info(`[stripe/webhook] operator invite provisioned: invite_id=${payload?.invite_id}`);
-    }
+    console.log("[stripe/webhook] operator setup URL created:", payload?.setup_url);
+    return payload;
   } catch (err) {
     console.error("[stripe/webhook] operator invite provision failed:", err?.message);
+    return null;
   }
 }
 
@@ -182,12 +180,26 @@ export default async function handler(req, res) {
           subscriptionStatus: subscription.status,
         });
 
-        if (planActive) {
-          await provisionOperatorInvite({
-            session,
-            subscription,
-            orgId: session.metadata?.organization_id || null,
+        if (planActive && session.metadata?.organization_id) {
+          const invite = await provisionOperatorInvite({
+            organizationId: session.metadata.organization_id,
+            email: session.customer_details?.email || session.customer_email || null,
+            ownerName: session.customer_details?.name || session.metadata?.owner_name || null,
+            businessName:
+              session.metadata?.business_name ||
+              session.metadata?.organization_name ||
+              session.customer_details?.name ||
+              null,
+            phone: session.customer_details?.phone || session.metadata?.phone || null,
+            stripeCustomerId: session.customer,
+            stripeSubscriptionId: subscription.id,
           });
+
+          if (invite?.setup_url) {
+            console.log(
+              `[stripe/webhook] Operator setup link for org ${session.metadata.organization_id}: ${invite.setup_url}`
+            );
+          }
         }
         break;
       }
