@@ -64,30 +64,35 @@ export async function resetAdminPassword({ token, password }) {
   });
 }
 
-export async function verifyOperatorInvite({ key }) {
+export async function verifyOperatorInvite({ operatorKey, key }) {
+  const inviteKey = operatorKey || key;
   return apiFetch("/api/operator/invite/verify", {
     method: "POST",
-    body: JSON.stringify({ key }),
+    body: JSON.stringify({ operator_key: inviteKey }),
   });
 }
 
 export async function redeemOperatorInvite({
+  operatorKey,
   key,
   email,
   password,
+  confirmPassword,
   ownerName,
   businessName,
   phone,
 }) {
+  const inviteKey = operatorKey || key;
   return apiFetch("/api/operator/invite/redeem", {
     method: "POST",
     body: JSON.stringify({
-      key,
+      operator_key: inviteKey,
       email,
       password,
-      owner_name: ownerName,
-      business_name: businessName,
-      phone,
+      confirm_password: confirmPassword,
+      owner_name: ownerName || null,
+      business_name: businessName || null,
+      phone: phone || null,
     }),
   });
 }

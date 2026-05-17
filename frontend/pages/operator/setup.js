@@ -53,14 +53,14 @@ export default function OperatorSetupPage() {
     setError("");
     setStatus("Checking operator key...");
     try {
-      const result = await verifyOperatorInvite({ key });
+      const result = await verifyOperatorInvite({ operatorKey: key });
       setInvite(result);
       setForm((prev) => ({
         ...prev,
         key,
         email: prev.email || result.email || "",
         ownerName: prev.ownerName || result.owner_name || "",
-        businessName: prev.businessName || result.business_name || "",
+        businessName: prev.businessName || result.organization_name || result.business_name || "",
         phone: prev.phone || result.phone || "",
       }));
       setStatus("Operator key verified. Create your owner login below.");
@@ -105,9 +105,10 @@ export default function OperatorSetupPage() {
     setStatus("Creating your GoFieldWise owner account...");
     try {
       const result = await redeemOperatorInvite({
-        key: form.key.trim(),
+        operatorKey: form.key.trim(),
         email: form.email.trim(),
         password: form.password,
+        confirmPassword: form.confirmPassword,
         ownerName: form.ownerName.trim(),
         businessName: form.businessName.trim(),
         phone: form.phone.trim(),
@@ -119,6 +120,10 @@ export default function OperatorSetupPage() {
 
       window.localStorage.setItem(TOKEN_KEY, result.access_token);
       window.localStorage.setItem(EMAIL_KEY, form.email.trim());
+      window.localStorage.setItem("token", result.access_token);
+      window.localStorage.setItem("access_token", result.access_token);
+      window.localStorage.setItem("gofieldwise_user", JSON.stringify(result.user || {}));
+      window.localStorage.setItem("gofieldwise_org", JSON.stringify(result.organization || {}));
       setStatus("Setup complete. Sending you to Connect Center...");
       router.push(result.redirect_to || "/connect-center");
     } catch (err) {
@@ -156,7 +161,7 @@ export default function OperatorSetupPage() {
           {invite ? (
             <div className="verified">
               <strong>Key verified</strong>
-              <span>{invite.business_name || "Business details ready"} {invite.expires_at ? `- expires ${new Date(invite.expires_at).toLocaleDateString()}` : ""}</span>
+              <span>{invite.organization_name || invite.business_name || "Business details ready"} {invite.expires_at ? `- expires ${new Date(invite.expires_at).toLocaleDateString()}` : ""}</span>
             </div>
           ) : null}
 
