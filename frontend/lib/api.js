@@ -682,6 +682,20 @@ export async function runAdminSystemHealthcheck({ token }) {
   });
 }
 
+export async function getAdminTroubleshootingDoc({ token }) {
+  const response = await fetch(`${API_BASE}/api/admin/monitoring/troubleshooting-doc`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(text || `HTTP ${response.status}`);
+  }
+  return text;
+}
+
 export async function getJobberTokenExpiryStatus({ token, warningSeconds = 3600, criticalSeconds = 900 }) {
   const query = new URLSearchParams({
     warning_seconds: String(warningSeconds),

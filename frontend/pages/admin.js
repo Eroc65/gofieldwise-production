@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   adminLogin,
   getAdminMonitoringSummary,
+  getAdminTroubleshootingDoc,
   getJobberTokenExpiryStatus,
   requestAdminPasswordReset,
   resetAdminPassword,
@@ -114,6 +115,14 @@ const tenantConfig = [
   "Pricing and booking notes",
 ];
 
+const commandTargets = [
+  { id: "systems", label: "Systems" },
+  { id: "ai-helper", label: "AI Helper" },
+  { id: "jobber", label: "Jobber" },
+  { id: "metrics", label: "Metrics" },
+  { id: "growth", label: "Growth" },
+];
+
 function statusLabel(status) {
   if (status === "green") return "Healthy";
   if (status === "red") return "Failing";
@@ -165,6 +174,10 @@ export default function AdminDashboard() {
   const [criticalSeconds, setCriticalSeconds] = useState(900);
   const [healthcheckRunning, setHealthcheckRunning] = useState(false);
   const [healthcheckError, setHealthcheckError] = useState("");
+  const [selectedFlowId, setSelectedFlowId] = useState("");
+  const [helperIssue, setHelperIssue] = useState("");
+  const [helperPlan, setHelperPlan] = useState("");
+  const [docMessage, setDocMessage] = useState("");
 
   async function loadJobberRisk() {
     if (!token) return;
@@ -300,6 +313,52 @@ export default function AdminDashboard() {
     }
   }
 
+  function scrollToCommand(targetId) {
+    const node = document.getElementById(targetId);
+    if (node) node.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function onDownloadTroubleshootingDoc() {
+    if (!token) return;
+    setDocMessage("");
+    try {
+      const markdown = await getAdminTroubleshootingDoc({ token });
+      const blob = new Blob([markdown], { type: "text/markdown" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "gofieldwise-ai-helper-troubleshooting.md";
+      link.click();
+      URL.revokeObjectURL(url);
+      setDocMessage("Troubleshooting document downloaded.");
+    } catch (err) {
+      setDocMessage(err instanceof Error ? err.message : "Could not download troubleshooting document.");
+    }
+  }
+
+  function onBuildHelperPlan() {
+    const flow = troubleshootingFlows.find((item) => item.id === selectedFlowId) || troubleshootingFlows[0];
+    if (!flow) {
+      setHelperPlan("Run the systems healthcheck first so the AI helper can load the troubleshooting playbook.");
+      return;
+    }
+    const issueLine = helperIssue.trim() ? `Reported issue: ${helperIssue.trim()}` : `Reported issue: ${flow.trigger}`;
+    const plan = [
+      `AI Helper Diagnosis: ${flow.name}`,
+      "",
+      issueLine,
+      "",
+      `Systems to inspect: ${(flow.systems || []).join(", ")}`,
+      "",
+      "Recommended flow:",
+      ...(flow.steps || []).map((step, index) => `${index + 1}. ${step}`),
+      "",
+      `Healthy signal: ${flow.healthy_signal}`,
+      `Escalate if: ${flow.escalate_if}`,
+    ].join("\n");
+    setHelperPlan(plan);
+  }
+
   async function onLogin(event) {
     event.preventDefault();
     setAuthError("");
@@ -377,6 +436,7 @@ export default function AdminDashboard() {
   const health = summary.landing_page_health || [];
   const systemHealth = summary.system_health || fallbackSummary.system_health;
   const troubleshootingFlows = summary.troubleshooting_flows || [];
+  const selectedFlow = troubleshootingFlows.find((item) => item.id === selectedFlowId) || troubleshootingFlows[0] || null;
   const featureBoard = summary.feature_board?.length ? summary.feature_board : fallbackSummary.landing_page_health.map((item) => ({
     feature: item.name,
     status: item.status,
@@ -478,7 +538,15 @@ export default function AdminDashboard() {
           </aside>
         </section>
 
-        <section className={`panel system-health-panel ${systemHealth.status || "yellow"}`}>
+        <nav className="command-nav" aria-label="Admin command center navigation">
+          {commandTargets.map((target) => (
+            <button key={target.id} type="button" onClick={() => scrollToCommand(target.id)}>
+              {target.label}
+            </button>
+          ))}
+        </nav>
+
+        <section id="systems" className={`panel system-health-panel ${systemHealth.status || "yellow"}`}>
           <div className="panel-heading">
             <div>
               <p className="eyebrow">Systems indicator</p>
@@ -531,7 +599,7 @@ export default function AdminDashboard() {
           </article>
         </section>
 
-        <section className="panel">
+        <section id="jobber" className="panel">
           <div className="panel-heading">
             <div>
               <p className="eyebrow">Jobber token risk</p>
@@ -612,43 +680,79 @@ export default function AdminDashboard() {
           </div>
         </section>
 
-        <section className="panel">
+        <section id="ai-helper" className="panel ai-helper-panel">
           <div className="panel-heading">
             <div>
               <p className="eyebrow">AI helper</p>
-              <h2>Troubleshooting Flows</h2>
+              <h2>Operator Troubleshooting Console</h2>
             </div>
-            <span>{troubleshootingFlows.length} process playbooks</span>
+            <button type="button" className="doc-button" onClick={onDownloadTroubleshootingDoc}>
+              Download troubleshooting doc
+            </button>
           </div>
-          <div className="troubleshooting-grid">
-            {troubleshootingFlows.map((flow) => (
-              <article key={flow.id}>
-                <div className="flow-heading">
-                  <b>{flow.name}</b>
-                  <span>{(flow.systems || []).slice(0, 2).join(" + ")}</span>
-                </div>
-                <p>{flow.trigger}</p>
-                <ol>
-                  {(flow.steps || []).slice(0, 4).map((step) => (
-                    <li key={step}>{step}</li>
+          <div className="ai-helper-layout">
+            <div className="helper-picker">
+              <label>
+                Process
+                <select
+                  value={selectedFlow?.id || ""}
+                  onChange={(event) => {
+                    setSelectedFlowId(event.target.value);
+                    setHelperPlan("");
+                  }}
+                >
+                  {troubleshootingFlows.map((flow) => (
+                    <option key={flow.id} value={flow.id}>{flow.name}</option>
                   ))}
-                </ol>
-                <small>Healthy signal: {flow.healthy_signal}</small>
-              </article>
-            ))}
-            {!troubleshootingFlows.length ? (
-              <article>
-                <div className="flow-heading">
-                  <b>Waiting for live flows</b>
-                  <span>Pending</span>
+                </select>
+              </label>
+              <label>
+                What is broken?
+                <textarea
+                  value={helperIssue}
+                  onChange={(event) => setHelperIssue(event.target.value)}
+                  placeholder="Example: customer paid but never got the setup link, or Connect Center returns 401..."
+                />
+              </label>
+              <div className="helper-actions">
+                <button type="button" onClick={onBuildHelperPlan} disabled={!troubleshootingFlows.length}>
+                  Build diagnosis plan
+                </button>
+                <button
+                  type="button"
+                  onClick={() => helperPlan && navigator.clipboard?.writeText(helperPlan)}
+                  disabled={!helperPlan}
+                >
+                  Copy plan
+                </button>
+              </div>
+              {docMessage ? <p className="doc-message">{docMessage}</p> : null}
+            </div>
+            <div className="helper-output">
+              {selectedFlow ? (
+                <>
+                  <p className="eyebrow">Selected playbook</p>
+                  <h3>{selectedFlow.name}</h3>
+                  <p>{selectedFlow.trigger}</p>
+                  <div className="helper-system-row">
+                    {(selectedFlow.systems || []).map((system) => <span key={system}>{system}</span>)}
+                  </div>
+                </>
+              ) : (
+                <p>Run the systems healthcheck to load the AI helper playbooks.</p>
+              )}
+              {helperPlan ? (
+                <pre>{helperPlan}</pre>
+              ) : (
+                <div className="helper-empty">
+                  Choose a process, describe the issue, then build a diagnosis plan. The full troubleshooting library lives in the downloadable markdown document.
                 </div>
-                <p>Run the systems healthcheck to load AI troubleshooting playbooks.</p>
-              </article>
-            ) : null}
+              )}
+            </div>
           </div>
         </section>
 
-        <section className="split-grid">
+        <section id="metrics" className="split-grid">
           <article className="panel">
             <div className="panel-heading">
               <div>
@@ -725,7 +829,7 @@ export default function AdminDashboard() {
           </div>
         </section>
 
-        <section className="split-grid">
+        <section id="growth" className="split-grid">
           <article className="panel">
             <div className="panel-heading">
               <div>
@@ -989,6 +1093,35 @@ export default function AdminDashboard() {
           max-width: 760px;
           color: #f7efe1;
           line-height: 1.65;
+        }
+
+        .command-nav {
+          max-width: 1180px;
+          margin: 14px auto 0;
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          position: sticky;
+          top: 0;
+          z-index: 5;
+          padding: 10px 0;
+          background: var(--paper);
+        }
+
+        .command-nav button {
+          min-height: 38px;
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          background: #fffdf8;
+          color: var(--navy);
+          cursor: pointer;
+          font-weight: 850;
+          padding: 0 14px;
+        }
+
+        .command-nav button:hover {
+          border-color: var(--accent);
+          color: var(--accent-dark);
         }
 
         .overall,
@@ -1365,6 +1498,127 @@ export default function AdminDashboard() {
           flex-wrap: wrap;
         }
 
+        .ai-helper-layout {
+          display: grid;
+          grid-template-columns: 360px minmax(0, 1fr);
+          gap: 16px;
+        }
+
+        .helper-picker,
+        .helper-output {
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          background: #fffdf8;
+          padding: 14px;
+        }
+
+        .helper-picker {
+          display: grid;
+          gap: 12px;
+          align-content: start;
+        }
+
+        .helper-picker label {
+          display: grid;
+          gap: 6px;
+          color: var(--navy);
+          font-weight: 850;
+        }
+
+        .helper-picker select,
+        .helper-picker textarea {
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          background: #fff;
+          color: var(--ink);
+          font-size: 0.95rem;
+          padding: 10px 12px;
+          width: 100%;
+          box-sizing: border-box;
+        }
+
+        .helper-picker textarea {
+          min-height: 110px;
+          resize: vertical;
+        }
+
+        .helper-actions {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .helper-actions button,
+        .doc-button {
+          min-height: 38px;
+          border: 0;
+          border-radius: 8px;
+          background: linear-gradient(120deg, var(--navy-deep), var(--navy-light));
+          color: #fffdf8;
+          font-weight: 850;
+          cursor: pointer;
+          padding: 0 12px;
+        }
+
+        .helper-actions button:disabled {
+          opacity: 0.55;
+          cursor: not-allowed;
+        }
+
+        .helper-output h3 {
+          margin: 0 0 8px;
+          color: var(--navy);
+          font-size: 1.25rem;
+        }
+
+        .helper-output p:not(.eyebrow) {
+          margin: 0 0 12px;
+          color: #35505b;
+          line-height: 1.55;
+        }
+
+        .helper-system-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-bottom: 12px;
+        }
+
+        .helper-system-row span {
+          border: 1px solid var(--line);
+          border-radius: 999px;
+          background: #fff8ee;
+          color: var(--navy);
+          font-size: 0.82rem;
+          font-weight: 850;
+          padding: 6px 10px;
+        }
+
+        .helper-output pre,
+        .helper-empty {
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          background: var(--paper);
+          color: var(--ink);
+          font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+          font-size: 0.9rem;
+          line-height: 1.6;
+          margin: 0;
+          padding: 14px;
+          white-space: pre-wrap;
+        }
+
+        .helper-empty {
+          font-family: inherit;
+          color: #35505b;
+        }
+
+        .doc-message {
+          margin: 0;
+          color: #247a4d;
+          font-weight: 800;
+        }
+
         .jobber-controls label {
           display: grid;
           gap: 4px;
@@ -1510,6 +1764,10 @@ export default function AdminDashboard() {
           }
 
           .jobber-table {
+            grid-template-columns: 1fr;
+          }
+
+          .ai-helper-layout {
             grid-template-columns: 1fr;
           }
         }

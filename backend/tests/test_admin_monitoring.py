@@ -53,6 +53,19 @@ def test_admin_system_healthcheck_returns_ai_helper_context(client, monkeypatch)
     assert payload["system_health"]["status"] in {"green", "yellow", "red"}
 
 
+def test_admin_troubleshooting_doc_download(client, monkeypatch):
+    _reset_db()
+    monkeypatch.setenv("ADMIN_USERNAME", ADMIN_USERNAME)
+    monkeypatch.setenv("ADMIN_PASSWORD", PASSWORD)
+
+    response = client.get("/api/admin/monitoring/troubleshooting-doc", headers=_login(client))
+
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"].startswith("text/markdown")
+    assert "GoFieldWise AI Helper Troubleshooting Playbook" in response.text
+    assert "Stripe checkout to operator setup" in response.text
+
+
 def test_admin_monitoring_requires_admin_session(client, monkeypatch):
     _reset_db()
     monkeypatch.setenv("ADMIN_USERNAME", ADMIN_USERNAME)

@@ -4,7 +4,7 @@ import os
 import time
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
@@ -135,6 +135,40 @@ TROUBLESHOOTING_FLOWS = [
         "escalate_if": "Stripe is active but webhook logs show missing organization_id metadata.",
     },
 ]
+
+
+def _troubleshooting_markdown() -> str:
+    lines = [
+        "# GoFieldWise AI Helper Troubleshooting Playbook",
+        "",
+        "This document is the source playbook for the admin AI helper. Use it to diagnose customer setup, billing, voice, SMS, lead, and integration issues.",
+        "",
+        "Start by matching the user's issue to a trigger, then work the steps in order. Do not expose secrets in logs, chat, screenshots, or customer-facing notes.",
+        "",
+    ]
+    for flow in TROUBLESHOOTING_FLOWS:
+        lines.extend(
+            [
+                f"## {flow['name']}",
+                "",
+                f"**Trigger:** {flow['trigger']}",
+                "",
+                f"**Systems:** {', '.join(flow['systems'])}",
+                "",
+                "**Steps:**",
+            ]
+        )
+        lines.extend([f"{index}. {step}" for index, step in enumerate(flow["steps"], start=1)])
+        lines.extend(
+            [
+                "",
+                f"**Healthy signal:** {flow['healthy_signal']}",
+                "",
+                f"**Escalate if:** {flow['escalate_if']}",
+                "",
+            ]
+        )
+    return "\n".join(lines)
 
 
 def _now_iso() -> str:
@@ -335,3 +369,14 @@ def admin_system_healthcheck(
             "flow_count": len(payload["troubleshooting_flows"]),
         },
     }
+
+
+@router.get("/admin/monitoring/troubleshooting-doc")
+def admin_troubleshooting_doc(
+    _admin: dict = Depends(require_admin_session),
+) -> Response:
+    return Response(
+        content=_troubleshooting_markdown(),
+        media_type="text/markdown",
+        headers={"Content-Disposition": 'attachment; filename="gofieldwise-ai-helper-troubleshooting.md"'},
+    )
