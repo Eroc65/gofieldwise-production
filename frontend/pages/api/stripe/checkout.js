@@ -104,7 +104,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const successUrl = req.body?.successUrl || `${appUrl}/billing?checkout=success`;
+    const successUrl = req.body?.successUrl || `${appUrl}/purchase/success`;
     const cancelUrl = req.body?.cancelUrl || `${appUrl}/billing?checkout=cancel`;
     const customerEmail = req.body?.customerEmail || identity?.email || null;
 

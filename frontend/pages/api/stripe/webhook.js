@@ -110,6 +110,130 @@ async function provisionOperatorInvite({
   }
 }
 
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function getSetupEmailText({ setupUrl, organizationName, expiresAt, supportEmail }) {
+  const accountName = organizationName || "your GoFieldWise account";
+  const expiration = expiresAt
+    ? `This setup link expires on ${new Date(expiresAt).toLocaleString("en-US", {
+        timeZone: "America/Chicago",
+        dateStyle: "medium",
+        timeStyle: "short",
+      })} Central.`
+    : "This setup link expires in 72 hours.";
+
+  return [
+    "Your GoFieldWise Connect account is ready.",
+    "",
+    `Account: ${accountName}`,
+    "",
+    "Create your operator login here:",
+    setupUrl,
+    "",
+    expiration,
+    "",
+    `Need help? Contact ${supportEmail}.`,
+    "",
+    "GoFieldWise Team",
+  ].join("\n");
+}
+
+function getSetupEmailHtml({ setupUrl, organizationName, expiresAt, supportEmail }) {
+  const accountName = escapeHtml(organizationName || "your GoFieldWise account");
+  const expiration = expiresAt
+    ? `This setup link expires on ${escapeHtml(
+        new Date(expiresAt).toLocaleString("en-US", {
+          timeZone: "America/Chicago",
+          dateStyle: "medium",
+          timeStyle: "short",
+        })
+      )} Central.`
+    : "This setup link expires in 72 hours.";
+
+  return `
+    <div style="font-family:Arial,sans-serif;line-height:1.6;color:#10212b;max-width:620px;margin:0 auto">
+      <p style="font-size:14px;color:#536b76;margin:0 0 16px">GoFieldWise Connect</p>
+      <h1 style="font-size:26px;line-height:1.2;margin:0 0 14px;color:#0b2633">Your operator dashboard is ready.</h1>
+      <p style="font-size:16px;margin:0 0 12px">Create your GoFieldWise operator login for <strong>${accountName}</strong>.</p>
+      <p style="font-size:16px;margin:0 0 24px">${escapeHtml(expiration)}</p>
+      <p style="margin:0 0 28px">
+        <a href="${escapeHtml(setupUrl)}" style="display:inline-block;background:#0b2633;color:#fff;text-decoration:none;font-weight:700;padding:13px 18px;border-radius:8px">
+          Create Operator Login
+        </a>
+      </p>
+      <p style="font-size:13px;color:#536b76;margin:0 0 8px">If the button does not work, paste this link into your browser:</p>
+      <p style="font-size:13px;word-break:break-all;margin:0 0 24px"><a href="${escapeHtml(setupUrl)}">${escapeHtml(setupUrl)}</a></p>
+      <hr style="border:0;border-top:1px solid #e4edf0;margin:24px 0" />
+      <p style="font-size:13px;color:#536b76;margin:0">Need help? Contact <a href="mailto:${escapeHtml(supportEmail)}">${escapeHtml(supportEmail)}</a>.</p>
+    </div>
+  `;
+}
+
+async function sendOperatorSetupEmail({
+  to,
+  setupUrl,
+  organizationName,
+  expiresAt,
+  inviteId,
+}) {
+  const resendApiKey = process.env.RESEND_API_KEY;
+  const supportEmail = process.env.SUPPORT_EMAIL || "support@gofieldwise.com";
+  const from = process.env.SETUP_EMAIL_FROM || `GoFieldWise <${supportEmail}>`;
+
+  if (!to || !setupUrl) {
+    console.warn(`[stripe/webhook] setup email skipped: invite_id=${inviteId || "unknown"}, reason=missing_recipient_or_url`);
+    return { sent: false, reason: "missing_recipient_or_url" };
+  }
+
+  if (!resendApiKey) {
+    console.warn(`[stripe/webhook] setup email skipped: invite_id=${inviteId || "unknown"}, reason=resend_not_configured`);
+    return { sent: false, reason: "resend_not_configured" };
+  }
+
+  try {
+    const emailPayload = {
+      from,
+      to,
+      subject: "Set up your GoFieldWise Operator Dashboard",
+      text: getSetupEmailText({ setupUrl, organizationName, expiresAt, supportEmail }),
+      html: getSetupEmailHtml({ setupUrl, organizationName, expiresAt, supportEmail }),
+    };
+
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${resendApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(emailPayload),
+    });
+
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      console.error(
+        `[stripe/webhook] setup email failed: invite_id=${inviteId || "unknown"}, status=${response.status}, message=${payload?.message || payload?.error || "unknown"}`
+      );
+      return { sent: false, reason: "resend_error" };
+    }
+
+    console.log(
+      `[stripe/webhook] setup email queued: invite_id=${inviteId || "unknown"}, email_id=${payload?.id || "unknown"}`
+    );
+    return { sent: true, id: payload?.id || null };
+  } catch (err) {
+    console.error(
+      `[stripe/webhook] setup email request failed: invite_id=${inviteId || "unknown"}, message=${err?.message || "unknown"}`
+    );
+    return { sent: false, reason: "request_failed" };
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -201,6 +325,13 @@ export default async function handler(req, res) {
             console.log(
               `[stripe/webhook] Operator invite ready for org ${session.metadata.organization_id}: invite_id=${invite.invite_id}`
             );
+            await sendOperatorSetupEmail({
+              to: session.customer_details?.email || session.customer_email || null,
+              setupUrl: invite.setup_url,
+              organizationName: invite.organization_name,
+              expiresAt: invite.expires_at,
+              inviteId: invite.invite_id,
+            });
           }
         }
         break;
