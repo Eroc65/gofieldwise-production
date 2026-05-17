@@ -672,6 +672,17 @@ export async function updateConnectSettings({ token, settings, completed = false
   });
 }
 
+export async function runConnectTestCall({ token, customerName, customerPhone }) {
+  return apiFetch("/api/connect/test-call", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      customer_name: customerName || null,
+      customer_phone: customerPhone || null,
+    }),
+  });
+}
+
 export async function updateCommProfile({ token, payload }) {
   return apiFetch("/api/org/comm-profile", {
     method: "PATCH",

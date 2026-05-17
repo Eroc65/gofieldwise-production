@@ -3,6 +3,7 @@ import {
   getConnectSettings,
   getCurrentUser,
   getPublicStatus,
+  runConnectTestCall,
   updateConnectSettings,
 } from "../lib/api";
 
@@ -38,7 +39,10 @@ const DEFAULT_SETTINGS = {
   crm_destination: "email",
   crm_destination_detail: "",
   test_call_phone: "",
+  test_customer_name: "Test Customer",
+  test_customer_phone: "",
   test_call_confirmed: false,
+  test_call_result: null,
 };
 
 function readToken() {
@@ -125,6 +129,7 @@ export default function ConnectCenterPage() {
   const [activeStep, setActiveStep] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [runningTest, setRunningTest] = useState(false);
   const [message, setMessage] = useState("Checking your operator session...");
   const [error, setError] = useState("");
 
@@ -202,6 +207,36 @@ export default function ConnectCenterPage() {
     const next = { ...settings, test_call_confirmed: true };
     setSettings(next);
     await save(next, activeStep);
+  }
+
+  async function runTestCall() {
+    if (!token) return;
+    const customerName = settings.test_customer_name || "Test Customer";
+    const customerPhone = settings.test_customer_phone || settings.test_call_phone;
+    const preSave = {
+      ...settings,
+      test_customer_name: customerName,
+      test_customer_phone: customerPhone,
+      test_call_phone: customerPhone,
+    };
+    setRunningTest(true);
+    setError("");
+    try {
+      await save(preSave, activeStep);
+      const result = await runConnectTestCall({ token, customerName, customerPhone });
+      const next = {
+        ...preSave,
+        test_call_confirmed: Boolean(result?.lead_id),
+        test_call_result: result,
+      };
+      setSettings(next);
+      await save(next, activeStep);
+      setMessage(result?.message || "Connect test activation completed.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not run Connect test call.");
+    } finally {
+      setRunningTest(false);
+    }
   }
 
   function signOut() {
@@ -311,9 +346,42 @@ export default function ConnectCenterPage() {
           </div>
         );
       case "test_call":
+        const result = settings.test_call_result;
+        const card = (label, ok, detail) => (
+          <div className={ok ? "statusCard good" : "statusCard muted"}>
+            <strong>{label}</strong>
+            <span>{detail}</span>
+          </div>
+        );
         return (
           <div className="testBox">
-            <Field label="Phone to use for test AI call" hint="This should be the number you want to test from or notify.">
+            <div className="formGrid">
+              <Field label="Test customer name">
+                <input value={settings.test_customer_name} onChange={(event) => updateField("test_customer_name", event.target.value)} placeholder="Jane Customer" />
+              </Field>
+              <Field label="Test customer phone" hint="The number used for the test AI call and customer confirmation SMS.">
+                <input value={settings.test_customer_phone || settings.test_call_phone} onChange={(event) => { updateField("test_customer_phone", event.target.value); updateField("test_call_phone", event.target.value); }} placeholder="405-555-0100" inputMode="tel" />
+              </Field>
+            </div>
+            <button type="button" className="secondaryAction" onClick={runTestCall} disabled={saving || runningTest || !(settings.test_customer_phone || settings.test_call_phone)}>
+              {runningTest ? "Running test..." : "Run Test AI Call"}
+            </button>
+            {result ? (
+              <div className="statusGrid">
+                {card("Lead draft created", Boolean(result.lead_id), result.lead_id ? `Lead #${result.lead_id}` : "No lead returned")}
+                {card("Owner SMS sent", Boolean(result.owner_sms_sent), result.owner_sms_sent ? "Owner notification processed" : result.errors?.owner_sms || "Not sent")}
+                {card("Customer confirmation sent", Boolean(result.customer_sms_sent), result.customer_sms_sent ? "Customer confirmation processed" : result.errors?.customer_sms || "Not sent")}
+                {card("AI call started/simulated", Boolean(result.call_started), result.call_started ? `Call ${result.call_id || "started"}` : result.errors?.call || "Simulated safely")}
+              </div>
+            ) : (
+              <div className="statusGrid">
+                {card("Lead draft created", false, "Waiting for test")}
+                {card("Owner SMS sent", false, "Waiting for test")}
+                {card("Customer confirmation sent", false, "Waiting for test")}
+                {card("AI call started/simulated", false, "Waiting for test")}
+              </div>
+            )}
+            <Field label="Phone to use for legacy test status" hint="Kept for compatibility with saved setup progress.">
               <input value={settings.test_call_phone} onChange={(event) => updateField("test_call_phone", event.target.value)} placeholder="405-555-0100" inputMode="tel" />
             </Field>
             <button type="button" className="secondaryAction" onClick={markTestCallComplete} disabled={saving || !settings.test_call_phone}>
@@ -639,6 +707,32 @@ export default function ConnectCenterPage() {
           display: grid;
           gap: 14px;
         }
+        .statusGrid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
+        }
+        .statusCard {
+          border: 1px solid rgba(19, 35, 31, 0.14);
+          border-radius: 12px;
+          background: #fff;
+          padding: 12px;
+          display: grid;
+          gap: 4px;
+        }
+        .statusCard.good {
+          background: #eef9f1;
+          border-color: rgba(19, 92, 45, 0.22);
+        }
+        .statusCard.muted {
+          background: #f7f3eb;
+        }
+        .statusCard span {
+          color: #5b7069;
+          font-size: 12px;
+          font-weight: 700;
+          line-height: 1.45;
+        }
         .completeBox {
           margin-top: 18px;
           background: #eef9f1;
@@ -693,6 +787,9 @@ export default function ConnectCenterPage() {
           .topGrid,
           .formGrid,
           .choiceGrid {
+            grid-template-columns: 1fr;
+          }
+          .statusGrid {
             grid-template-columns: 1fr;
           }
           .steps {
