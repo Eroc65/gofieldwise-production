@@ -21,26 +21,32 @@ router = APIRouter()
 
 class OperatorInviteProvisionRequest(BaseModel):
     org_id: Optional[int] = None
+    organization_id: Optional[int] = None
     email: Optional[EmailStr] = None
     owner_name: Optional[str] = None
     business_name: Optional[str] = None
     phone: Optional[str] = None
+    source: Optional[str] = "stripe_checkout"
     stripe_customer_id: Optional[str] = None
     stripe_subscription_id: Optional[str] = None
     setup_base_url: Optional[str] = None
+    expires_hours: Optional[int] = None
     expires_in_days: int = 14
 
 
 class OperatorInviteVerifyRequest(BaseModel):
-    key: str
+    key: Optional[str] = None
+    operator_key: Optional[str] = None
 
 
 class OperatorInviteRedeemRequest(BaseModel):
-    key: str
+    key: Optional[str] = None
+    operator_key: Optional[str] = None
     email: EmailStr
     password: str
-    owner_name: str
-    business_name: str
+    confirm_password: Optional[str] = None
+    owner_name: Optional[str] = None
+    business_name: Optional[str] = None
     phone: Optional[str] = None
 
 
@@ -49,7 +55,14 @@ def _hash_key(raw_key: str) -> str:
 
 
 def _new_operator_key() -> str:
-    return f"op_{token_urlsafe(24)}"
+    return f"gfw_op_{token_urlsafe(24)}"
+
+
+def _request_key(*, key: Optional[str], operator_key: Optional[str]) -> str:
+    value = (operator_key or key or "").strip()
+    if not value:
+        raise HTTPException(status_code=422, detail="operator_key cannot be blank")
+    return value
 
 
 def _setup_base_url(payload: OperatorInviteProvisionRequest) -> str:
@@ -80,7 +93,7 @@ def _load_invite_or_error(db: Session, raw_key: str) -> OperatorInvite:
     invite = db.query(OperatorInvite).filter(OperatorInvite.key_hash == _hash_key(key)).first()
     if invite is None:
         raise HTTPException(status_code=404, detail="Invalid operator key")
-    if invite.redeemed_at is not None or invite.status == "redeemed":
+    if invite.redeemed_at is not None or invite.status in ("redeemed", "used"):
         raise HTTPException(status_code=409, detail="Operator key has already been redeemed")
     if invite.expires_at < _utcnow():
         invite.status = "expired"
@@ -106,14 +119,18 @@ def provision_operator_invite(
     _: None = Depends(_verify_internal_secret),
 ):
     org: Optional[Organization] = None
-    if payload.org_id is not None:
-        org = db.query(Organization).filter(Organization.id == payload.org_id).first()
+    requested_org_id = payload.organization_id if payload.organization_id is not None else payload.org_id
+    if requested_org_id is not None:
+        org = db.query(Organization).filter(Organization.id == requested_org_id).first()
         if org is None:
             raise HTTPException(status_code=404, detail="Organization not found")
 
     raw_key = _new_operator_key()
-    days = max(1, min(int(payload.expires_in_days or 14), 30))
-    expires_at = _utcnow() + timedelta(days=days)
+    if payload.expires_hours is not None:
+        expires_at = _utcnow() + timedelta(hours=max(1, min(int(payload.expires_hours or 72), 168)))
+    else:
+        days = max(1, min(int(payload.expires_in_days or 14), 30))
+        expires_at = _utcnow() + timedelta(days=days)
     setup_url = f"{_setup_base_url(payload)}/operator/setup?key={raw_key}"
 
     invite = OperatorInvite(
@@ -137,6 +154,8 @@ def provision_operator_invite(
         "ok": True,
         "invite_id": invite.id,
         "org_id": invite.organization_id,
+        "organization_id": invite.organization_id,
+        "organization_name": org.name if org else invite.business_name,
         "operator_key": raw_key,
         "setup_url": setup_url,
         "expires_at": expires_at,
@@ -145,11 +164,14 @@ def provision_operator_invite(
 
 @router.post("/operator/invite/verify")
 def verify_operator_invite(payload: OperatorInviteVerifyRequest, db: Session = Depends(get_db)):
-    invite = _load_invite_or_error(db, payload.key)
+    invite = _load_invite_or_error(db, _request_key(key=payload.key, operator_key=payload.operator_key))
+    org = db.query(Organization).filter(Organization.id == invite.organization_id).first() if invite.organization_id else None
     return {
         "valid": True,
         "invite_id": invite.id,
         "org_id": invite.organization_id,
+        "organization_id": invite.organization_id,
+        "organization_name": org.name if org else invite.business_name,
         "email": invite.email,
         "owner_name": invite.owner_name,
         "business_name": invite.business_name,
@@ -160,7 +182,10 @@ def verify_operator_invite(payload: OperatorInviteVerifyRequest, db: Session = D
 
 @router.post("/operator/invite/redeem")
 def redeem_operator_invite(payload: OperatorInviteRedeemRequest, db: Session = Depends(get_db)):
-    invite = _load_invite_or_error(db, payload.key)
+    if payload.confirm_password is not None and payload.password != payload.confirm_password:
+        raise HTTPException(status_code=422, detail="Passwords do not match")
+
+    invite = _load_invite_or_error(db, _request_key(key=payload.key, operator_key=payload.operator_key))
 
     password = payload.password.strip()
     if len(password) < 8:
@@ -177,9 +202,12 @@ def redeem_operator_invite(payload: OperatorInviteRedeemRequest, db: Session = D
             raise HTTPException(status_code=404, detail="Invite organization not found")
 
     if org is None:
-        org = Organization(name=_unique_org_name(db, payload.business_name), is_active=True)
+        org_name = (payload.business_name or invite.business_name or "GoFieldWise Operator").strip()
+        org = Organization(name=_unique_org_name(db, org_name), is_active=True)
         db.add(org)
         db.flush()
+    elif payload.business_name and payload.business_name.strip():
+        org.name = payload.business_name.strip()
 
     user = User(
         email=email,
@@ -191,10 +219,10 @@ def redeem_operator_invite(payload: OperatorInviteRedeemRequest, db: Session = D
     db.flush()
 
     invite.email = email
-    invite.owner_name = payload.owner_name.strip()
-    invite.business_name = payload.business_name.strip()
+    invite.owner_name = (payload.owner_name or "").strip() or invite.owner_name
+    invite.business_name = (payload.business_name or "").strip() or invite.business_name or org.name
     invite.phone = (payload.phone or "").strip() or invite.phone
-    invite.status = "redeemed"
+    invite.status = "used"
     invite.redeemed_at = _utcnow()
     invite.redeemed_user_id = user.id
     invite.organization_id = org.id
@@ -204,6 +232,7 @@ def redeem_operator_invite(payload: OperatorInviteRedeemRequest, db: Session = D
 
     access_token = create_access_token({"sub": user.email})
     return {
+        "ok": True,
         "access_token": access_token,
         "token_type": "bearer",
         "user": {

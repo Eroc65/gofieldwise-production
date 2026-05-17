@@ -144,7 +144,7 @@ export default function OperatorSetupPage() {
               <input
                 value={form.key}
                 onChange={(event) => updateField("key", event.target.value)}
-                placeholder="op_..."
+                placeholder="gfw_op_..."
                 autoComplete="off"
               />
               <button type="button" onClick={() => onVerify()} disabled={busy || !form.key.trim()}>

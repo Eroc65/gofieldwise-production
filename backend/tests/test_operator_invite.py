@@ -38,8 +38,8 @@ def test_operator_invite_provision_verify_and_redeem(client, monkeypatch):
     )
     assert provision.status_code == 200, provision.text
     provision_body = provision.json()
-    assert provision_body["operator_key"].startswith("op_")
-    assert provision_body["setup_url"].startswith("https://gofieldwise.com/operator/setup?key=op_")
+    assert provision_body["operator_key"].startswith("gfw_op_")
+    assert provision_body["setup_url"].startswith("https://gofieldwise.com/operator/setup?key=gfw_op_")
 
     verify = client.post(
         "/api/operator/invite/verify",
@@ -55,6 +55,7 @@ def test_operator_invite_provision_verify_and_redeem(client, monkeypatch):
             "key": provision_body["operator_key"],
             "email": "owner@example.com",
             "password": "super-secret",
+            "confirm_password": "super-secret",
             "owner_name": "Owner Example",
             "business_name": "Paid Operator Org",
             "phone": "918-555-0100",
@@ -62,6 +63,7 @@ def test_operator_invite_provision_verify_and_redeem(client, monkeypatch):
     )
     assert redeem.status_code == 200, redeem.text
     redeemed = redeem.json()
+    assert redeemed["ok"] is True
     assert redeemed["access_token"]
     assert redeemed["token_type"] == "bearer"
     assert redeemed["user"]["role"] == "owner"
@@ -143,3 +145,83 @@ def test_operator_invite_expired_key_is_rejected(client):
 
     response = client.post("/api/operator/invite/verify", json={"key": "expired-key"})
     assert response.status_code == 410
+
+
+def test_operator_invite_accepts_operator_key_contract(client, monkeypatch):
+    _reset_db()
+    monkeypatch.setenv("BILLING_SYNC_SECRET", "test-secret-that-is-long-enough")
+
+    db = SessionLocal()
+    org = Organization(name="Exact Contract Org", is_active=True)
+    db.add(org)
+    db.commit()
+    db.refresh(org)
+    org_id = org.id
+    db.close()
+
+    provision = client.post(
+        "/api/operator/invite/provision",
+        headers={"X-Billing-Sync-Secret": "test-secret-that-is-long-enough"},
+        json={
+            "organization_id": org_id,
+            "email": "contract@example.com",
+            "source": "stripe_checkout",
+            "stripe_customer_id": "cus_contract",
+            "stripe_subscription_id": "sub_contract",
+            "expires_hours": 72,
+        },
+    )
+    assert provision.status_code == 200, provision.text
+    provision_body = provision.json()
+    assert provision_body["organization_id"] == org_id
+    assert provision_body["organization_name"] == "Exact Contract Org"
+    assert provision_body["operator_key"].startswith("gfw_op_")
+
+    verify = client.post(
+        "/api/operator/invite/verify",
+        json={"operator_key": provision_body["operator_key"]},
+    )
+    assert verify.status_code == 200, verify.text
+    assert verify.json()["organization_id"] == org_id
+    assert verify.json()["organization_name"] == "Exact Contract Org"
+
+    redeem = client.post(
+        "/api/operator/invite/redeem",
+        json={
+            "operator_key": provision_body["operator_key"],
+            "email": "contract-owner@example.com",
+            "password": "securepass123",
+            "confirm_password": "securepass123",
+            "owner_name": "Contract Owner",
+            "business_name": "Exact Contract Org",
+            "phone": "4055550100",
+        },
+    )
+    assert redeem.status_code == 200, redeem.text
+    assert redeem.json()["ok"] is True
+    assert redeem.json()["redirect_to"] == "/connect-center"
+
+
+def test_operator_invite_rejects_password_confirmation_mismatch(client, monkeypatch):
+    _reset_db()
+    monkeypatch.setenv("BILLING_SYNC_SECRET", "test-secret-that-is-long-enough")
+
+    provision = client.post(
+        "/api/operator/invite/provision",
+        headers={"X-Billing-Sync-Secret": "test-secret-that-is-long-enough"},
+        json={"email": "mismatch@example.com", "business_name": "Mismatch Org"},
+    )
+    assert provision.status_code == 200, provision.text
+
+    redeem = client.post(
+        "/api/operator/invite/redeem",
+        json={
+            "operator_key": provision.json()["operator_key"],
+            "email": "mismatch@example.com",
+            "password": "securepass123",
+            "confirm_password": "different123",
+            "owner_name": "Mismatch Owner",
+            "business_name": "Mismatch Org",
+        },
+    )
+    assert redeem.status_code == 422
