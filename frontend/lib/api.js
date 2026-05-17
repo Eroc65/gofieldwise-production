@@ -652,6 +652,15 @@ export async function getAdminMonitoringSummary({ token }) {
   });
 }
 
+export async function runAdminSystemHealthcheck({ token }) {
+  return apiFetch("/api/admin/monitoring/system-health", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
 export async function getJobberTokenExpiryStatus({ token, warningSeconds = 3600, criticalSeconds = 900 }) {
   const query = new URLSearchParams({
     warning_seconds: String(warningSeconds),

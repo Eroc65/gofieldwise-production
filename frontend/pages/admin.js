@@ -1,7 +1,13 @@
 import Head from "next/head";
 import { useEffect, useMemo, useState } from "react";
 
-import { getAdminMonitoringSummary, getJobberTokenExpiryStatus, login, refreshExpiringJobberTokens } from "../lib/api";
+import {
+  getAdminMonitoringSummary,
+  getJobberTokenExpiryStatus,
+  login,
+  refreshExpiringJobberTokens,
+  runAdminSystemHealthcheck,
+} from "../lib/api";
 
 const ADMIN_EMAIL = "support@gofieldwise.com";
 const ADMIN_TOKEN_KEY = "gofieldwise.admin.token";
@@ -21,6 +27,15 @@ const fallbackSummary = {
     { name: "API Health", status: "yellow", detail: "Waiting for backend health response.", latency_ms: null, last_checked: null },
   ],
   feature_board: [],
+  system_health: {
+    status: "yellow",
+    healthy: false,
+    red_count: 0,
+    yellow_count: 8,
+    green_count: 0,
+    summary: "Waiting for live systems healthcheck.",
+  },
+  troubleshooting_flows: [],
   demo_metrics: {
     demo_clicks_7d: 0,
     call_success_rate: 0,
@@ -107,6 +122,13 @@ function formatMoney(value) {
   return `$${Number(value || 0).toLocaleString()}`;
 }
 
+function formatDateTime(value) {
+  if (!value) return "Not checked yet";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString();
+}
+
 function MiniBars({ values }) {
   const max = Math.max(...values, 1);
   return (
@@ -134,6 +156,8 @@ export default function AdminDashboard() {
   const [jobberRefreshMessage, setJobberRefreshMessage] = useState("");
   const [warningSeconds, setWarningSeconds] = useState(3600);
   const [criticalSeconds, setCriticalSeconds] = useState(900);
+  const [healthcheckRunning, setHealthcheckRunning] = useState(false);
+  const [healthcheckError, setHealthcheckError] = useState("");
 
   async function loadJobberRisk() {
     if (!token) return;
@@ -170,6 +194,7 @@ export default function AdminDashboard() {
         const payload = await getAdminMonitoringSummary({ token });
         if (active) {
           setSummary({ ...fallbackSummary, ...payload });
+          setHealthcheckError("");
           setError("");
         }
       } catch (err) {
@@ -244,6 +269,27 @@ export default function AdminDashboard() {
     }
   }
 
+  async function onRunSystemHealthcheck() {
+    if (!token) return;
+    setHealthcheckRunning(true);
+    setHealthcheckError("");
+    try {
+      const payload = await runAdminSystemHealthcheck({ token });
+      setSummary((current) => ({
+        ...current,
+        generated_at: payload.generated_at || current.generated_at,
+        overall_status: payload.overall_status || current.overall_status,
+        system_health: payload.system_health || current.system_health,
+        landing_page_health: payload.checks || current.landing_page_health,
+        troubleshooting_flows: payload.troubleshooting_flows || current.troubleshooting_flows,
+      }));
+    } catch (err) {
+      setHealthcheckError(err instanceof Error ? err.message : "System healthcheck failed.");
+    } finally {
+      setHealthcheckRunning(false);
+    }
+  }
+
   async function onLogin(event) {
     event.preventDefault();
     setAuthError("");
@@ -279,6 +325,8 @@ export default function AdminDashboard() {
   const metrics = summary.demo_metrics || fallbackSummary.demo_metrics;
   const analytics = summary.visitor_analytics || fallbackSummary.visitor_analytics;
   const health = summary.landing_page_health || [];
+  const systemHealth = summary.system_health || fallbackSummary.system_health;
+  const troubleshootingFlows = summary.troubleshooting_flows || [];
   const featureBoard = summary.feature_board?.length ? summary.feature_board : fallbackSummary.landing_page_health.map((item) => ({
     feature: item.name,
     status: item.status,
@@ -335,8 +383,41 @@ export default function AdminDashboard() {
             <span>Overall status</span>
             <strong>{statusLabel(summary.overall_status)}</strong>
             <small>{loading ? "Checking live systems..." : error || "Live monitoring connected"}</small>
+            <button type="button" onClick={onRunSystemHealthcheck} disabled={healthcheckRunning}>
+              {healthcheckRunning ? "Running healthcheck..." : "Run Systems Healthcheck"}
+            </button>
             <button type="button" onClick={onSignOut}>Sign out</button>
           </aside>
+        </section>
+
+        <section className={`panel system-health-panel ${systemHealth.status || "yellow"}`}>
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Systems indicator</p>
+              <h2>{systemHealth.healthy ? "All Systems Healthy" : `Systems ${statusLabel(systemHealth.status)}`}</h2>
+            </div>
+            <button
+              type="button"
+              className="healthcheck-button"
+              onClick={onRunSystemHealthcheck}
+              disabled={healthcheckRunning}
+            >
+              {healthcheckRunning ? "Checking..." : "Run healthcheck"}
+            </button>
+          </div>
+          <div className="system-health-body">
+            <div className={`health-orb ${systemHealth.status || "yellow"}`} aria-hidden="true" />
+            <div>
+              <p>{systemHealth.summary}</p>
+              <small>Last checked: {formatDateTime(summary.generated_at)}</small>
+              {healthcheckError ? <p className="auth-error">{healthcheckError}</p> : null}
+            </div>
+            <div className="health-counts">
+              <span><b>{systemHealth.green_count || 0}</b> healthy</span>
+              <span><b>{systemHealth.yellow_count || 0}</b> watch</span>
+              <span><b>{systemHealth.red_count || 0}</b> failing</span>
+            </div>
+          </div>
         </section>
 
         <section className="kpi-grid">
@@ -440,6 +521,42 @@ export default function AdminDashboard() {
                 <small>{item.latency_ms != null ? `${item.latency_ms}ms` : "Latest check"}</small>
               </article>
             ))}
+          </div>
+        </section>
+
+        <section className="panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">AI helper</p>
+              <h2>Troubleshooting Flows</h2>
+            </div>
+            <span>{troubleshootingFlows.length} process playbooks</span>
+          </div>
+          <div className="troubleshooting-grid">
+            {troubleshootingFlows.map((flow) => (
+              <article key={flow.id}>
+                <div className="flow-heading">
+                  <b>{flow.name}</b>
+                  <span>{(flow.systems || []).slice(0, 2).join(" + ")}</span>
+                </div>
+                <p>{flow.trigger}</p>
+                <ol>
+                  {(flow.steps || []).slice(0, 4).map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ol>
+                <small>Healthy signal: {flow.healthy_signal}</small>
+              </article>
+            ))}
+            {!troubleshootingFlows.length ? (
+              <article>
+                <div className="flow-heading">
+                  <b>Waiting for live flows</b>
+                  <span>Pending</span>
+                </div>
+                <p>Run the systems healthcheck to load AI troubleshooting playbooks.</p>
+              </article>
+            ) : null}
           </div>
         </section>
 
@@ -692,7 +809,8 @@ export default function AdminDashboard() {
         }
 
         .login-card button,
-        .overall button {
+        .overall button,
+        .healthcheck-button {
           min-height: 44px;
           border: 0;
           border-radius: 8px;
@@ -700,6 +818,12 @@ export default function AdminDashboard() {
           color: #fffdf8;
           font-weight: 850;
           cursor: pointer;
+        }
+
+        .overall button:disabled,
+        .healthcheck-button:disabled {
+          cursor: wait;
+          opacity: 0.7;
         }
 
         .login-card button:disabled {
@@ -852,10 +976,81 @@ export default function AdminDashboard() {
           line-height: 1.12;
         }
 
+        .system-health-panel {
+          border-top: 6px solid var(--accent);
+        }
+
+        .system-health-panel.green {
+          border-top-color: #247a4d;
+        }
+
+        .system-health-panel.red {
+          border-top-color: var(--error);
+        }
+
+        .system-health-body {
+          display: grid;
+          grid-template-columns: auto minmax(0, 1fr) auto;
+          gap: 18px;
+          align-items: center;
+        }
+
+        .system-health-body p {
+          margin: 0 0 4px;
+          color: #35505b;
+          font-weight: 850;
+        }
+
+        .system-health-body small {
+          color: #4e6a74;
+          font-weight: 750;
+        }
+
+        .health-orb {
+          width: 54px;
+          height: 54px;
+          border-radius: 50%;
+          background: var(--accent);
+          box-shadow: 0 0 0 10px rgba(212, 124, 43, 0.12);
+        }
+
+        .health-orb.green {
+          background: #247a4d;
+          box-shadow: 0 0 0 10px rgba(36, 122, 77, 0.12);
+        }
+
+        .health-orb.red {
+          background: var(--error);
+          box-shadow: 0 0 0 10px rgba(176, 58, 46, 0.12);
+        }
+
+        .health-counts {
+          display: grid;
+          grid-template-columns: repeat(3, auto);
+          gap: 8px;
+        }
+
+        .health-counts span {
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          background: #fff8ee;
+          color: #35505b;
+          font-weight: 850;
+          padding: 10px 12px;
+          text-align: center;
+        }
+
+        .health-counts b {
+          display: block;
+          color: var(--navy);
+          font-size: 1.4rem;
+        }
+
         .health-grid,
         .feature-board,
         .status-table,
-        .pill-grid {
+        .pill-grid,
+        .troubleshooting-grid {
           display: grid;
           gap: 12px;
         }
@@ -1003,6 +1198,53 @@ export default function AdminDashboard() {
           gap: 8px;
         }
 
+        .troubleshooting-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .troubleshooting-grid article {
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          background: #fffdf8;
+          padding: 14px;
+          display: grid;
+          gap: 10px;
+        }
+
+        .flow-heading {
+          display: grid;
+          gap: 4px;
+        }
+
+        .flow-heading b {
+          color: var(--navy);
+          font-size: 1rem;
+        }
+
+        .flow-heading span,
+        .troubleshooting-grid small {
+          color: #4e6a74;
+          font-weight: 800;
+          line-height: 1.45;
+        }
+
+        .troubleshooting-grid p {
+          margin: 0;
+          color: #35505b;
+          line-height: 1.55;
+        }
+
+        .troubleshooting-grid ol {
+          margin: 0;
+          padding-left: 18px;
+          color: #233d49;
+          line-height: 1.55;
+        }
+
+        .troubleshooting-grid li {
+          margin-bottom: 5px;
+        }
+
         .jobber-controls {
           display: flex;
           gap: 10px;
@@ -1148,7 +1390,8 @@ export default function AdminDashboard() {
           .kpi-grid,
           .health-grid,
           .feature-board,
-          .status-table {
+          .status-table,
+          .troubleshooting-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
 
@@ -1167,6 +1410,14 @@ export default function AdminDashboard() {
             padding: 16px;
           }
 
+          .system-health-body {
+            grid-template-columns: 1fr;
+          }
+
+          .health-counts {
+            grid-template-columns: 1fr;
+          }
+
           .kpi-grid,
           .health-grid,
           .metric-list,
@@ -1174,7 +1425,8 @@ export default function AdminDashboard() {
           .source-row,
           .feature-board,
           .status-table,
-          .pill-grid {
+          .pill-grid,
+          .troubleshooting-grid {
             grid-template-columns: 1fr;
           }
         }
