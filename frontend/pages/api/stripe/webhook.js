@@ -56,6 +56,60 @@ async function syncFastapiOrgActive({ orgId, isActive, subscriptionStatus }) {
   }
 }
 
+/**
+ * Provision the one-time operator setup key after checkout. This stays separate
+ * from billing sync so onboarding logic does not get tangled into subscription
+ * state updates.
+ */
+async function provisionOperatorInvite({ session, subscription, orgId }) {
+  const secret = process.env.OPERATOR_INVITE_SYNC_SECRET || process.env.BILLING_SYNC_SECRET;
+  if (!secret) return;
+
+  const ownerEmail =
+    session.customer_details?.email ||
+    session.customer_email ||
+    session.metadata?.user_email ||
+    null;
+
+  try {
+    const res = await fetch(`${BACKEND_API_BASE}/api/operator/invite/provision`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Billing-Sync-Secret": secret,
+      },
+      body: JSON.stringify({
+        org_id: orgId ? Number(orgId) : null,
+        email: ownerEmail,
+        owner_name: session.customer_details?.name || session.metadata?.owner_name || null,
+        business_name:
+          session.metadata?.business_name ||
+          session.metadata?.organization_name ||
+          session.customer_details?.name ||
+          null,
+        phone: session.customer_details?.phone || session.metadata?.phone || null,
+        stripe_customer_id: session.customer || null,
+        stripe_subscription_id: subscription?.id || null,
+        setup_base_url: process.env.NEXT_PUBLIC_APP_URL || "https://gofieldwise.com",
+      }),
+    });
+
+    const payload = await res.json().catch(() => null);
+    if (!res.ok) {
+      console.error(`[stripe/webhook] operator invite provision returned ${res.status}:`, payload);
+      return;
+    }
+
+    if (process.env.LOG_OPERATOR_SETUP_URL === "1") {
+      console.info(`[stripe/webhook] operator setup URL: ${payload?.setup_url}`);
+    } else {
+      console.info(`[stripe/webhook] operator invite provisioned: invite_id=${payload?.invite_id}`);
+    }
+  } catch (err) {
+    console.error("[stripe/webhook] operator invite provision failed:", err?.message);
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -127,6 +181,14 @@ export default async function handler(req, res) {
           isActive: planActive,
           subscriptionStatus: subscription.status,
         });
+
+        if (planActive) {
+          await provisionOperatorInvite({
+            session,
+            subscription,
+            orgId: session.metadata?.organization_id || null,
+          });
+        }
         break;
       }
 

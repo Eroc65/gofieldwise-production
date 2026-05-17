@@ -11,6 +11,7 @@ from . import (
     jobs,
     leads,
     marketing,
+    operator,
     platform,
     protected,
     reminders,
@@ -27,6 +28,7 @@ router = APIRouter()
 # ── Auth & billing: NO subscription gate (needed during checkout flow) ──────
 router.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 router.include_router(billing.router, tags=["billing"])
+router.include_router(operator.router, prefix="/api", tags=["operator"])
 
 # ── Business routes: require active subscription ─────────────────────────────
 router.include_router(leads.router, prefix="/api", tags=["leads"], dependencies=_active)

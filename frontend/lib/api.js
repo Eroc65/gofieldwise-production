@@ -43,6 +43,34 @@ export async function login({ email, password }) {
   return payload;
 }
 
+export async function verifyOperatorInvite({ key }) {
+  return apiFetch("/api/operator/invite/verify", {
+    method: "POST",
+    body: JSON.stringify({ key }),
+  });
+}
+
+export async function redeemOperatorInvite({
+  key,
+  email,
+  password,
+  ownerName,
+  businessName,
+  phone,
+}) {
+  return apiFetch("/api/operator/invite/redeem", {
+    method: "POST",
+    body: JSON.stringify({
+      key,
+      email,
+      password,
+      owner_name: ownerName,
+      business_name: businessName,
+      phone,
+    }),
+  });
+}
+
 export async function apiFetch(path, options = {}) {
   const response = await fetch(`${API_BASE}${path}`, {
     headers: {

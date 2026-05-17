@@ -68,12 +68,20 @@ def test_user_role_management_endpoints(client) -> None:
 	)
 	assert owner_signup.status_code == 200
 
+	owner_login = client.post("/api/auth/login", data={"username": owner_email, "password": password})
+	assert owner_login.status_code == 200
+	owner_headers = {"Authorization": f"Bearer {owner_login.json()['access_token']}"}
+
+	org_resp = client.get("/api/auth/org", headers=owner_headers)
+	assert org_resp.status_code == 200
+	intake_key = org_resp.json()["intake_key"]
+
 	tech_signup = client.post(
 		"/api/auth/signup",
 		json={
 			"email": tech_email,
 			"password": password,
-			"organization_name": org_name,
+			"intake_key": intake_key,
 			"role": "technician",
 		},
 	)
@@ -85,20 +93,18 @@ def test_user_role_management_endpoints(client) -> None:
 		json={
 			"email": admin_email,
 			"password": password,
-			"organization_name": org_name,
+			"intake_key": intake_key,
 			"role": "admin",
 		},
 	)
 	assert admin_signup.status_code == 200
+	admin_id = admin_signup.json()["id"]
 
-	owner_login = client.post("/api/auth/login", data={"username": owner_email, "password": password})
 	tech_login = client.post("/api/auth/login", data={"username": tech_email, "password": password})
 	admin_login = client.post("/api/auth/login", data={"username": admin_email, "password": password})
-	assert owner_login.status_code == 200
 	assert tech_login.status_code == 200
 	assert admin_login.status_code == 200
 
-	owner_headers = {"Authorization": f"Bearer {owner_login.json()['access_token']}"}
 	tech_headers = {"Authorization": f"Bearer {tech_login.json()['access_token']}"}
 	admin_headers = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
 
@@ -111,6 +117,14 @@ def test_user_role_management_endpoints(client) -> None:
 
 	list_as_tech = client.get("/api/auth/users", headers=tech_headers)
 	assert list_as_tech.status_code == 403
+
+	promote_admin = client.patch(
+		f"/api/auth/users/{admin_id}/role",
+		json={"role": "admin"},
+		headers=owner_headers,
+	)
+	assert promote_admin.status_code == 200
+	assert promote_admin.json()["role"] == "admin"
 
 	update_as_admin = client.patch(
 		f"/api/auth/users/{tech_id}/role",
@@ -175,21 +189,25 @@ def test_role_audit_log_and_csv_export(client) -> None:
 	)
 	assert owner_signup.status_code == 200
 
+	owner_login = client.post("/api/auth/login", data={"username": owner_email, "password": password})
+	assert owner_login.status_code == 200
+	headers = {"Authorization": f"Bearer {owner_login.json()['access_token']}"}
+
+	org_resp = client.get("/api/auth/org", headers=headers)
+	assert org_resp.status_code == 200
+	intake_key = org_resp.json()["intake_key"]
+
 	dispatcher_signup = client.post(
 		"/api/auth/signup",
 		json={
 			"email": dispatcher_email,
 			"password": password,
-			"organization_name": org_name,
+			"intake_key": intake_key,
 			"role": "dispatcher",
 		},
 	)
 	assert dispatcher_signup.status_code == 200
 	dispatcher_id = dispatcher_signup.json()["id"]
-
-	owner_login = client.post("/api/auth/login", data={"username": owner_email, "password": password})
-	assert owner_login.status_code == 200
-	headers = {"Authorization": f"Bearer {owner_login.json()['access_token']}"}
 
 	change = client.patch(
 		f"/api/auth/users/{dispatcher_id}/role",

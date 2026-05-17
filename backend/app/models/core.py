@@ -41,6 +41,7 @@ class Organization(Base):
     coaching_snippets = relationship("CoachingSnippet", back_populates="organization")
     comm_profile = relationship("CommunicationTenantProfile", back_populates="organization", uselist=False)
     sms_opt_outs = relationship("SmsOptOut", back_populates="organization")
+    operator_invites = relationship("OperatorInvite", back_populates="organization")
 
 class User(Base):
     __tablename__ = "users"
@@ -50,6 +51,27 @@ class User(Base):
     role = Column(String, nullable=False, default="owner")
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
     organization = relationship("Organization", back_populates="users")
+
+
+class OperatorInvite(Base):
+    __tablename__ = "operator_invites"
+    id = Column(Integer, primary_key=True, index=True)
+    key_hash = Column(String, unique=True, index=True, nullable=False)
+    email = Column(String, index=True)
+    owner_name = Column(String)
+    business_name = Column(String)
+    phone = Column(String)
+    stripe_customer_id = Column(String, index=True)
+    stripe_subscription_id = Column(String, index=True)
+    status = Column(String, nullable=False, default="pending")
+    setup_url = Column(String)
+    expires_at = Column(DateTime, nullable=False)
+    redeemed_at = Column(DateTime)
+    redeemed_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
+    organization = relationship("Organization", back_populates="operator_invites")
 
 class Customer(Base):
     __tablename__ = "customers"
