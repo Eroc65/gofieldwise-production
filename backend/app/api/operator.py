@@ -6,6 +6,7 @@ import os
 from datetime import timedelta
 from secrets import token_urlsafe
 from typing import Optional
+from urllib.parse import parse_qs, urlparse
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, EmailStr
@@ -56,6 +57,14 @@ def _hash_key(raw_key: str) -> str:
 
 def _new_operator_key() -> str:
     return f"gfw_op_{token_urlsafe(24)}"
+
+
+def _key_from_setup_url(setup_url: Optional[str]) -> Optional[str]:
+    if not setup_url:
+        return None
+    parsed = urlparse(setup_url)
+    values = parse_qs(parsed.query).get("key") or []
+    return values[0] if values else None
 
 
 def _request_key(*, key: Optional[str], operator_key: Optional[str]) -> str:
@@ -124,6 +133,32 @@ def provision_operator_invite(
         org = db.query(Organization).filter(Organization.id == requested_org_id).first()
         if org is None:
             raise HTTPException(status_code=404, detail="Organization not found")
+
+    if requested_org_id is not None and payload.stripe_subscription_id:
+        existing = (
+            db.query(OperatorInvite)
+            .filter(
+                OperatorInvite.organization_id == requested_org_id,
+                OperatorInvite.stripe_subscription_id == payload.stripe_subscription_id,
+                OperatorInvite.status == "pending",
+                OperatorInvite.expires_at > _utcnow(),
+            )
+            .order_by(OperatorInvite.id.desc())
+            .first()
+        )
+        existing_key = _key_from_setup_url(existing.setup_url if existing else None)
+        if existing and existing_key:
+            return {
+                "ok": True,
+                "invite_id": existing.id,
+                "org_id": existing.organization_id,
+                "organization_id": existing.organization_id,
+                "organization_name": org.name if org else existing.business_name,
+                "operator_key": existing_key,
+                "setup_url": existing.setup_url,
+                "expires_at": existing.expires_at,
+                "reused": True,
+            }
 
     raw_key = _new_operator_key()
     if payload.expires_hours is not None:

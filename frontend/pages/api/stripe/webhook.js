@@ -70,7 +70,7 @@ async function provisionOperatorInvite({
   stripeCustomerId,
   stripeSubscriptionId,
 }) {
-  const secret = process.env.BILLING_SYNC_SECRET;
+  const secret = process.env.OPERATOR_INVITE_SYNC_SECRET || process.env.BILLING_SYNC_SECRET;
   if (!secret || !organizationId) return null;
 
   try {
@@ -100,7 +100,9 @@ async function provisionOperatorInvite({
       return null;
     }
 
-    console.log("[stripe/webhook] operator setup URL created:", payload?.setup_url);
+    console.log(
+      `[stripe/webhook] operator invite provisioned: invite_id=${payload?.invite_id}, org=${payload?.organization_id}`
+    );
     return payload;
   } catch (err) {
     console.error("[stripe/webhook] operator invite provision failed:", err?.message);
@@ -197,7 +199,7 @@ export default async function handler(req, res) {
 
           if (invite?.setup_url) {
             console.log(
-              `[stripe/webhook] Operator setup link for org ${session.metadata.organization_id}: ${invite.setup_url}`
+              `[stripe/webhook] Operator invite ready for org ${session.metadata.organization_id}: invite_id=${invite.invite_id}`
             );
           }
         }

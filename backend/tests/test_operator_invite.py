@@ -202,6 +202,46 @@ def test_operator_invite_accepts_operator_key_contract(client, monkeypatch):
     assert redeem.json()["redirect_to"] == "/connect-center"
 
 
+def test_operator_invite_provision_is_idempotent_for_subscription(client, monkeypatch):
+    _reset_db()
+    monkeypatch.setenv("BILLING_SYNC_SECRET", "test-secret-that-is-long-enough")
+
+    db = SessionLocal()
+    org = Organization(name="Idempotent Contract Org", is_active=True)
+    db.add(org)
+    db.commit()
+    db.refresh(org)
+    org_id = org.id
+    db.close()
+
+    payload = {
+        "organization_id": org_id,
+        "email": "retry@example.com",
+        "source": "stripe_checkout",
+        "stripe_customer_id": "cus_retry",
+        "stripe_subscription_id": "sub_retry",
+        "expires_hours": 72,
+    }
+
+    first = client.post(
+        "/api/operator/invite/provision",
+        headers={"X-Billing-Sync-Secret": "test-secret-that-is-long-enough"},
+        json=payload,
+    )
+    assert first.status_code == 200, first.text
+
+    second = client.post(
+        "/api/operator/invite/provision",
+        headers={"X-Billing-Sync-Secret": "test-secret-that-is-long-enough"},
+        json=payload,
+    )
+    assert second.status_code == 200, second.text
+
+    assert second.json()["reused"] is True
+    assert second.json()["invite_id"] == first.json()["invite_id"]
+    assert second.json()["operator_key"] == first.json()["operator_key"]
+
+
 def test_operator_invite_rejects_password_confirmation_mismatch(client, monkeypatch):
     _reset_db()
     monkeypatch.setenv("BILLING_SYNC_SECRET", "test-secret-that-is-long-enough")
