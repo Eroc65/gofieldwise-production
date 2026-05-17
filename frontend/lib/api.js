@@ -657,6 +657,21 @@ export async function getCommProfile({ token }) {
   });
 }
 
+export async function getConnectSettings({ token }) {
+  return apiFetch("/api/connect/settings", {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function updateConnectSettings({ token, settings, completed = false }) {
+  return apiFetch("/api/connect/settings", {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ settings, completed: Boolean(completed) }),
+  });
+}
+
 export async function updateCommProfile({ token, payload }) {
   return apiFetch("/api/org/comm-profile", {
     method: "PATCH",

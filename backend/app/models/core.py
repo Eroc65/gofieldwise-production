@@ -40,6 +40,7 @@ class Organization(Base):
     help_articles = relationship("HelpArticle", back_populates="organization")
     coaching_snippets = relationship("CoachingSnippet", back_populates="organization")
     comm_profile = relationship("CommunicationTenantProfile", back_populates="organization", uselist=False)
+    connect_settings = relationship("ConnectSettings", back_populates="organization", uselist=False)
     sms_opt_outs = relationship("SmsOptOut", back_populates="organization")
     operator_invites = relationship("OperatorInvite", back_populates="organization")
 
@@ -397,6 +398,17 @@ class CommunicationTenantProfile(Base):
     created_at = Column(DateTime, default=_utcnow, nullable=False)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
     organization = relationship("Organization", back_populates="comm_profile")
+
+
+class ConnectSettings(Base):
+    __tablename__ = "connect_settings"
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, unique=True)
+    settings_json = Column(Text, nullable=False, default="{}")
+    completed = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
+    organization = relationship("Organization", back_populates="connect_settings")
 
 
 class SmsOptOut(Base):

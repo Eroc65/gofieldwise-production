@@ -5,6 +5,7 @@ from . import (
     admin_auth,
     auth,
     billing,
+    connect,
     customers,
     estimates,
     external_integrations,
@@ -44,5 +45,6 @@ router.include_router(reports.router, prefix="/api", tags=["reports"], dependenc
 router.include_router(estimates.router, prefix="/api", tags=["estimates"], dependencies=_active)
 router.include_router(marketing.router, prefix="/api", tags=["marketing"], dependencies=_active)
 router.include_router(platform.router, prefix="/api", tags=["platform"], dependencies=_active)
+router.include_router(connect.router, prefix="/api", tags=["connect"], dependencies=_active)
 router.include_router(admin_monitoring.router, prefix="/api", tags=["admin-monitoring"])
 router.include_router(external_integrations.router, prefix="/api", tags=["external-integrations"], dependencies=_active)

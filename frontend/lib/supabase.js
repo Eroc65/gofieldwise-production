@@ -11,6 +11,15 @@ function getAdminClient() {
   });
 }
 
+function isMissingSupabaseTable(error) {
+  const message = String(error?.message || "");
+  return (
+    message.includes("Could not find the table") ||
+    message.includes("schema cache") ||
+    error?.code === "PGRST205"
+  );
+}
+
 export async function getOrgByStripeCustomer(stripeCustomerId) {
   if (!stripeCustomerId) return null;
   const supabase = getAdminClient();
@@ -19,6 +28,7 @@ export async function getOrgByStripeCustomer(stripeCustomerId) {
     .select("*")
     .eq("stripe_customer_id", stripeCustomerId)
     .maybeSingle();
+  if (error && isMissingSupabaseTable(error)) return null;
   if (error) throw new Error(`getOrgByStripeCustomer failed: ${error.message}`);
   return data;
 }
@@ -57,10 +67,12 @@ export async function bootstrapSupabaseOrg(stripeCustomerId, { ownerEmail, fasta
     .from("organizations")
     .upsert(row, { onConflict: "stripe_customer_id", ignoreDuplicates: true });
   if (error) {
+    if (isMissingSupabaseTable(error)) return { ok: false, skipped: "supabase_table_missing" };
     // Non-fatal: log and continue. The safety-net in updateOrgSubscription will
     // attempt another bootstrap when the webhook arrives.
     console.error("[supabase] bootstrapSupabaseOrg error:", error.message);
   }
+  return { ok: !error };
 }
 
 export async function updateOrgSubscription(orgOrId, patch) {
@@ -80,7 +92,7 @@ export async function updateOrgSubscription(orgOrId, patch) {
     orgId = org?.id || null;
   }
 
-  if (!orgId) throw new Error("updateOrgSubscription failed: could not resolve organization");
+  if (!orgId) return { ok: false, skipped: "supabase_org_unavailable" };
 
   const orgUpdate = {
     stripe_customer_id: patch.stripeCustomerId ?? null,
@@ -94,6 +106,9 @@ export async function updateOrgSubscription(orgOrId, patch) {
     .from("organizations")
     .update(orgUpdate)
     .eq("id", orgId);
+  if (orgError && isMissingSupabaseTable(orgError)) {
+    return { ok: false, skipped: "supabase_table_missing" };
+  }
   if (orgError) throw new Error(`organizations update failed: ${orgError.message}`);
 
   if (patch.stripeSubscriptionId) {
@@ -113,8 +128,12 @@ export async function updateOrgSubscription(orgOrId, patch) {
     const { error: subError } = await supabase
       .from("subscriptions")
       .upsert(subRow, { onConflict: "provider,provider_subscription_id" });
+    if (subError && isMissingSupabaseTable(subError)) {
+      return { ok: false, skipped: "supabase_table_missing" };
+    }
     if (subError) throw new Error(`subscriptions upsert failed: ${subError.message}`);
   }
+  return { ok: true };
 }
 
 export async function logSubscriptionEvent(eventRow) {

@@ -1,7 +1,45 @@
-import { useEffect, useState } from "react";
-import { getCurrentUser, getPublicStatus } from "../lib/api";
+import { useEffect, useMemo, useState } from "react";
+import {
+  getConnectSettings,
+  getCurrentUser,
+  getPublicStatus,
+  updateConnectSettings,
+} from "../lib/api";
 
 const TOKEN_KEYS = ["fdp.dispatch.token", "access_token", "token"];
+
+const STEPS = [
+  { id: "business", label: "Business profile" },
+  { id: "trade", label: "Trade type" },
+  { id: "service_area", label: "Service area" },
+  { id: "hours", label: "Business hours" },
+  { id: "owner_phone", label: "Owner notification phone" },
+  { id: "backup", label: "Backup contact" },
+  { id: "emergency", label: "Emergency rules" },
+  { id: "after_hours", label: "After-hours message" },
+  { id: "workflow", label: "Workflow mode" },
+  { id: "crm", label: "CRM destination" },
+  { id: "test_call", label: "Test AI call" },
+];
+
+const DEFAULT_SETTINGS = {
+  business_name: "",
+  owner_name: "",
+  public_phone: "",
+  trade_type: "HVAC",
+  service_area: "",
+  business_hours: "Monday-Friday 8:00 AM-5:00 PM",
+  owner_notification_phone: "",
+  backup_contact_name: "",
+  backup_contact_phone: "",
+  emergency_rules: "",
+  after_hours_message: "",
+  workflow_mode: "hybrid",
+  crm_destination: "email",
+  crm_destination_detail: "",
+  test_call_phone: "",
+  test_call_confirmed: false,
+};
 
 function readToken() {
   if (typeof window === "undefined") return "";
@@ -12,37 +50,159 @@ function readToken() {
   return "";
 }
 
+function completionFor(settings) {
+  const required = [
+    "business_name",
+    "owner_name",
+    "public_phone",
+    "trade_type",
+    "service_area",
+    "business_hours",
+    "owner_notification_phone",
+    "backup_contact_name",
+    "backup_contact_phone",
+    "emergency_rules",
+    "after_hours_message",
+    "workflow_mode",
+    "crm_destination",
+    "test_call_phone",
+  ];
+  const filled = required.filter((key) => String(settings[key] || "").trim()).length;
+  const test = settings.test_call_confirmed ? 1 : 0;
+  return Math.round(((filled + test) / (required.length + 1)) * 100);
+}
+
+function isComplete(settings) {
+  return completionFor(settings) === 100;
+}
+
+function Field({ label, children, hint }) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      {children}
+      {hint ? <small>{hint}</small> : null}
+      <style jsx>{`
+        .field {
+          display: grid;
+          gap: 7px;
+          color: #10231e;
+          font-weight: 900;
+        }
+        .field :global(input),
+        .field :global(select),
+        .field :global(textarea) {
+          width: 100%;
+          border: 1px solid rgba(19, 35, 31, 0.18);
+          border-radius: 10px;
+          background: #fffdf8;
+          color: #13231f;
+          font: inherit;
+          padding: 12px;
+          box-sizing: border-box;
+        }
+        .field :global(textarea) {
+          min-height: 98px;
+          resize: vertical;
+          line-height: 1.55;
+        }
+        small {
+          color: #63766f;
+          font-weight: 600;
+          line-height: 1.45;
+        }
+      `}</style>
+    </label>
+  );
+}
+
 export default function ConnectCenterPage() {
   const [token, setToken] = useState("");
   const [user, setUser] = useState(null);
   const [status, setStatus] = useState(null);
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [savedAt, setSavedAt] = useState("");
+  const [activeStep, setActiveStep] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("Checking your operator session...");
   const [error, setError] = useState("");
+
+  const progress = useMemo(() => completionFor(settings), [settings]);
+  const completed = isComplete(settings);
+  const step = STEPS[activeStep];
 
   useEffect(() => {
     const storedToken = readToken();
     setToken(storedToken);
 
     if (!storedToken) {
+      setLoading(false);
       setMessage("No operator session found. Complete operator setup first.");
       return;
     }
 
     (async () => {
       try {
-        const [me, publicStatus] = await Promise.all([
+        const [me, publicStatus, connect] = await Promise.all([
           getCurrentUser({ token: storedToken }),
           getPublicStatus().catch(() => null),
+          getConnectSettings({ token: storedToken }),
         ]);
+        const loaded = { ...DEFAULT_SETTINGS, ...(connect?.settings || {}) };
         setUser(me);
         setStatus(publicStatus);
-        setMessage("Operator session active.");
+        setSettings(loaded);
+        setSavedAt(connect?.updated_at || "");
+        setMessage(connect?.completed ? "Connect setup complete." : "Connect setup in progress.");
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not load operator session.");
-        setMessage("Operator session could not be verified.");
+        setError(err instanceof Error ? err.message : "Could not load Connect Center.");
+        setMessage("Connect Center could not be loaded.");
+      } finally {
+        setLoading(false);
       }
     })();
   }, []);
+
+  function updateField(key, value) {
+    setSettings((current) => ({ ...current, [key]: value }));
+  }
+
+  async function save(nextSettings = settings, nextStep = activeStep) {
+    if (!token) return false;
+    setSaving(true);
+    setError("");
+    try {
+      const payload = await updateConnectSettings({
+        token,
+        settings: nextSettings,
+        completed: isComplete(nextSettings),
+      });
+      setSavedAt(payload?.updated_at || new Date().toISOString());
+      setMessage(isComplete(nextSettings) ? "Connect setup complete." : "Progress saved.");
+      setActiveStep(nextStep);
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save Connect settings.");
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function nextStep() {
+    await save(settings, Math.min(activeStep + 1, STEPS.length - 1));
+  }
+
+  async function previousStep() {
+    await save(settings, Math.max(activeStep - 1, 0));
+  }
+
+  async function markTestCallComplete() {
+    const next = { ...settings, test_call_confirmed: true };
+    setSettings(next);
+    await save(next, activeStep);
+  }
 
   function signOut() {
     TOKEN_KEYS.forEach((key) => window.localStorage.removeItem(key));
@@ -51,60 +211,219 @@ export default function ConnectCenterPage() {
     window.location.href = "/operator/setup";
   }
 
+  function renderStep() {
+    switch (step.id) {
+      case "business":
+        return (
+          <div className="formGrid">
+            <Field label="Business name">
+              <input value={settings.business_name} onChange={(event) => updateField("business_name", event.target.value)} placeholder="Example Plumbing LLC" />
+            </Field>
+            <Field label="Owner name">
+              <input value={settings.owner_name} onChange={(event) => updateField("owner_name", event.target.value)} placeholder="Eric Hicks" />
+            </Field>
+            <Field label="Public business phone">
+              <input value={settings.public_phone} onChange={(event) => updateField("public_phone", event.target.value)} placeholder="405-555-0100" inputMode="tel" />
+            </Field>
+          </div>
+        );
+      case "trade":
+        return (
+          <Field label="Primary trade">
+            <select value={settings.trade_type} onChange={(event) => updateField("trade_type", event.target.value)}>
+              {["HVAC", "Plumbing", "Electrical", "Cleaning", "Roofing", "Landscaping", "Other"].map((trade) => (
+                <option key={trade} value={trade}>{trade}</option>
+              ))}
+            </select>
+          </Field>
+        );
+      case "service_area":
+        return (
+          <Field label="Service area" hint="List the cities, neighborhoods, or counties your team serves.">
+            <textarea value={settings.service_area} onChange={(event) => updateField("service_area", event.target.value)} placeholder="Tulsa, Broken Arrow, Jenks, Bixby, Owasso" />
+          </Field>
+        );
+      case "hours":
+        return (
+          <Field label="Business hours" hint="Include weekend or emergency availability if it applies.">
+            <textarea value={settings.business_hours} onChange={(event) => updateField("business_hours", event.target.value)} />
+          </Field>
+        );
+      case "owner_phone":
+        return (
+          <Field label="Owner notification phone" hint="Where GoFieldWise should send urgent lead and missed-call alerts.">
+            <input value={settings.owner_notification_phone} onChange={(event) => updateField("owner_notification_phone", event.target.value)} placeholder="405-555-0100" inputMode="tel" />
+          </Field>
+        );
+      case "backup":
+        return (
+          <div className="formGrid">
+            <Field label="Backup contact name">
+              <input value={settings.backup_contact_name} onChange={(event) => updateField("backup_contact_name", event.target.value)} placeholder="Dispatch manager" />
+            </Field>
+            <Field label="Backup contact phone">
+              <input value={settings.backup_contact_phone} onChange={(event) => updateField("backup_contact_phone", event.target.value)} placeholder="918-555-0100" inputMode="tel" />
+            </Field>
+          </div>
+        );
+      case "emergency":
+        return (
+          <Field label="Emergency rules" hint="Tell the AI what should count as urgent and who should be alerted.">
+            <textarea value={settings.emergency_rules} onChange={(event) => updateField("emergency_rules", event.target.value)} placeholder="Burst pipes, no heat below 40 degrees, electrical burning smell, active water leaks. Text owner immediately." />
+          </Field>
+        );
+      case "after_hours":
+        return (
+          <Field label="After-hours customer message">
+            <textarea value={settings.after_hours_message} onChange={(event) => updateField("after_hours_message", event.target.value)} placeholder="Thanks for calling. We received your request and will follow up first thing in the morning. If this is an emergency, reply EMERGENCY." />
+          </Field>
+        );
+      case "workflow":
+        return (
+          <div className="choiceGrid">
+            {[
+              ["standalone", "Standalone", "AI handles intake and customer response as the front office."],
+              ["sidecar", "Sidecar", "AI watches for missed calls and drafts follow-up while your team stays primary."],
+              ["hybrid", "Hybrid", "AI handles routine intake and escalates urgent or uncertain cases to a person."],
+            ].map(([value, title, detail]) => (
+              <button key={value} type="button" className={settings.workflow_mode === value ? "choice active" : "choice"} onClick={() => updateField("workflow_mode", value)}>
+                <strong>{title}</strong>
+                <span>{detail}</span>
+              </button>
+            ))}
+          </div>
+        );
+      case "crm":
+        return (
+          <div className="formGrid">
+            <Field label="CRM destination">
+              <select value={settings.crm_destination} onChange={(event) => updateField("crm_destination", event.target.value)}>
+                <option value="email">Email summary</option>
+                <option value="jobber">Jobber</option>
+                <option value="housecall_pro">Housecall Pro</option>
+                <option value="google_sheet">Google Sheet</option>
+                <option value="other">Other</option>
+              </select>
+            </Field>
+            <Field label="Destination detail" hint="Add the email address, CRM notes, or destination your team should use.">
+              <input value={settings.crm_destination_detail} onChange={(event) => updateField("crm_destination_detail", event.target.value)} placeholder="dispatch@example.com" />
+            </Field>
+          </div>
+        );
+      case "test_call":
+        return (
+          <div className="testBox">
+            <Field label="Phone to use for test AI call" hint="This should be the number you want to test from or notify.">
+              <input value={settings.test_call_phone} onChange={(event) => updateField("test_call_phone", event.target.value)} placeholder="405-555-0100" inputMode="tel" />
+            </Field>
+            <button type="button" className="secondaryAction" onClick={markTestCallComplete} disabled={saving || !settings.test_call_phone}>
+              {settings.test_call_confirmed ? "Test call marked complete" : "Mark test call ready"}
+            </button>
+          </div>
+        );
+      default:
+        return null;
+    }
+  }
+
   return (
     <main className="connectShell">
       <section className="hero">
         <p className="eyebrow">GoFieldWise Connect Center</p>
-        <h1>Operator dashboard ready.</h1>
+        <h1>{completed ? "Your AI front office setup is ready." : "Let’s set up your AI front office step by step."}</h1>
         <p className="intro">
-          This is the authenticated landing page for new GoFieldWise operators after setup.
+          {completed
+            ? "Place a test call to confirm the experience, then keep this page as your setup command center."
+            : "Answer each setup step once. Your progress saves as you move through the wizard."}
         </p>
       </section>
 
       <section className="panel">
         <div className="panelHeader">
           <div>
-            <h2>Session</h2>
-            <p>{message}</p>
+            <h2>{user ? "Connect activation" : "Operator session"}</h2>
+            <p>{loading ? "Loading Connect Center..." : message}</p>
           </div>
           {token ? <span className="badge success">JWT detected</span> : <span className="badge danger">No token</span>}
         </div>
 
         {error ? <p className="error">{error}</p> : null}
 
-        {user ? (
-          <div className="grid">
-            <article>
-              <span>Email</span>
-              <strong>{user.email}</strong>
-            </article>
-            <article>
-              <span>Role</span>
-              <strong>{user.role}</strong>
-            </article>
-            <article>
-              <span>Organization</span>
-              <strong>#{user.organization_id}</strong>
-            </article>
-            <article>
-              <span>API</span>
-              <strong>{status?.ok === false ? "Needs attention" : "Reachable"}</strong>
-            </article>
-          </div>
-        ) : (
+        {!user && !loading ? (
           <div className="empty">
             <p>Complete operator setup with your one-time key to access Connect Center.</p>
             <a href="/operator/setup">Go to operator setup</a>
           </div>
-        )}
+        ) : null}
 
         {user ? (
-          <div className="actions">
-            <a href="/platform">Platform settings</a>
-            <a href="/leads">Lead center</a>
-            <a href="/metrics">Metrics</a>
-            <button type="button" onClick={signOut}>Sign out</button>
-          </div>
+          <>
+            <div className="topGrid">
+              <article>
+                <span>Email</span>
+                <strong>{user.email}</strong>
+              </article>
+              <article>
+                <span>Role</span>
+                <strong>{user.role}</strong>
+              </article>
+              <article>
+                <span>API</span>
+                <strong>{status?.ok === false ? "Needs attention" : "Reachable"}</strong>
+              </article>
+            </div>
+
+            <div className="progressBlock">
+              <div>
+                <strong>{progress}% setup complete</strong>
+                <span>{savedAt ? `Last saved ${new Date(savedAt).toLocaleString()}` : "Not saved yet"}</span>
+              </div>
+              <div className="progressTrack" aria-label="Setup progress">
+                <div style={{ width: `${progress}%` }} />
+              </div>
+            </div>
+
+            <div className="wizard">
+              <nav className="steps" aria-label="Connect setup steps">
+                {STEPS.map((item, index) => (
+                  <button key={item.id} type="button" onClick={() => setActiveStep(index)} className={activeStep === index ? "step active" : "step"}>
+                    <span>{index + 1}</span>
+                    {item.label}
+                  </button>
+                ))}
+              </nav>
+
+              <div className="stepPanel">
+                <p className="stepCount">Step {activeStep + 1} of {STEPS.length}</p>
+                <h3>{step.label}</h3>
+                {renderStep()}
+
+                <div className="wizardActions">
+                  <button type="button" className="ghost" onClick={previousStep} disabled={saving || activeStep === 0}>Back</button>
+                  <button type="button" className="ghost" onClick={() => save()} disabled={saving}>{saving ? "Saving..." : "Save"}</button>
+                  {activeStep < STEPS.length - 1 ? (
+                    <button type="button" onClick={nextStep} disabled={saving}>{saving ? "Saving..." : "Save & continue"}</button>
+                  ) : (
+                    <button type="button" onClick={() => save(settings, activeStep)} disabled={saving}>{completed ? "Setup complete" : "Save test call step"}</button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {completed ? (
+              <div className="completeBox">
+                <strong>Your AI front office setup is ready.</strong>
+                <p>Place a test call to confirm the experience. If something feels off, email support@gofieldwise.com and include the business name and test-call phone number.</p>
+              </div>
+            ) : null}
+
+            <div className="actions">
+              <a href="mailto:support@gofieldwise.com">Contact support@gofieldwise.com</a>
+              <a href="/leads">Lead center</a>
+              <a href="/metrics">Metrics</a>
+              <button type="button" onClick={signOut}>Sign out</button>
+            </div>
+          </>
         ) : null}
       </section>
 
@@ -117,7 +436,7 @@ export default function ConnectCenterPage() {
         }
         .hero,
         .panel {
-          width: min(980px, 100%);
+          width: min(1120px, 100%);
           margin: 0 auto;
         }
         .hero {
@@ -136,6 +455,7 @@ export default function ConnectCenterPage() {
           font-size: clamp(38px, 7vw, 72px);
           line-height: 0.95;
           margin: 0 0 12px;
+          max-width: 880px;
         }
         .intro,
         .panel p,
@@ -157,9 +477,14 @@ export default function ConnectCenterPage() {
           align-items: flex-start;
           margin-bottom: 18px;
         }
-        h2 {
+        h2,
+        h3 {
           margin: 0 0 4px;
           color: #10231e;
+        }
+        h3 {
+          font-size: 28px;
+          margin-bottom: 18px;
         }
         .badge {
           border-radius: 999px;
@@ -184,9 +509,9 @@ export default function ConnectCenterPage() {
           font-weight: 800;
           padding: 12px 14px;
         }
-        .grid {
+        .topGrid {
           display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
+          grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 12px;
           margin: 20px 0;
         }
@@ -197,7 +522,9 @@ export default function ConnectCenterPage() {
           padding: 14px;
           min-width: 0;
         }
-        article span {
+        article span,
+        .progressBlock span,
+        .stepCount {
           display: block;
           color: #667a73;
           font-size: 12px;
@@ -208,6 +535,123 @@ export default function ConnectCenterPage() {
           color: #10231e;
           overflow-wrap: anywhere;
         }
+        .progressBlock {
+          display: grid;
+          gap: 10px;
+          background: #f7fbf9;
+          border: 1px solid rgba(19, 35, 31, 0.12);
+          border-radius: 14px;
+          padding: 14px;
+          margin-bottom: 18px;
+        }
+        .progressTrack {
+          height: 9px;
+          background: #e1ebe7;
+          border-radius: 999px;
+          overflow: hidden;
+        }
+        .progressTrack div {
+          height: 100%;
+          background: #17643a;
+          border-radius: 999px;
+          transition: width 0.2s ease;
+        }
+        .wizard {
+          display: grid;
+          grid-template-columns: 260px 1fr;
+          gap: 18px;
+          align-items: start;
+        }
+        .steps {
+          display: grid;
+          gap: 7px;
+        }
+        .step {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          text-align: left;
+          background: #fffdf8;
+          color: #3f544e;
+          border: 1px solid rgba(19, 35, 31, 0.12);
+          border-radius: 10px;
+          padding: 9px 10px;
+          font-weight: 800;
+        }
+        .step span {
+          width: 22px;
+          height: 22px;
+          border-radius: 999px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background: #edf3ef;
+          font-size: 12px;
+          flex: 0 0 auto;
+        }
+        .step.active {
+          background: #13231f;
+          color: #fff;
+        }
+        .step.active span {
+          background: rgba(255, 255, 255, 0.18);
+        }
+        .stepPanel {
+          border: 1px solid rgba(19, 35, 31, 0.14);
+          border-radius: 14px;
+          padding: 18px;
+          background: #fffdf8;
+        }
+        .formGrid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 14px;
+        }
+        .formGrid :global(label:first-child:last-child),
+        .formGrid :global(label:nth-child(3)) {
+          grid-column: 1 / -1;
+        }
+        .choiceGrid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 10px;
+        }
+        .choice {
+          min-height: 130px;
+          align-items: flex-start;
+          background: #fff;
+          border: 1px solid rgba(19, 35, 31, 0.16);
+          color: #13231f;
+          display: grid;
+          gap: 8px;
+          text-align: left;
+        }
+        .choice span {
+          color: #5b7069;
+          font-weight: 600;
+          line-height: 1.45;
+        }
+        .choice.active {
+          border-color: #17643a;
+          background: #eef9f1;
+        }
+        .testBox {
+          display: grid;
+          gap: 14px;
+        }
+        .completeBox {
+          margin-top: 18px;
+          background: #eef9f1;
+          border: 1px solid rgba(19, 92, 45, 0.2);
+          color: #135c2d;
+          border-radius: 14px;
+          padding: 15px;
+        }
+        .completeBox p {
+          color: #285c3e;
+          margin-bottom: 0;
+        }
+        .wizardActions,
         .actions {
           display: flex;
           gap: 10px;
@@ -227,9 +671,16 @@ export default function ConnectCenterPage() {
           padding: 11px 14px;
           text-decoration: none;
         }
-        button {
+        button:disabled {
+          cursor: not-allowed;
+          opacity: 0.6;
+        }
+        .ghost,
+        .secondaryAction,
+        .actions button {
           background: #fff4de;
           color: #13231f;
+          border: 1px solid #e5c17b;
         }
         .empty {
           background: #fffdf8;
@@ -237,12 +688,23 @@ export default function ConnectCenterPage() {
           border-radius: 14px;
           padding: 18px;
         }
-        @media (max-width: 760px) {
-          .grid {
+        @media (max-width: 900px) {
+          .wizard,
+          .topGrid,
+          .formGrid,
+          .choiceGrid {
             grid-template-columns: 1fr;
+          }
+          .steps {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
           }
           .panelHeader {
             display: grid;
+          }
+        }
+        @media (max-width: 560px) {
+          .steps {
+            grid-template-columns: 1fr;
           }
         }
       `}</style>
